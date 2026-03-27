@@ -25,6 +25,11 @@ app.add_middleware(
 @app.on_event("startup")
 def on_startup():
     init_db()
+    # Seed mock data on first run
+    from backend.db.seed import seed_if_empty
+    seeded = seed_if_empty()
+    if seeded:
+        print("First run detected -- mock data loaded.")
 
 
 # Register routers
@@ -47,4 +52,17 @@ app.include_router(user_state_router, prefix="/api")
 
 @app.get("/api/health")
 def health_check():
-    return {"status": "ok", "version": "0.1.0"}
+    from backend.db.database import SessionLocal
+    from backend.db.models import UserState
+    db = SessionLocal()
+    try:
+        is_mock = db.query(UserState).filter(
+            UserState.key == "is_mock_data", UserState.value == "true"
+        ).first()
+        return {
+            "status": "ok",
+            "version": "0.1.0",
+            "is_mock_data": is_mock is not None,
+        }
+    finally:
+        db.close()

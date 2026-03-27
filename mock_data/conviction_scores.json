@@ -1,0 +1,144 @@
+[
+  {
+    "hypothesis_id": "H-2026-082-01",
+    "short_name": "ERP compression signals 15-25% equity drawdown within 12 months",
+    "status": "SURVIVED",
+    "conviction_math": {
+      "stage1": {
+        "support_strength": 0.90,
+        "evidence_quality": 0.88,
+        "convergence": 0.70,
+        "falsifier_clarity": 0.92,
+        "raw": 8.49
+      },
+      "stage2": {
+        "soft_falsifier_discount": 0.90,
+        "overlap_penalty": 0.80,
+        "adjusted": 6.11
+      },
+      "stage3": {
+        "horizon_score": 0.65,
+        "horizon_cap": null,
+        "expression_score": 0.75,
+        "expression_cap": null,
+        "final": 6.0
+      }
+    },
+    "final_conviction": 6.0
+  },
+  {
+    "hypothesis_id": "H-2026-082-02",
+    "short_name": "Large-cap to small-cap rotation as QQQ/IWM ratio mean-reverts",
+    "status": "WOUNDED",
+    "conviction_math": {
+      "stage1": {
+        "support_strength": 0.60,
+        "evidence_quality": 0.55,
+        "convergence": 0.35,
+        "falsifier_clarity": 0.72,
+        "raw": 5.43
+      },
+      "stage2": {
+        "soft_falsifier_discount": 0.55,
+        "overlap_penalty": 1.0,
+        "adjusted": 2.99
+      },
+      "stage3": {
+        "horizon_score": 0.55,
+        "horizon_cap": null,
+        "expression_score": 0.65,
+        "expression_cap": null,
+        "final": 3.0
+      }
+    },
+    "final_conviction": 3.0
+  },
+  {
+    "hypothesis_id": "H-2026-082-03",
+    "short_name": "MP3 transition drives gold to outperform nominal bonds 25-40%",
+    "status": "SURVIVED",
+    "conviction_math": {
+      "stage1": {
+        "support_strength": 0.85,
+        "evidence_quality": 0.84,
+        "convergence": 0.65,
+        "falsifier_clarity": 0.88,
+        "raw": 8.10
+      },
+      "stage2": {
+        "soft_falsifier_discount": 1.0,
+        "overlap_penalty": 0.80,
+        "adjusted": 6.48
+      },
+      "stage3": {
+        "horizon_score": 0.60,
+        "horizon_cap": null,
+        "expression_score": 0.70,
+        "expression_cap": null,
+        "final": 6.0
+      }
+    },
+    "final_conviction": 6.0
+  },
+  {
+    "hypothesis_id": "H-2026-082-04",
+    "short_name": "Treasury term premium expansion forces long-duration underperformance",
+    "status": "SURVIVED",
+    "conviction_math": {
+      "stage1": {
+        "support_strength": 0.80,
+        "evidence_quality": 0.78,
+        "convergence": 0.55,
+        "falsifier_clarity": 0.82,
+        "raw": 7.48
+      },
+      "stage2": {
+        "soft_falsifier_discount": 1.0,
+        "overlap_penalty": 0.80,
+        "adjusted": 5.98
+      },
+      "stage3": {
+        "horizon_score": 0.65,
+        "horizon_cap": null,
+        "expression_score": 0.70,
+        "expression_cap": null,
+        "final": 6.0
+      }
+    },
+    "final_conviction": 6.0
+  },
+  {
+    "hypothesis_id": "H-2026-082-05",
+    "short_name": "Stretched valuations plus debt monetization favors gold over equities",
+    "status": "SURVIVED",
+    "conviction_math": {
+      "stage1": {
+        "support_strength": 0.88,
+        "evidence_quality": 0.85,
+        "convergence": 0.88,
+        "falsifier_clarity": 0.90,
+        "raw": 8.74
+      },
+      "stage2": {
+        "soft_falsifier_discount": 1.0,
+        "overlap_penalty": 0.80,
+        "adjusted": 6.99
+      },
+      "stage3": {
+        "horizon_score": 0.65,
+        "horizon_cap": null,
+        "expression_score": 0.72,
+        "expression_cap": null,
+        "final": 7.0
+      }
+    },
+    "final_conviction": 7.0
+  },
+  {
+    "hypothesis_id": "H-2026-082-06",
+    "short_name": "Late-expansion credit cycle signals defensive positioning in HYG",
+    "status": "KILLED",
+    "conviction_math": null,
+    "final_conviction": 0.0
+  }
+]

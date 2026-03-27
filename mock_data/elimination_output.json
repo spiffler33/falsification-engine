@@ -1,0 +1,230 @@
+[
+  {
+    "hypothesis_id": 0,
+    "theory_id": "valuation_mean_reversion",
+    "short_name": "ERP compression signals 15-25% equity drawdown within 12 months",
+    "status": "SURVIVED",
+    "hard_falsifier_check": {
+      "any_triggered": false,
+      "details": "ERP at 0.17% -- far below the 2.0% threshold. No hard falsifier triggered. The earnings yield has not risen through earnings growth; the compression is genuine price-driven overvaluation."
+    },
+    "soft_falsifier_check": {
+      "triggered_count": 1,
+      "triggered": ["Credit remains benign"],
+      "close_to_triggering": ["Fed pivot to easing"],
+      "details": "HY spreads at 317bp remain below 350bp threshold -- credit markets are not yet pricing stress, which means the catalyst for drawdown has not arrived. Fed at 3.64% is above the 2.5% cut threshold but the direction of travel is toward easing. Earnings estimates have not accelerated above 10%."
+    },
+    "cross_theory_attack": {
+      "contradictions_found": false,
+      "details": "Debt cycle long actually reinforces the valuation thesis -- the debt monetization channel provides an additional mechanism for eventual repricing. No Active theory contradicts the ERP compression signal."
+    },
+    "evidence_quality": {
+      "grade": "strong",
+      "details": "ERP calculation uses direct market data (S&P 500 earnings yield vs Treasury yield). Historical precedent of drawdowns following sub-1% ERP is well-documented across multiple cycles. This is the strongest type of evidence."
+    },
+    "composition_integrity": {
+      "applicable": false,
+      "passed": true,
+      "details": "Single-theory hypothesis."
+    },
+    "elimination_notes": "Hypothesis survives. The ERP compression to 0.17% is extreme by any historical measure. One minor soft falsifier triggered (credit benign) which actually highlights the complacency that precedes corrections. Evidence quality is strong -- direct market data with historical precedent. No cross-theory contradictions; the debt cycle long theory reinforces rather than contradicts.",
+    "conviction_inputs": {
+      "support_strength": 0.90,
+      "evidence_quality": 0.88,
+      "convergence": 0.70,
+      "falsifier_clarity": 0.92,
+      "horizon_alignment": 0.65,
+      "expression_efficiency": 0.75
+    }
+  },
+  {
+    "hypothesis_id": 1,
+    "theory_id": "valuation_mean_reversion",
+    "short_name": "Large-cap to small-cap rotation as QQQ/IWM ratio mean-reverts",
+    "status": "WOUNDED",
+    "hard_falsifier_check": {
+      "any_triggered": false,
+      "details": "QQQ/IWM ratio at 2.32, well below the 2.8 kill threshold. The concentration premium is elevated but not at the hard falsifier level."
+    },
+    "soft_falsifier_check": {
+      "triggered_count": 1,
+      "triggered": ["Small-cap credit stress"],
+      "close_to_triggering": ["AI capex wave extends"],
+      "details": "Small-cap credit conditions are deteriorating. With ISM at 48 and payrolls negative, the Russell 2000 is vulnerable to credit stress even if the valuation rotation thesis is correct. The AI capex wave continues to drive mega-cap earnings, weakening the rotation catalyst."
+    },
+    "cross_theory_attack": {
+      "contradictions_found": true,
+      "details": "The debt cycle short (Adjacent) suggests that late-cycle credit tightening hurts small-caps disproportionately. If the credit cycle turns, IWM could decline more than QQQ as small-caps have higher leverage and weaker balance sheets. The rotation thesis assumes small-caps are the beneficiary, but in a credit contraction, they are often the victim."
+    },
+    "evidence_quality": {
+      "grade": "moderate",
+      "details": "QQQ/IWM ratio mean-reversion is historically observed but the mechanism is narrative-dependent. The timing of rotation is extremely difficult to predict. Supporting evidence relies on ratio analysis (a proxy) rather than direct causal measurement."
+    },
+    "composition_integrity": {
+      "applicable": false,
+      "passed": true,
+      "details": "Single-theory hypothesis."
+    },
+    "elimination_notes": "Hypothesis wounded. While the QQQ/IWM ratio is stretched, the cross-theory attack from debt cycle short is damaging: credit cycle contraction hurts small-caps more than large-caps, potentially causing the ratio to widen further before mean-reverting. The small-cap credit stress soft falsifier is triggered (major severity). Evidence quality is moderate -- ratio analysis without clear causal mechanism for timing.",
+    "conviction_inputs": {
+      "support_strength": 0.60,
+      "evidence_quality": 0.55,
+      "convergence": 0.35,
+      "falsifier_clarity": 0.72,
+      "horizon_alignment": 0.55,
+      "expression_efficiency": 0.65
+    }
+  },
+  {
+    "hypothesis_id": 2,
+    "theory_id": "debt_cycle_long",
+    "short_name": "MP3 transition drives gold to outperform nominal bonds 25-40%",
+    "status": "SURVIVED",
+    "hard_falsifier_check": {
+      "any_triggered": false,
+      "details": "Debt-to-GDP remains well above 100% at approximately 123%. Real GDP growth at 0.65% is far below the 4% kill threshold. Neither hard falsifier is close to triggering."
+    },
+    "soft_falsifier_check": {
+      "triggered_count": 0,
+      "triggered": [],
+      "close_to_triggering": ["Real rates turn sharply positive"],
+      "details": "Real 10Y at 1.99% is approaching but below the 2.5% threshold. This is worth monitoring -- if real rates continue rising, the gold thesis faces headwinds. DXY is not surging. No evidence of major central bank gold sales."
+    },
+    "cross_theory_attack": {
+      "contradictions_found": false,
+      "details": "Valuation mean reversion reinforces this thesis (both predict capital moving away from overvalued equities). Capital flows theory (Adjacent) does not contradict -- multipolar currency dynamics actually support gold allocation."
+    },
+    "evidence_quality": {
+      "grade": "strong",
+      "details": "Debt-to-GDP from official Treasury data. Interest expense trajectory is observable in CBO projections. Gold-to-monetary-base ratio uses direct data. The hard-vs-nominal 12m performance (55.45%) provides strong recent confirmation."
+    },
+    "composition_integrity": {
+      "applicable": false,
+      "passed": true,
+      "details": "Single-theory hypothesis."
+    },
+    "elimination_notes": "Hypothesis survives all five checks. The MP3 transition thesis has robust empirical support. Debt-to-GDP is structurally elevated with no path to reduction. The real rates soft falsifier is approaching but not triggered at 1.99% vs 2.5% threshold. Evidence quality is strong across all supporting data points. Hard-vs-nominal 12M relative performance of 55.45% provides strong recent confirmation of the mechanism.",
+    "conviction_inputs": {
+      "support_strength": 0.85,
+      "evidence_quality": 0.84,
+      "convergence": 0.65,
+      "falsifier_clarity": 0.88,
+      "horizon_alignment": 0.60,
+      "expression_efficiency": 0.70
+    }
+  },
+  {
+    "hypothesis_id": 3,
+    "theory_id": "debt_cycle_long",
+    "short_name": "Treasury term premium expansion forces long-duration underperformance",
+    "status": "SURVIVED",
+    "hard_falsifier_check": {
+      "any_triggered": false,
+      "details": "Federal deficit remains well above $500B annualized. No evidence of term premium contraction despite rising issuance."
+    },
+    "soft_falsifier_check": {
+      "triggered_count": 0,
+      "triggered": [],
+      "close_to_triggering": [],
+      "details": "No recession declared. No yield curve control. Both soft falsifiers are clear."
+    },
+    "cross_theory_attack": {
+      "contradictions_found": false,
+      "details": "Consistent with valuation mean reversion (both point to long-duration risk). Fiscal dominance liquidity theory (Adjacent) actually supports this -- deficit spending creates issuance pressure that widens term premium."
+    },
+    "evidence_quality": {
+      "grade": "strong",
+      "details": "Treasury issuance data is direct. The 2s10s spread at 49bp and 3m10y at 60bp show the yield curve has steepened from inversion, consistent with term premium expansion. The 30Y at 4.89% vs 10Y at 4.33% shows duration premium."
+    },
+    "composition_integrity": {
+      "applicable": false,
+      "passed": true,
+      "details": "Single-theory hypothesis."
+    },
+    "elimination_notes": "Hypothesis survives. The term premium expansion thesis is well-supported by observable issuance dynamics and yield curve shape. No soft falsifiers triggered, no cross-theory contradictions. Evidence quality is strong with direct market data. The steepening yield curve provides ongoing confirmation.",
+    "conviction_inputs": {
+      "support_strength": 0.80,
+      "evidence_quality": 0.78,
+      "convergence": 0.55,
+      "falsifier_clarity": 0.82,
+      "horizon_alignment": 0.65,
+      "expression_efficiency": 0.70
+    }
+  },
+  {
+    "hypothesis_id": 4,
+    "theory_id": "valuation_mean_reversion",
+    "short_name": "Stretched valuations plus debt monetization favors gold over equities",
+    "status": "SURVIVED",
+    "hard_falsifier_check": {
+      "any_triggered": false,
+      "details": "ERP at 0.17%, far below the 3.0% expansion threshold. Debt-to-GDP well above 100%. Neither hard falsifier is remotely triggered."
+    },
+    "soft_falsifier_check": {
+      "triggered_count": 0,
+      "triggered": [],
+      "close_to_triggering": ["Dollar surge on haven demand"],
+      "details": "No evidence of equity drawdown without gold rally (the correlation concern). DXY is not surging above 110. Both soft falsifiers are clear."
+    },
+    "cross_theory_attack": {
+      "contradictions_found": false,
+      "details": "This multi-theory hypothesis is consistent with both Active theories. The combination narrows rather than broadens the prediction."
+    },
+    "evidence_quality": {
+      "grade": "strong",
+      "details": "Both input theories have strong evidence bases. The combined prediction (GLD outperforms SPY by 30-50%) is specific and falsifiable. Hard-vs-nominal 12M at 55.45% shows the mechanism is already operative."
+    },
+    "composition_integrity": {
+      "applicable": true,
+      "passed": true,
+      "details": "Valid composition. Combining valuation mean reversion with debt cycle long produces a MORE specific prediction (gold outperforms equities through dual channels) with CLEARER failure conditions (must fail in both channels to falsify). The combination is more falsifiable because either theory failing independently would weaken it."
+    },
+    "elimination_notes": "Hypothesis survives all five checks including composition integrity. The multi-theory combination is valid -- it narrows the prediction to the specific GLD vs SPY relative performance, which is more testable than either theory alone. Both input theories have strong activation scores and evidence bases. The dual-channel mechanism (valuation drawdown + debasement) is more specific than a single-theory prediction.",
+    "conviction_inputs": {
+      "support_strength": 0.88,
+      "evidence_quality": 0.85,
+      "convergence": 0.88,
+      "falsifier_clarity": 0.90,
+      "horizon_alignment": 0.65,
+      "expression_efficiency": 0.72
+    }
+  },
+  {
+    "hypothesis_id": 5,
+    "theory_id": "debt_cycle_short",
+    "short_name": "Late-expansion credit cycle signals defensive positioning in HYG",
+    "status": "KILLED",
+    "hard_falsifier_check": {
+      "any_triggered": false,
+      "details": "HY spreads at 317bp are above 250bp. ISM at 48 is below 55. Hard falsifiers are not triggered."
+    },
+    "soft_falsifier_check": {
+      "triggered_count": 1,
+      "triggered": ["Fed rate cuts cushion credit"],
+      "close_to_triggering": [],
+      "details": "The Fed has already cut significantly to 3.64% from higher levels, providing credit market support that compresses spreads."
+    },
+    "cross_theory_attack": {
+      "contradictions_found": true,
+      "details": "The hypothesis comes from an Adjacent theory (debt_cycle_short, Expansion phase at 53%), NOT an Active theory. More critically, fiscal dominance liquidity (also Adjacent) suggests that deficit spending injects enough liquidity to prevent the credit cycle from turning normally. The fiscal impulse may overwhelm traditional late-cycle credit tightening dynamics. This is a direct mechanism contradiction."
+    },
+    "evidence_quality": {
+      "grade": "weak",
+      "details": "The evidence is circumstantial. HY spreads at 317bp are actually relatively tight, suggesting markets do not share this concern. ISM at 48 is weak but has been in this range without triggering a credit event. The hypothesis relies on narrative inference rather than direct evidence of credit deterioration."
+    },
+    "composition_integrity": {
+      "applicable": false,
+      "passed": true,
+      "details": "Single-theory hypothesis."
+    },
+    "elimination_notes": "Hypothesis KILLED. While not killed by a hard falsifier, the combination of weak evidence quality, cross-theory contradiction from fiscal dominance (fiscal impulse overwhelms credit cycle dynamics), and the fact that this theory is only Adjacent (not Active) with its expansion phase scoring higher than contraction make this hypothesis procedurally weak. HY spreads at 317bp are not signaling stress. The credit market is pricing in fiscal support, not late-cycle deterioration.",
+    "conviction_inputs": {
+      "support_strength": 0.0,
+      "evidence_quality": 0.0,
+      "convergence": 0.0,
+      "falsifier_clarity": 0.0,
+      "horizon_alignment": 0.0,
+      "expression_efficiency": 0.0
+    }
+  }
+]

@@ -1,0 +1,471 @@
+[
+  {
+    "theory_id": "capital_flows",
+    "is_two_phase": true,
+    "score": null,
+    "tier": null,
+    "phase_scores": {
+      "Rotation": 0.4166666666666667,
+      "Accumulation": 0.4
+    },
+    "phase_tiers": {
+      "Rotation": "Adjacent",
+      "Accumulation": "Adjacent"
+    },
+    "effective_tier": "Adjacent",
+    "effective_phase": "Rotation",
+    "indicator_results": {
+      "Dollar weakening": {
+        "triggered": false,
+        "value": null,
+        "threshold": "DXY declining for 3+ months AND below its 12-month moving average",
+        "metric_field": "UUP",
+        "reason": "data not available"
+      },
+      "EM outperforming DM on relative basis": {
+        "triggered": true,
+        "value": 8.49,
+        "threshold": "EEM outperforming SPY for 3+ consecutive months",
+        "direction": "above",
+        "weight": 0.15,
+        "metric_field": "eem_spy_3m_relative"
+      },
+      "Commodity prices rising": {
+        "triggered": true,
+        "value": 25.62,
+        "threshold": "DBC or equivalent broad commodity index rising for 3+ months",
+        "direction": "above",
+        "weight": 0.1,
+        "metric_field": "commodity_index_3m_change"
+      },
+      "FXI/KWEB leading": {
+        "triggered": false,
+        "value": -18.28,
+        "threshold": "FXI or KWEB up 15%+ from 3-month low",
+        "direction": "above",
+        "weight": 0.1,
+        "metric_field": "kweb_3m_return"
+      },
+      "EM rolling 3-year underperformance": {
+        "triggered": true,
+        "value": 10.61,
+        "threshold": "EEM underperformed SPY by 30%+ on a cumulative rolling 3-year basis",
+        "direction": "below",
+        "weight": 0.2,
+        "metric_field": "eem_spy_3y_relative"
+      },
+      "Dollar strong or sideways": {
+        "triggered": false,
+        "value": null,
+        "threshold": "DXY above 100 OR flat-to-rising over the prior 12 months",
+        "metric_field": "UUP",
+        "reason": "data not available"
+      },
+      "No EM-positive catalysts firing yet": {
+        "triggered": false,
+        "value": null,
+        "threshold": "RMB NOT strengthening, China PMI NOT accelerating, commodities NOT in uptrend, no major EM reform catalyst",
+        "metric_field": "Composite qualitative check",
+        "reason": "data not available"
+      }
+    },
+    "skipped_indicators": [
+      "China credit impulse positive and accelerating (web-search required)",
+      "RMB strengthening (web-search required)",
+      "EM vs. DM PE gap at extremes (web-search required)",
+      "China credit impulse flat or negative (web-search required)",
+      "Geopolitical risk not escalating (web-search required)"
+    ]
+  },
+  {
+    "theory_id": "debt_cycle_long",
+    "is_two_phase": false,
+    "score": 0.7777777777777778,
+    "tier": "Active",
+    "phase_scores": null,
+    "phase_tiers": null,
+    "effective_tier": null,
+    "effective_phase": null,
+    "indicator_results": {
+      "Fed balance sheet / GDP elevated": {
+        "triggered": true,
+        "value": 6657161.0,
+        "threshold": "Fed BS above 20% of GDP",
+        "direction": "above",
+        "weight": 0.2,
+        "metric_field": "liquidity.fed_balance_sheet"
+      },
+      "Rates at or near effective lower bound within recent memory": {
+        "triggered": true,
+        "value": 3.64,
+        "threshold": "Fed funds was at 0-0.25% within the last 10 years AND the current rate exceeds the level the economy can sustain without fiscal support",
+        "direction": "above",
+        "weight": 0.15,
+        "metric_field": "rates.fed_funds"
+      },
+      "Negative real rates during expansion": {
+        "triggered": false,
+        "value": 2.66,
+        "threshold": "Real fed funds rate (nominal minus CPI) negative for 3+ of the last 10 years, including during economic expansion",
+        "direction": "above",
+        "weight": 0.1,
+        "metric_field": "inflation.cpi_yoy"
+      }
+    },
+    "skipped_indicators": [
+      "Total debt / GDP above historical warning level (web-search required)",
+      "Fiscal deficit as primary growth driver (web-search required)",
+      "Wealth inequality at cycle-characteristic extremes (web-search required)",
+      "Each successive crisis requires larger intervention (web-search required)"
+    ]
+  },
+  {
+    "theory_id": "debt_cycle_short",
+    "is_two_phase": true,
+    "score": null,
+    "tier": null,
+    "phase_scores": {
+      "Contraction": 0.4705882352941177,
+      "Expansion": 0.5333333333333334
+    },
+    "phase_tiers": {
+      "Contraction": "Adjacent",
+      "Expansion": "Adjacent"
+    },
+    "effective_tier": "Adjacent",
+    "effective_phase": "Contraction",
+    "indicator_results": {
+      "ISM proxy below contraction": {
+        "triggered": false,
+        "value": 48.0,
+        "threshold": "Below 48 AND declining for 3+ months",
+        "direction": "below",
+        "weight": 0.15,
+        "metric_field": "growth.ism_proxy"
+      },
+      "Unemployment rising": {
+        "triggered": true,
+        "value": 4.4,
+        "threshold": "Rising 0.5%+ from cycle trough (Sahm Rule equivalent)",
+        "direction": "rising",
+        "weight": 0.2,
+        "metric_field": "growth.unemployment"
+      },
+      "Credit spreads widening sharply": {
+        "triggered": false,
+        "value": 317.0,
+        "threshold": "Above 500bp AND widening for 2+ months, OR any move above 600bp",
+        "direction": "above",
+        "weight": 0.15,
+        "metric_field": "credit.hy_spread"
+      },
+      "Yield curve re-steepening from deep inversion": {
+        "triggered": false,
+        "value": 0.49,
+        "threshold": "Curve was inverted by 50bp+ AND has re-steepened by 75bp+ from the maximum inversion",
+        "direction": "above",
+        "weight": 0.15,
+        "metric_field": "rates.curve_2s10s"
+      },
+      "Initial claims rising": {
+        "triggered": true,
+        "value": 210000.0,
+        "threshold": "4-week average above 280K AND rising for 8+ weeks",
+        "direction": "above",
+        "weight": 0.1,
+        "metric_field": "growth.initial_claims"
+      },
+      "Fed funds above nominal GDP growth": {
+        "triggered": true,
+        "value": 31442.483,
+        "threshold": "Fed funds exceeds nominal GDP growth by 1%+ for 6+ months",
+        "direction": "above",
+        "weight": 0.1,
+        "metric_field": "growth.gdp_latest"
+      },
+      "ISM proxy above contraction": {
+        "triggered": false,
+        "value": 48.0,
+        "threshold": "Above 50",
+        "direction": "above",
+        "weight": 0.15,
+        "metric_field": "growth.ism_proxy"
+      },
+      "Unemployment low or falling": {
+        "triggered": true,
+        "value": 4.4,
+        "threshold": "Below 5.0% OR declining for 3+ months",
+        "direction": "below",
+        "weight": 0.15,
+        "metric_field": "growth.unemployment"
+      },
+      "Credit spreads tight or tightening": {
+        "triggered": true,
+        "value": 317.0,
+        "threshold": "Below 450bp AND not widening for 3+ consecutive months",
+        "direction": "below",
+        "weight": 0.15,
+        "metric_field": "credit.hy_spread"
+      },
+      "Yield curve not deeply inverted": {
+        "triggered": true,
+        "value": 0.49,
+        "threshold": "Above -0.50% (i.e., inversion shallower than 50bp, or positively sloped)",
+        "direction": "above",
+        "weight": 0.1,
+        "metric_field": "rates.curve_2s10s"
+      },
+      "Initial claims low": {
+        "triggered": false,
+        "value": 210000.0,
+        "threshold": "Below 250K (4-week average)",
+        "direction": "below",
+        "weight": 0.1,
+        "metric_field": "growth.initial_claims"
+      },
+      "Fed funds below nominal GDP growth": {
+        "triggered": false,
+        "value": 31442.483,
+        "threshold": "Fed funds rate below nominal GDP growth rate",
+        "direction": "below",
+        "weight": 0.1,
+        "metric_field": "growth.gdp_latest"
+      }
+    },
+    "skipped_indicators": [
+      "SLOOS showing broad tightening (web-search required)",
+      "Net credit growth positive (web-search required)",
+      "Consumer/business confidence (web-search required)"
+    ]
+  },
+  {
+    "theory_id": "fiscal_dominance_arithmetic",
+    "is_two_phase": false,
+    "score": 0.0,
+    "tier": "Inactive",
+    "phase_scores": null,
+    "phase_tiers": null,
+    "effective_tier": null,
+    "effective_phase": null,
+    "indicator_results": {
+      "Gold/oil ratio elevated": {
+        "triggered": false,
+        "value": 3.42,
+        "threshold": "Above 25 (vs. historical average of ~16-20)",
+        "direction": "above",
+        "weight": 0.1,
+        "metric_field": "gold_oil_ratio"
+      }
+    },
+    "skipped_indicators": [
+      "Interest expense / tax receipts ratio (web-search required)",
+      "Interest expense exceeds major discretionary category (web-search required)",
+      "Deficit pace outside recession (web-search required)",
+      "No credible deficit reduction plan (web-search required)",
+      "Debt rollover at higher rates (web-search required)",
+      "Central bank gold purchases sustained (web-search required)"
+    ]
+  },
+  {
+    "theory_id": "fiscal_dominance_liquidity",
+    "is_two_phase": false,
+    "score": 0.375,
+    "tier": "Adjacent",
+    "phase_scores": null,
+    "phase_tiers": null,
+    "effective_tier": null,
+    "effective_phase": null,
+    "indicator_results": {
+      "Net liquidity expanding": {
+        "triggered": false,
+        "value": null,
+        "threshold": "Positive for 2+ of last 3 months",
+        "metric_field": "net_liquidity_30d_change",
+        "reason": "data not available"
+      },
+      "Rate hikes not producing recession": {
+        "triggered": true,
+        "value": 48.0,
+        "threshold": "Unemployment below 5% AND ISM proxy above 45 after 12+ months of Fed funds above 4%",
+        "direction": "above",
+        "weight": 0.15,
+        "metric_field": "growth.ism_proxy"
+      },
+      "Hard assets outperforming nominal bonds": {
+        "triggered": true,
+        "value": 55.45,
+        "threshold": "Above +10% (i.e., average hard asset 12M return exceeds average nominal bond 12M return by 10%+)",
+        "direction": "above",
+        "weight": 0.15,
+        "metric_field": "hard_vs_nominal_12m"
+      },
+      "RRP draining toward zero": {
+        "triggered": false,
+        "value": 885.0,
+        "threshold": "Below $250B and declining",
+        "direction": "below",
+        "weight": 0.1,
+        "metric_field": "liquidity.reverse_repo"
+      },
+      "Fed balance sheet direction inconsistent with stated policy": {
+        "triggered": false,
+        "value": 6657161.0,
+        "threshold": "Fed BS declining slower than announced QT pace, OR flat, OR expanding despite no announced policy change",
+        "direction": "above",
+        "weight": 0.1,
+        "metric_field": "liquidity.fed_balance_sheet"
+      },
+      "TGA behavior consistent with spending": {
+        "triggered": false,
+        "value": 874077.0,
+        "threshold": "TGA below $500B OR declining by $100B+ over 60 days",
+        "direction": "below",
+        "weight": 0.1,
+        "metric_field": "liquidity.tga"
+      }
+    },
+    "skipped_indicators": [
+      "Deficit pace (web-search required)"
+    ]
+  },
+  {
+    "theory_id": "monetary_architecture",
+    "is_two_phase": false,
+    "score": 0.0,
+    "tier": "Inactive",
+    "phase_scores": null,
+    "phase_tiers": null,
+    "effective_tier": null,
+    "effective_phase": null,
+    "indicator_results": {
+      "Gold/oil ratio elevated and rising": {
+        "triggered": false,
+        "value": 3.42,
+        "threshold": "Above 25 (vs. historical average ~16-20) AND rising on trailing 12-month basis",
+        "direction": "above",
+        "weight": 0.15,
+        "metric_field": "gold_oil_ratio"
+      }
+    },
+    "skipped_indicators": [
+      "Central bank gold purchases sustained at elevated levels (web-search required)",
+      "Foreign official Treasury holdings declining as share of outstanding (web-search required)",
+      "Cross-currency basis swap stress episodic (web-search required)",
+      "Non-dollar trade settlement growing (web-search required)",
+      "Sanctions weaponization continuing or expanding (web-search required)",
+      "Pozsar/Gromen thesis gaining institutional adoption (web-search required)"
+    ]
+  },
+  {
+    "theory_id": "structural_fragility",
+    "is_two_phase": true,
+    "score": null,
+    "tier": null,
+    "phase_scores": {
+      "Fragility Resolving": 0.0,
+      "Fragility Building": 0.15384615384615385
+    },
+    "phase_tiers": {
+      "Fragility Resolving": "Inactive",
+      "Fragility Building": "Inactive"
+    },
+    "effective_tier": "Inactive",
+    "effective_phase": null,
+    "indicator_results": {
+      "VIX level": {
+        "triggered": false,
+        "value": 27.44,
+        "threshold": "Below 14",
+        "direction": "below",
+        "weight": 0.1,
+        "metric_field": "^VIX"
+      },
+      "HY spread": {
+        "triggered": false,
+        "value": 317.0,
+        "threshold": "Below 300bp",
+        "direction": "below",
+        "weight": 0.15,
+        "metric_field": "credit.hy_spread"
+      },
+      "Drawdown depth": {
+        "triggered": false,
+        "value": -7.25,
+        "threshold": "Below -20%",
+        "direction": "below",
+        "weight": 0.2,
+        "metric_field": "spy_drawdown_from_52w_high"
+      },
+      "VIX-realized vol gap": {
+        "triggered": false,
+        "value": null,
+        "threshold": "Above 5 points",
+        "metric_field": "vix_vs_realized",
+        "reason": "data not available"
+      },
+      "Top 10 concentration": {
+        "triggered": false,
+        "value": null,
+        "threshold": "Above 30%",
+        "metric_field": "top_10_sp500_weight",
+        "reason": "data not available"
+      },
+      "QQQ/IWM ratio": {
+        "triggered": true,
+        "value": 2.3189,
+        "threshold": "Above 2-year high",
+        "direction": "above",
+        "weight": 0.1,
+        "metric_field": "qqq_iwm_ratio"
+      }
+    },
+    "skipped_indicators": [
+      "CAPE level (web-search required)",
+      "Capex/revenue mismatch (web-search required)",
+      "Margin debt (web-search required)",
+      "Passive fund share (web-search required)"
+    ]
+  },
+  {
+    "theory_id": "valuation_mean_reversion",
+    "is_two_phase": false,
+    "score": 1.0,
+    "tier": "Active",
+    "phase_scores": null,
+    "phase_tiers": null,
+    "effective_tier": null,
+    "effective_phase": null,
+    "indicator_results": {
+      "Equity risk premium compressed": {
+        "triggered": true,
+        "value": 0.17,
+        "threshold": "Below 1.0%",
+        "direction": "below",
+        "weight": 0.25,
+        "metric_field": "equity_risk_premium"
+      },
+      "Short-term cash yield exceeds earnings yield": {
+        "triggered": true,
+        "value": 3.64,
+        "threshold": "SHY yield > SPY earnings yield (1/PE)",
+        "direction": "above",
+        "weight": 0.15,
+        "metric_field": "rates.fed_funds"
+      },
+      "Market breadth narrow": {
+        "triggered": true,
+        "value": 2.3189,
+        "threshold": "QQQ/IWM ratio above 2-year high AND RSP underperforming SPY by 5%+ over 12 months",
+        "direction": "above",
+        "weight": 0.1,
+        "metric_field": "qqq_iwm_ratio"
+      }
+    },
+    "skipped_indicators": [
+      "Shiller CAPE elevated (web-search required)",
+      "Buffett Indicator extreme (web-search required)",
+      "Corporate profit margins at cycle highs (web-search required)",
+      "Insider selling elevated (web-search required)"
+    ]
+  }
+]

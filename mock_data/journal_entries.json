@@ -1,0 +1,14 @@
+[
+  {
+    "id": "journal-001",
+    "hypothesis_id": "H-2026-082-05",
+    "date": "2026-03-23",
+    "action": "LONG GLD",
+    "size": "8%",
+    "conviction_at_entry": 7.0,
+    "reasoning": "Three-theory convergence on gold (valuation + debt cycle + fiscal dominance reinforcement). Conviction 7/10 with no triggered soft falsifiers. Expressing via GLD rather than miners to capture the debasement channel directly. Size at 8% reflects high conviction but leaves room to add on any pullback.",
+    "status": "OPEN",
+    "outcome": null,
+    "closed_date": null
+  }
+]

@@ -1,0 +1,165 @@
+[
+  {
+    "theory_id": "valuation_mean_reversion",
+    "source_theories": ["valuation_mean_reversion"],
+    "short_name": "ERP compression signals 15-25% equity drawdown within 12 months",
+    "full_statement": "The equity risk premium has compressed to 0.17%, far below the historical average of 3-5%. This level of valuation stretch has preceded every major drawdown in the past 50 years. With earnings yields barely exceeding Treasury yields, the margin of safety is negligible. A catalyst -- whether rising rates, earnings disappointment, or credit tightening -- should trigger a 15-25% correction in the S&P 500 within 12 months as capital reallocates from equities to bonds and alternatives.",
+    "mechanism": "ERP compression below 1% -> negligible compensation for equity risk -> capital reallocation trigger -> drawdown as positioning unwinds",
+    "prediction": "SPY -15% to -25% over next 12 months. TLT +5-15% as flight to quality. GLD +10-20% as alternative store of value.",
+    "predicted_assets": ["SPY", "TLT", "GLD"],
+    "asset_direction": {"SPY": "SHORT", "TLT": "LONG", "GLD": "LONG"},
+    "hard_falsifiers": [
+      {"condition": "S&P 500 earnings yield rises above 6% through earnings growth rather than price decline", "metric": "computed.equity_risk_premium", "threshold": "> 2.0"},
+      {"condition": "ERP expands above 3% without a drawdown (re-rating higher)", "metric": "computed.equity_risk_premium", "threshold": "> 3.0"}
+    ],
+    "soft_falsifiers": [
+      {"name": "Fed pivot to easing", "severity": "medium", "condition": "Fed cuts rates 100bp+ in next 6 months", "metric": "rates.fed_funds", "threshold": "< 2.5"},
+      {"name": "Earnings acceleration", "severity": "minor", "condition": "S&P 500 forward earnings estimates rise 10%+", "metric": "earnings_growth", "threshold": "> 10%"},
+      {"name": "Credit remains benign", "severity": "minor", "condition": "HY spreads stay below 350bp despite stretched valuations", "metric": "credit.hy_spread", "threshold": "< 350"}
+    ],
+    "timeframe": "Through Q1 2027",
+    "conviction_inputs": {
+      "support_strength": 0.90,
+      "evidence_quality": 0.88,
+      "convergence": 0.70,
+      "falsifier_clarity": 0.92,
+      "horizon_alignment": 0.65,
+      "expression_efficiency": 0.75
+    }
+  },
+  {
+    "theory_id": "valuation_mean_reversion",
+    "source_theories": ["valuation_mean_reversion"],
+    "short_name": "Large-cap to small-cap rotation as QQQ/IWM ratio mean-reverts",
+    "full_statement": "QQQ/IWM ratio at 2.32 represents extreme concentration premium. Historical mean-reversion of this ratio occurs through small-cap outperformance during late-cycle phases. Expect IWM to outperform QQQ by 10-20% over the next 6-12 months as valuation compression hits mega-cap tech disproportionately.",
+    "mechanism": "Extreme concentration premium -> diminishing marginal returns from mega-cap -> rotation capital seeks smaller-cap value -> IWM outperforms as QQQ/IWM ratio mean-reverts",
+    "prediction": "IWM outperforms QQQ by 10-20% over next 6-12 months",
+    "predicted_assets": ["IWM", "QQQ"],
+    "asset_direction": {"IWM": "LONG", "QQQ": "SHORT"},
+    "hard_falsifiers": [
+      {"condition": "QQQ/IWM ratio rises above 2.8 (concentration increases further)", "metric": "computed.qqq_iwm_ratio", "threshold": "> 2.8"}
+    ],
+    "soft_falsifiers": [
+      {"name": "AI capex wave extends", "severity": "medium", "condition": "Mega-cap tech capex grows 30%+ sustaining narrative", "metric": "qqq_earnings_growth", "threshold": "> 30%"},
+      {"name": "Small-cap credit stress", "severity": "major", "condition": "Russell 2000 default rate rises above 5%", "metric": "r2000_default_rate", "threshold": "> 5%"}
+    ],
+    "timeframe": "Through Q3 2026",
+    "conviction_inputs": {
+      "support_strength": 0.78,
+      "evidence_quality": 0.72,
+      "convergence": 0.50,
+      "falsifier_clarity": 0.80,
+      "horizon_alignment": 0.70,
+      "expression_efficiency": 0.80
+    }
+  },
+  {
+    "theory_id": "debt_cycle_long",
+    "source_theories": ["debt_cycle_long"],
+    "short_name": "MP3 transition drives gold to outperform nominal bonds 25-40%",
+    "full_statement": "The long-term debt cycle is in late MP2 territory with debt-to-GDP above 120%. Interest expense is consuming an increasing share of federal revenue, forcing implicit monetization. Gold and real assets outperform nominal bonds by 25-40% over the next 12 months as the transition to MP3 (monetary financing) accelerates. This is structural, not cyclical -- the arithmetic is unavoidable.",
+    "mechanism": "Debt accumulation beyond productive capacity -> interest expense spiral -> implicit monetization via deficit spending -> currency debasement -> hard assets outperform nominal claims",
+    "prediction": "GLD +25-40% vs TLT -5-15% over next 12 months. GLDM as alternate expression.",
+    "predicted_assets": ["GLD", "TLT", "GLDM"],
+    "asset_direction": {"GLD": "LONG", "TLT": "SHORT", "GLDM": "LONG"},
+    "hard_falsifiers": [
+      {"condition": "Debt-to-GDP falls below 100% through genuine deleveraging sustained 2+ years", "metric": "debt_to_gdp", "threshold": "< 100%"},
+      {"condition": "Real GDP growth exceeds 4% annualized for 4+ quarters (growing out of debt)", "metric": "growth.real_gdp", "threshold": "> 4.0"}
+    ],
+    "soft_falsifiers": [
+      {"name": "Real rates turn sharply positive", "severity": "medium", "condition": "Real 10Y yield exceeds 2.5%", "metric": "computed.real_10y", "threshold": "> 2.5"},
+      {"name": "Dollar strength surge", "severity": "minor", "condition": "DXY rises above 110 on safe-haven flows", "metric": "DXY", "threshold": "> 110"},
+      {"name": "Gold supply shock", "severity": "minor", "condition": "Major central bank gold sales exceed 500 tons annually", "metric": "cb_gold_sales", "threshold": "> 500"}
+    ],
+    "timeframe": "Through Q1 2027",
+    "conviction_inputs": {
+      "support_strength": 0.85,
+      "evidence_quality": 0.82,
+      "convergence": 0.65,
+      "falsifier_clarity": 0.88,
+      "horizon_alignment": 0.60,
+      "expression_efficiency": 0.70
+    }
+  },
+  {
+    "theory_id": "debt_cycle_long",
+    "source_theories": ["debt_cycle_long"],
+    "short_name": "Treasury term premium expansion forces long-duration underperformance",
+    "full_statement": "With federal interest expense exceeding $1T annualized and no credible path to deficit reduction, the term premium on long-duration Treasuries must expand. TLT underperforms short-duration by 10-15% over 6-12 months as the market prices in persistent fiscal dominance and the impossibility of sustained high real rates.",
+    "mechanism": "Deficit spending -> issuance pressure -> term premium expansion -> long-duration underperformance -> yield curve steepening",
+    "prediction": "TLT -10% to -15% vs SHY roughly flat over next 6-12 months",
+    "predicted_assets": ["TLT", "SHY"],
+    "asset_direction": {"TLT": "SHORT", "SHY": "LONG"},
+    "hard_falsifiers": [
+      {"condition": "Federal deficit falls below $500B annualized through spending cuts", "metric": "deficit_annualized", "threshold": "< 500B"},
+      {"condition": "Term premium contracts despite rising issuance (flight to safety overwhelms supply)", "metric": "term_premium_10y", "threshold": "< 0"}
+    ],
+    "soft_falsifiers": [
+      {"name": "Recession materializes", "severity": "major", "condition": "NBER declares recession, triggering flight to long-duration safety", "metric": "recession_indicator", "threshold": "declared"},
+      {"name": "Fed yield curve control", "severity": "medium", "condition": "Fed explicitly caps long-end yields", "metric": "fed_ycc", "threshold": "implemented"}
+    ],
+    "timeframe": "Through Q3 2026",
+    "conviction_inputs": {
+      "support_strength": 0.80,
+      "evidence_quality": 0.75,
+      "convergence": 0.55,
+      "falsifier_clarity": 0.82,
+      "horizon_alignment": 0.65,
+      "expression_efficiency": 0.70
+    }
+  },
+  {
+    "theory_id": "valuation_mean_reversion",
+    "source_theories": ["valuation_mean_reversion", "debt_cycle_long"],
+    "short_name": "Stretched valuations plus debt monetization favors gold over equities",
+    "full_statement": "The combination of extreme equity valuation compression (ERP 0.17%) and late-stage debt cycle dynamics (debt-to-GDP >120%) creates a specific prediction: when the equity drawdown materializes, gold benefits from both the flight-to-safety rotation AND the ongoing monetary debasement. GLD outperforms SPY by 30-50% over the next 12 months. This combination is more falsifiable than either theory alone because it requires both mechanisms to be operative simultaneously.",
+    "mechanism": "ERP compression sets up drawdown risk (valuation) + debt monetization devalues nominal claims (debt cycle) -> gold benefits from both channels simultaneously -> GLD massively outperforms SPY",
+    "prediction": "GLD outperforms SPY by 30-50% over next 12 months",
+    "predicted_assets": ["GLD", "SPY"],
+    "asset_direction": {"GLD": "LONG", "SPY": "SHORT"},
+    "hard_falsifiers": [
+      {"condition": "ERP expands above 3% WITHOUT a drawdown (markets re-rate higher)", "metric": "computed.equity_risk_premium", "threshold": "> 3.0"},
+      {"condition": "Debt-to-GDP falls below 100% AND real rates stay above 2%", "metric": "compound", "threshold": "debt_gdp < 100 AND real_10y > 2.0"}
+    ],
+    "soft_falsifiers": [
+      {"name": "Equity drawdown without gold rally", "severity": "major", "condition": "SPY falls 15%+ but GLD flat or negative (liquidity crisis, not debasement)", "metric": "gld_spy_correlation", "threshold": "positive_correlation_in_drawdown"},
+      {"name": "Dollar surge on haven demand", "severity": "medium", "condition": "DXY > 110 suppresses gold despite equity weakness", "metric": "DXY", "threshold": "> 110"}
+    ],
+    "timeframe": "Through Q1 2027",
+    "conviction_inputs": {
+      "support_strength": 0.88,
+      "evidence_quality": 0.82,
+      "convergence": 0.85,
+      "falsifier_clarity": 0.90,
+      "horizon_alignment": 0.65,
+      "expression_efficiency": 0.72
+    }
+  },
+  {
+    "theory_id": "debt_cycle_short",
+    "source_theories": ["debt_cycle_short"],
+    "short_name": "Late-expansion credit cycle signals defensive positioning in HYG",
+    "full_statement": "The short-term debt cycle shows late-expansion characteristics: HY spreads at 317bp are below long-term averages, unemployment at 4.4% is near cycle lows, and ISM at 48 suggests manufacturing contraction. When the credit cycle turns, HY spreads widen 200-400bp and HYG declines 8-15%. Position SHORT HYG as a hedge against credit cycle turn.",
+    "mechanism": "Late-expansion complacency -> credit quality deterioration at margin -> trigger event (payroll weakness, earnings miss) -> spread widening -> HYG decline",
+    "prediction": "HYG -8% to -15% as HY spreads widen to 500-700bp over 6-12 months",
+    "predicted_assets": ["HYG", "LQD"],
+    "asset_direction": {"HYG": "SHORT", "LQD": "SHORT"},
+    "hard_falsifiers": [
+      {"condition": "HY spreads tighten below 250bp with accelerating GDP growth", "metric": "credit.hy_spread", "threshold": "< 250"},
+      {"condition": "ISM rises above 55 with payrolls accelerating above 250K/month", "metric": "growth.ism_proxy", "threshold": "> 55"}
+    ],
+    "soft_falsifiers": [
+      {"name": "Fed rate cuts cushion credit", "severity": "medium", "condition": "Fed cuts 150bp+ providing credit market support", "metric": "rates.fed_funds", "threshold": "< 2.0"},
+      {"name": "Fiscal backstop absorbs defaults", "severity": "minor", "condition": "Federal programs absorb potential defaults, compressing spreads artificially", "metric": "fiscal_backstop", "threshold": "implemented"}
+    ],
+    "timeframe": "Through Q3 2026",
+    "conviction_inputs": {
+      "support_strength": 0.62,
+      "evidence_quality": 0.58,
+      "convergence": 0.40,
+      "falsifier_clarity": 0.72,
+      "horizon_alignment": 0.55,
+      "expression_efficiency": 0.60
+    }
+  }
+]

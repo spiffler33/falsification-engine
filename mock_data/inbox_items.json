@@ -1,0 +1,32 @@
+[
+  {
+    "id": "inbox-001",
+    "date": "2026-03-25",
+    "type": "link",
+    "content": "https://ft.com/content/clo-maturity-wall-warning-2026",
+    "source": "Financial Times",
+    "theories": ["structural_fragility"],
+    "hypothesis_id": null,
+    "status": "queued"
+  },
+  {
+    "id": "inbox-002",
+    "date": "2026-03-24",
+    "type": "note",
+    "content": "42 Macro net liquidity model shows TGA drawdown accelerating -- Treasury general account fell $80B in past 2 weeks. This injects reserves and supports risk assets short-term, but the pace is unsustainable. Watch for TGA rebuild after tax receipts in April.",
+    "source": "42 Macro",
+    "theories": ["fiscal_dominance_liquidity"],
+    "hypothesis_id": null,
+    "status": "queued"
+  },
+  {
+    "id": "inbox-003",
+    "date": "2026-03-22",
+    "type": "link",
+    "content": "https://lynalden.com/why-this-cycle-is-different-fiscal-dominance",
+    "source": "Lyn Alden",
+    "theories": ["fiscal_dominance_liquidity", "debt_cycle_short"],
+    "hypothesis_id": null,
+    "status": "incorporated"
+  }
+]
