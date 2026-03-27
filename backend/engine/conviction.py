@@ -93,27 +93,28 @@ def _stage1_raw(inp: ConvictionInput) -> Stage1Raw:
 # ---------------------------------------------------------------------------
 
 def _stage2_discounts(inp: ConvictionInput, raw_score: float) -> Stage2Discounts:
-    """Apply multiplicative discounts for soft falsifier health and overlap.
+    """Apply multiplicative soft falsifier discount and additive overlap adjustment.
 
-    D_f = max(0.05, 1 - sum(severity_weight_i))
-    D_o = 1 / (1 + overlap_count * 0.25)
-    DISCOUNTED = RAW * D_f * D_o
+    D_f: multiplicative compounding — each triggered falsifier independently
+    reduces the surviving fraction: d_f = product((1 - weight_i)).
+    Overlap: same-theory penalizes (-0.50 each), cross-theory gives small
+    convergence bonus (+0.10 each, capped at +0.20).
     """
-    # Soft falsifier health discount
-    total_severity = sum(
-        SEVERITY_WEIGHTS.get(f.get("severity", "minor"), 0.10)
-        for f in inp.triggered_soft_falsifiers
-    )
-    d_f = max(0.05, 1.0 - total_severity)
+    # Soft falsifier health discount — multiplicative compounding
+    d_f = 1.0
+    for f in inp.triggered_soft_falsifiers:
+        weight = SEVERITY_WEIGHTS.get(f.get("severity", "minor"), 0.10)
+        d_f *= (1.0 - weight)
+    d_f = max(0.05, d_f)
 
-    # Exposure overlap penalty
-    d_o = 1.0 / (1.0 + inp.overlap_count * 0.25)
+    # Theory-aware overlap adjustment (additive)
+    overlap_adj = (inp.same_theory_overlap * -0.50) + min(inp.diff_theory_overlap * 0.10, 0.20)
 
-    adjusted = raw_score * d_f * d_o
+    adjusted = max(0.0, (raw_score * d_f) + overlap_adj)
 
     return Stage2Discounts(
         soft_falsifier_discount=d_f,
-        overlap_penalty=d_o,
+        overlap_adjustment=overlap_adj,
         adjusted=adjusted,
     )
 
@@ -154,10 +155,16 @@ def _stage3_gates(inp: ConvictionInput, adjusted_score: float) -> Stage3Gates:
     # Clamp to 0-10
     final = max(0, min(10, final))
 
+    # Conviction floor: scores below 5 are mechanically killed
+    floor_killed = final < 5.0 and final > 0.0
+    kill_reason = f"Below conviction floor (scored {final}/10)" if floor_killed else ""
+
     return Stage3Gates(
         horizon_score=inp.horizon_alignment,
         horizon_cap=horizon_cap,
         expression_score=inp.expression_efficiency,
         expression_cap=expression_cap,
         final=float(final),
+        floor_killed=floor_killed,
+        kill_reason=kill_reason,
     )

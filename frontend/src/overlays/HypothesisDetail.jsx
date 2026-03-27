@@ -96,9 +96,9 @@ export default function HypothesisDetail({ hypothesis: h, onClose }) {
                 negative={s2.soft_falsifier_discount < 0}
               />
               <StageRow
-                label="Overlap penalty"
-                value={fmtDiscount(s2.overlap_penalty)}
-                negative={s2.overlap_penalty < 0}
+                label="Overlap adj."
+                value={s2.overlap_adjustment != null ? (s2.overlap_adjustment >= 0 ? '+' : '') + s2.overlap_adjustment.toFixed(2) : fmtDiscount(s2.overlap_penalty)}
+                negative={(s2.overlap_adjustment != null ? s2.overlap_adjustment : s2.overlap_penalty) < 0}
               />
               <div className="conviction-stage__total">
                 <span className="conviction-stage__total-label">Adjusted</span>

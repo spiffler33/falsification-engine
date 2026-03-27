@@ -314,6 +314,7 @@ def import_elimination(payload: dict = Body(...), db: Session = Depends(get_db))
             "source_theory": h.source_theory,
             "status": h.status,
             "soft_falsifiers": h.soft_falsifiers or "[]",
+            "predicted_assets": h.predicted_assets or "[]",
         }
         for h in existing_hyps
     ]
@@ -328,13 +329,19 @@ def import_elimination(payload: dict = Body(...), db: Session = Depends(get_db))
 
     # Update hypotheses in database and run conviction scoring
     scored_results = []
-    # Count overlaps for overlap penalty
-    asset_counts: dict[str, int] = {}
+
+    # Build per-asset, per-theory overlap index from non-KILLED hypotheses
+    # Key: asset ticker -> list of (hypothesis_id, source_theory)
+    asset_hypothesis_map: dict[str, list[tuple[str, str]]] = {}
     for h_data in updated:
-        if h_data.get("status") != "KILLED":
-            assets = json.loads(h_data.get("predicted_assets", "[]")) if isinstance(h_data.get("predicted_assets"), str) else h_data.get("predicted_assets", [])
-            for asset in assets:
-                asset_counts[asset] = asset_counts.get(asset, 0) + 1
+        if h_data.get("status") == "KILLED":
+            continue
+        pa = h_data.get("predicted_assets", "[]")
+        assets = json.loads(pa) if isinstance(pa, str) else (pa or [])
+        theory = h_data.get("source_theory", "")
+        hid = h_data.get("id", "")
+        for asset in assets:
+            asset_hypothesis_map.setdefault(asset, []).append((hid, theory))
 
     for h_data in updated:
         h = db.query(HypothesisModel).filter(HypothesisModel.id == h_data["id"]).first()
@@ -351,10 +358,19 @@ def import_elimination(payload: dict = Body(...), db: Session = Depends(get_db))
             soft_f = json.loads(h.soft_falsifiers) if h.soft_falsifiers else []
             triggered_sf = [{"severity": sf["severity"]} for sf in soft_f if sf.get("status") == "TRIGGERED"]
 
-            # Compute overlap for primary asset
+            # Compute theory-aware overlap for primary asset
             assets = json.loads(h.predicted_assets) if h.predicted_assets else []
             primary_asset = assets[0] if assets else ""
-            overlap = max(0, asset_counts.get(primary_asset, 1) - 1)
+            same_theory = 0
+            diff_theory = 0
+            if primary_asset:
+                for other_id, other_theory in asset_hypothesis_map.get(primary_asset, []):
+                    if other_id == h.id:
+                        continue
+                    if other_theory == h.source_theory:
+                        same_theory += 1
+                    else:
+                        diff_theory += 1
 
             ci = ConvictionInput(
                 hypothesis_id=h.id,
@@ -363,7 +379,8 @@ def import_elimination(payload: dict = Body(...), db: Session = Depends(get_db))
                 convergence=conv_inputs.get("convergence", 0.3),
                 falsifier_clarity=conv_inputs.get("falsifier_clarity", 0.7),
                 triggered_soft_falsifiers=triggered_sf,
-                overlap_count=overlap,
+                same_theory_overlap=same_theory,
+                diff_theory_overlap=diff_theory,
                 horizon_alignment=conv_inputs.get("horizon_alignment", 0.5),
                 expression_efficiency=conv_inputs.get("expression_efficiency", 0.5),
             )
@@ -371,6 +388,13 @@ def import_elimination(payload: dict = Body(...), db: Session = Depends(get_db))
             result = conviction.score_conviction(ci)
             h.conviction = result.stage3.final
             h.conviction_math = json.dumps(result.model_dump())
+
+            # Conviction floor: mechanical kill for scores below 5
+            if result.stage3.floor_killed:
+                h.status = "KILLED"
+                h.elimination_notes = (
+                    (h.elimination_notes or "") + f"\n[MECHANICAL] {result.stage3.kill_reason}"
+                ).strip()
         else:
             h.conviction = 0.0
             h.conviction_math = None

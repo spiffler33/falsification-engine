@@ -102,6 +102,18 @@ def parse_generation_output(
             raw_input=raw_json,
         )
 
+    # Format detection: reject elimination output fed to generation import
+    if data and isinstance(data[0], dict):
+        first = data[0]
+        has_elim_keys = any(k in first for k in ("status", "hard_falsifier_check", "elimination_notes"))
+        has_gen_keys = any(k in first for k in ("predicted_assets", "asset_direction", "mechanism", "prediction"))
+        if has_elim_keys and not has_gen_keys:
+            raise ParseError(
+                "This looks like elimination output, not generation output. "
+                "Check that you are importing into the correct pipeline step.",
+                raw_input=raw_json,
+            )
+
     hypotheses = []
     field_errors = []
 
@@ -249,6 +261,18 @@ def parse_elimination_output(
             raw_input=raw_json,
         )
 
+    # Format detection: reject generation output fed to elimination import
+    if data and isinstance(data[0], dict):
+        first = data[0]
+        has_gen_keys = any(k in first for k in ("predicted_assets", "asset_direction", "mechanism"))
+        has_elim_keys = any(k in first for k in ("status", "hard_falsifier_check", "elimination_notes"))
+        if has_gen_keys and not has_elim_keys:
+            raise ParseError(
+                "This looks like generation output, not elimination output. "
+                "Check that you are importing into the correct pipeline step.",
+                raw_input=raw_json,
+            )
+
     # Build lookup by various keys
     existing_by_id = {}
     existing_by_index = {}
@@ -290,26 +314,51 @@ def parse_elimination_output(
         matched["status"] = status
         matched["elimination_notes"] = item.get("elimination_notes", item.get("notes", item.get("reasoning", "")))
 
-        # Update soft falsifier states
+        # Update soft falsifier states — robust matching with fallback
         sf_updates = item.get("soft_falsifiers", item.get("soft_falsifier_check", {}))
+        existing_sf = json.loads(matched.get("soft_falsifiers", "[]"))
+
         if isinstance(sf_updates, dict):
-            triggered_names = set(n.lower() for n in sf_updates.get("triggered", []))
-            if triggered_names:
-                existing_sf = json.loads(matched.get("soft_falsifiers", "[]"))
+            triggered_names = [n.lower().strip() for n in sf_updates.get("triggered", [])]
+            triggered_count = sf_updates.get("triggered_count", len(triggered_names))
+
+            if triggered_names or triggered_count > 0:
+                matched_count = 0
+                # Try matching by name, condition, or substring
                 for sf in existing_sf:
-                    if sf.get("name", "").lower() in triggered_names:
+                    sf_name = sf.get("name", "").lower().strip()
+                    sf_cond = sf.get("condition", "").lower().strip()
+                    for tn in triggered_names:
+                        if (tn == sf_name or tn == sf_cond
+                                or tn in sf_name or tn in sf_cond
+                                or sf_name in tn or sf_cond in tn):
+                            sf["status"] = "TRIGGERED"
+                            matched_count += 1
+                            break
+
+                # Fallback: if triggered_count > matched, mark remaining by severity (worst first)
+                if matched_count < triggered_count:
+                    remaining = triggered_count - matched_count
+                    severity_order = {"major": 0, "medium": 1, "minor": 2}
+                    unmatched = [sf for sf in existing_sf if sf.get("status") != "TRIGGERED"]
+                    unmatched.sort(key=lambda x: severity_order.get(x.get("severity", "minor"), 2))
+                    for sf in unmatched[:remaining]:
                         sf["status"] = "TRIGGERED"
-                matched["soft_falsifiers"] = json.dumps(existing_sf)
+
         elif isinstance(sf_updates, list):
-            # Claude might return the full updated list
             for sf_item in sf_updates:
                 if isinstance(sf_item, dict) and sf_item.get("status", "").upper() == "TRIGGERED":
-                    existing_sf = json.loads(matched.get("soft_falsifiers", "[]"))
-                    name = sf_item.get("name", sf_item.get("id", "")).lower()
+                    name = sf_item.get("name", sf_item.get("id", "")).lower().strip()
                     for sf in existing_sf:
-                        if sf.get("name", "").lower() == name or sf.get("condition", "").lower() == name:
+                        sf_name = sf.get("name", "").lower().strip()
+                        sf_cond = sf.get("condition", "").lower().strip()
+                        if (name == sf_name or name == sf_cond
+                                or name in sf_name or name in sf_cond
+                                or sf_name in name or sf_cond in name):
                             sf["status"] = "TRIGGERED"
-                    matched["soft_falsifiers"] = json.dumps(existing_sf)
+                            break
+
+        matched["soft_falsifiers"] = json.dumps(existing_sf)
 
         # Store conviction inputs
         matched["_conviction_inputs"] = item.get("conviction_inputs", {})

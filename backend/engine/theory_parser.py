@@ -441,6 +441,17 @@ def _parse_soft_falsifiers(text: str) -> list[SoftFalsifier]:
     if not rows:
         return []
 
+    def _extract_severity_keyword(text: str) -> str:
+        """Extract 'minor', 'medium', or 'major' from a cell that may contain extra text.
+
+        Handles formats like '**major** — explanation...' or '**Medium**'.
+        """
+        clean = text.strip().strip("*").strip().lower()
+        for keyword in ("major", "medium", "minor"):
+            if clean.startswith(keyword):
+                return keyword
+        return ""
+
     # Detect which column contains Severity by checking headers
     first_row_keys = list(rows[0].keys())
     header_lower = [k.lower().strip() for k in first_row_keys]
@@ -464,15 +475,15 @@ def _parse_soft_falsifiers(text: str) -> list[SoftFalsifier]:
         severity_str = ""
         for k, v in row.items():
             if "severity" in k.lower():
-                severity_str = v.strip().strip("*").lower()
+                severity_str = _extract_severity_keyword(v)
                 break
 
         # If severity not found in headers, look in cell values
         if not severity_str:
             for v in row.values():
-                v_clean = v.strip().strip("*").lower()
-                if v_clean in ("minor", "medium", "major"):
-                    severity_str = v_clean
+                found = _extract_severity_keyword(v)
+                if found:
+                    severity_str = found
                     break
 
         # Map remaining fields — exclude # and severity columns

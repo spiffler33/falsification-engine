@@ -18,8 +18,8 @@ class Stage1Raw(BaseModel):
 class Stage2Discounts(BaseModel):
     """Stage 2: Multiplicative discounts from falsifier health and overlap."""
     soft_falsifier_discount: float = 0.0  # the D_f multiplier (0.05 to 1.0)
-    overlap_penalty: float = 0.0          # the D_o multiplier
-    adjusted: float = 0.0                 # raw * D_f * D_o, scaled to 0-10
+    overlap_adjustment: float = 0.0       # additive: same-theory penalty + cross-theory bonus
+    adjusted: float = 0.0                 # (raw * D_f) + overlap_adjustment
 
 
 class Stage3Gates(BaseModel):
@@ -29,6 +29,8 @@ class Stage3Gates(BaseModel):
     expression_score: float = 0.0
     expression_cap: Optional[float] = None
     final: float = 0.0
+    floor_killed: bool = False
+    kill_reason: str = ""
 
 
 class ConvictionMath(BaseModel):
@@ -48,7 +50,8 @@ class ConvictionInput(BaseModel):
     falsifier_clarity: float = 0.0
     # Stage 2 inputs
     triggered_soft_falsifiers: List[Dict] = []  # [{severity: "minor"|"medium"|"major"}]
-    overlap_count: int = 0  # number of other hypotheses sharing primary instrument
+    same_theory_overlap: int = 0   # other surviving hypotheses on same asset from same theory
+    diff_theory_overlap: int = 0   # other surviving hypotheses on same asset from different theories
     # Stage 3 inputs
     horizon_alignment: float = 0.0  # H, 0.0-1.0
     expression_efficiency: float = 0.0  # E, 0.0-1.0

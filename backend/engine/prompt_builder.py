@@ -188,7 +188,14 @@ RULES:
 5. Do NOT produce hypotheses from theories not listed below.
 6. Each prediction must be specific: include magnitude range, timeframe, and named ETF instruments.
 7. Hard falsifiers must be specific enough to check against data.
-8. Soft falsifiers must include severity (minor/medium/major) inherited from the source theory module."""
+8. Soft falsifiers must include severity (minor/medium/major) inherited from the source theory module.
+
+CONSOLIDATION CHECK: Before finalizing, review all generated hypotheses grouped by their primary SHORT or LONG asset. If 3+ hypotheses share the same directional bet on the same asset:
+1. Identify whether they represent genuinely independent mechanisms or variations of the same view.
+2. If variations: keep only the hypothesis with the most specific, falsifiable prediction and the clearest causal chain. Merge supporting evidence from the others into the survivor's rationale.
+3. If genuinely independent: keep all but note the convergence explicitly.
+
+The goal is that each surviving hypothesis represents a DISTINCT bet the operator could take or leave independently. If killing hypothesis A would not change your conviction on hypothesis B, they are independent. If it would, they are variations and should be consolidated."""
 
 
 def _generation_output_schema() -> str:
@@ -230,26 +237,42 @@ IMPORTANT: Output ONLY the JSON array. No commentary before or after."""
 def _elimination_system_instructions() -> str:
     return """SYSTEM: You are the Elimination Pass of a Falsification Engine for global macro analysis.
 
-Your ONLY job is to attack each hypothesis and find reasons it should die. You are an adversary, not a collaborator. If a hypothesis has weaknesses, state them plainly -- do not soften your attacks.
+Your ONLY job is to mechanically audit each hypothesis against its pre-registered falsifiers, then apply strict kill rules. You are a data checker, not an analyst.
 
-For each hypothesis, attempt these five checks:
+## STAGE A -- FALSIFIER AUDIT (no discretion)
 
-1. HARD FALSIFIER CHECK: Is any hard falsifier currently triggered by the data briefing? If YES, the hypothesis is KILLED. Be specific about which falsifier and which data point.
+For each hypothesis, evaluate every pre-registered hard and soft falsifier against the current data briefing and your web search findings. For each falsifier, state:
+(a) the exact condition
+(b) the current data value or observation
+(c) TRIGGERED or CLEAR
 
-2. SOFT FALSIFIER CHECK: Which soft falsifiers are currently triggered or close to triggering? Report the count and which ones. Do NOT assess severity -- that is pre-registered in the theory module and applied mechanically in the conviction scoring pipeline.
+This is a data lookup, not an argument. Do not explain, reframe, or contextualize. Just check.
 
-3. CROSS-THEORY ATTACK: Does another Active theory's mechanism contradict this hypothesis? If a different Active theory predicts the opposite outcome through a plausible mechanism, state the contradiction.
+## STAGE B -- KILL RULES (mechanical)
 
-4. EVIDENCE QUALITY ASSESSMENT: Is the supporting evidence strong or weak? Grade the evidence: direct market data > high-quality macro data > proxies > narrative inference. Be specific about which evidence supports which part of the hypothesis.
+Apply these rules in strict order. Do not override with narrative judgment:
+- ANY hard falsifier TRIGGERED -> status: KILLED
+- 2+ major soft falsifiers TRIGGERED -> status: KILLED
+- 3+ soft falsifiers of any severity TRIGGERED -> status: KILLED
+- 1+ soft falsifier TRIGGERED AND the hypothesis directional prediction contradicted by trailing 30-day price action -> status: WOUNDED
+- Otherwise -> status: SURVIVED
 
-5. COMPOSITION INTEGRITY (multi-theory hypotheses only): Did combining theories narrow the prediction and make it more falsifiable? If combining theories made the hypothesis broader, more hedged, or harder to kill, it is KILLED as narrative padding.
+IMPORTANT: Do not rescue a hypothesis by reinterpreting what "triggered" means. If the data meets the stated condition, the falsifier is triggered. Period.
+
+## ADDITIONAL CHECKS (for context, not kill authority)
+
+3. CROSS-THEORY ATTACK: Does another Active theory's mechanism contradict this hypothesis? Report contradictions but do NOT use them to override the kill rules above.
+
+4. EVIDENCE QUALITY ASSESSMENT: Grade the evidence: direct market data > high-quality macro data > proxies > narrative inference.
+
+5. COMPOSITION INTEGRITY (multi-theory hypotheses only): Did combining theories narrow the prediction? If it made the hypothesis broader or harder to kill, status: KILLED as narrative padding.
 
 RULES:
 - Do NOT assign conviction scores -- that is the mechanical pipeline's job.
 - Do NOT decide whether soft falsifiers are "serious enough" to kill -- severity is pre-registered.
 - Do NOT recommend which survivors to act on.
 - Do NOT soften your attacks. If it is worth mentioning, state it plainly.
-- Every hypothesis gets all five checks. No exceptions."""
+- Every hypothesis gets the full audit. No exceptions."""
 
 
 def _elimination_output_schema() -> str:
