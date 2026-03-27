@@ -3,18 +3,12 @@ import { useState, useEffect, useCallback } from 'react'
 import Header from './components/Header'
 import NavBar from './components/NavBar'
 import LedgerView from './views/LedgerView'
+import JournalView from './views/JournalView'
+import ObservatoryView from './views/ObservatoryView'
+import PipelineView from './views/PipelineView'
+import BriefingView from './views/BriefingView'
 import HypothesisDetail from './overlays/HypothesisDetail'
 import { api } from './lib/api'
-
-// Placeholder views for Phase 6
-function PlaceholderView({ title }) {
-  return (
-    <div className="view-placeholder">
-      <div className="view-placeholder__title">{title}</div>
-      <div className="view-placeholder__text">Coming in Phase 6</div>
-    </div>
-  )
-}
 
 export default function App() {
   const [inboxCount, setInboxCount] = useState(0)
@@ -79,10 +73,10 @@ export default function App() {
 
       <Routes>
         <Route path="/" element={<LedgerView onSelectHypothesis={openDetail} />} />
-        <Route path="/journal" element={<PlaceholderView title="Decision Journal" />} />
-        <Route path="/observatory" element={<PlaceholderView title="Observatory" />} />
-        <Route path="/pipeline" element={<PlaceholderView title="Pipeline" />} />
-        <Route path="/briefing" element={<PlaceholderView title="Data Briefing" />} />
+        <Route path="/journal" element={<JournalView onSelectHypothesis={openDetail} />} />
+        <Route path="/observatory" element={<ObservatoryView />} />
+        <Route path="/pipeline" element={<PipelineView />} />
+        <Route path="/briefing" element={<BriefingView />} />
         <Route path="/hypothesis/:id" element={<LedgerView onSelectHypothesis={openDetail} />} />
       </Routes>
 
