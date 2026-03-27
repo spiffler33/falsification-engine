@@ -14,20 +14,33 @@ export default function ImportPanel({ stage, onImport, visible, onToggle }) {
     setError(null)
     setImporting(true)
     try {
-      // Validate JSON
-      let parsed
+      // Validate JSON syntax before sending
       try {
-        parsed = JSON.parse(text)
+        JSON.parse(text)
       } catch {
         setError('Invalid JSON. Please paste the complete output from Claude.')
         setImporting(false)
         return
       }
 
-      await onImport(parsed)
+      await onImport(text)
       setText('')
     } catch (err) {
-      setError(err.message || 'Import failed. Check the output format.')
+      // Surface structured error details from backend ParseError
+      if (err.message) {
+        try {
+          const detail = JSON.parse(err.message.replace(/^API POST [^:]+: \d+ /, ''))
+          const parts = [detail.message || 'Import failed.']
+          if (detail.field_errors && detail.field_errors.length > 0) {
+            parts.push('\n\nField errors:\n' + detail.field_errors.join('\n'))
+          }
+          setError(parts.join(''))
+        } catch {
+          setError(err.message || 'Import failed. Check the output format.')
+        }
+      } else {
+        setError('Import failed. Check the output format.')
+      }
     } finally {
       setImporting(false)
     }

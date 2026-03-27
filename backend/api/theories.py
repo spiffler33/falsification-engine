@@ -45,6 +45,7 @@ def list_theories():
 
         entry = {
             "theory_id": t.theory_id,
+            "name": t.title or label,
             "title": t.title or label,
             "label": label,
             "is_two_phase": t.is_two_phase,
@@ -55,8 +56,25 @@ def list_theories():
 
         if ar:
             entry["activation"] = ar.model_dump()
+            # Flatten activation fields for frontend convenience
+            if t.is_two_phase:
+                eff_tier = ar.effective_tier or ar.tier
+                entry["tier"] = (eff_tier.value if eff_tier else "inactive").lower()
+                # Get score from the effective phase
+                if ar.effective_phase and ar.phase_scores:
+                    entry["activation_score"] = ar.phase_scores.get(ar.effective_phase, 0)
+                else:
+                    entry["activation_score"] = ar.score or 0
+                entry["active_phase"] = ar.effective_phase
+            else:
+                entry["tier"] = (ar.tier.value if ar.tier else "inactive").lower()
+                entry["activation_score"] = ar.score or 0
+                entry["active_phase"] = None
         else:
             entry["activation"] = None
+            entry["tier"] = "inactive"
+            entry["activation_score"] = 0
+            entry["active_phase"] = None
 
         result.append(entry)
 

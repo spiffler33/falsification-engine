@@ -1071,6 +1071,23 @@ p, .body-text {
   color: var(--text-tertiary);
   padding: 40px 0;
   text-align: center;
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+}
+
+.loading::after {
+  content: '';
+  display: block;
+  width: 40px;
+  height: 1px;
+  background: var(--text-tertiary);
+  margin: 12px auto 0;
+  animation: loading-pulse 1.5s ease-in-out infinite;
+}
+
+@keyframes loading-pulse {
+  0%, 100% { opacity: 0.2; width: 40px; }
+  50% { opacity: 1; width: 80px; }
 }
 
 .empty-state {
@@ -1796,6 +1813,18 @@ p, .body-text {
   font-size: 10px;
   color: var(--text-tertiary);
   margin-bottom: 12px;
+  display: flex;
+  gap: 12px;
+  align-items: center;
+}
+
+.briefing-view__mock-badge {
+  font-family: var(--font-data);
+  font-size: 9px;
+  letter-spacing: 0.08em;
+  color: var(--accent-gold);
+  border: 1px solid var(--accent-gold);
+  padding: 1px 6px;
 }
 
 /* Research Inbox */

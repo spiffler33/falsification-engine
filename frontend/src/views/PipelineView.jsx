@@ -84,8 +84,8 @@ function RunMode() {
     }
   }, [])
 
-  const handleImport = useCallback(async (stage, parsed) => {
-    await api.post(`/api/pipeline/import/${stage}`, parsed)
+  const handleImport = useCallback(async (stage, rawText) => {
+    await api.post(`/api/pipeline/import/${stage}`, { json_text: rawText })
     setShowImport(null)
     refetchStatus()
   }, [refetchStatus])
@@ -97,9 +97,7 @@ function RunMode() {
   const getState = (idx) => {
     const step = steps[idx]
     if (!step) return 'waiting'
-    if (step.status === 'complete') return 'complete'
-    if (step.status === 'ready') return 'ready'
-    return 'waiting'
+    return step.state || 'waiting'
   }
 
   const STEP_DEFS = [
@@ -189,20 +187,25 @@ function RunMode() {
 
 
 function AuditMode() {
-  const { data: run, loading } = useApi('/api/runs/latest')
+  // First fetch the latest run summary to get the run ID
+  const { data: latestRun, loading: loadingSummary } = useApi('/api/runs/latest')
+  // Then fetch full run detail with all stage outputs
+  const runId = latestRun?.id || null
+  const { data: run, loading: loadingDetail } = useApi(runId ? `/api/runs/${runId}` : null)
   const [expanded, setExpanded] = useState({})
 
   const toggle = (stage) => {
     setExpanded(prev => ({ ...prev, [stage]: !prev[stage] }))
   }
 
-  if (loading) return <div className="loading">Loading run data...</div>
+  if (loadingSummary || loadingDetail) return <div className="loading">Loading run data...</div>
   if (!run) return <div className="empty-state">No completed runs to audit.</div>
 
-  const activation = run.activation_scores || run.activation || []
-  const generated = run.generated_hypotheses || run.generation || []
-  const eliminated = run.elimination_results || run.elimination || []
-  const scored = run.conviction_results || run.scored || []
+  const activation = run.activation_scores || []
+  const hypotheses = run.hypotheses || []
+  const generated = hypotheses
+  const eliminated = hypotheses.filter(h => h.elimination_notes || h.status === 'KILLED')
+  const scored = hypotheses.filter(h => h.conviction != null)
 
   const stages = [
     {
@@ -210,13 +213,22 @@ function AuditMode() {
       title: 'Activation',
       render: () => (
         <div className="audit-activation">
-          {(Array.isArray(activation) ? activation : []).map(t => (
-            <div key={t.theory_id} className="audit-activation__row">
-              <TheoryTag theoryId={t.theory_id} />
-              <span className="audit-activation__tier">{(t.tier || '').toUpperCase()}</span>
-              <span className="audit-activation__score">{Math.round((t.activation_score || 0) * 100)}%</span>
-            </div>
-          ))}
+          {(Array.isArray(activation) ? activation : []).map(t => {
+            const tier = t.is_two_phase ? (t.effective_tier || 'Inactive') : (t.tier || 'Inactive')
+            const score = t.is_two_phase
+              ? (t.effective_phase && t.phase_scores ? t.phase_scores[t.effective_phase] : 0)
+              : (t.score || 0)
+            return (
+              <div key={t.theory_id} className="audit-activation__row">
+                <TheoryTag theoryId={t.theory_id} />
+                <span className="audit-activation__tier">{String(tier).toUpperCase()}</span>
+                <span className="audit-activation__score">{Math.round(score * 100)}%</span>
+                {t.is_two_phase && t.effective_phase && (
+                  <span className="audit-activation__phase">{t.effective_phase}</span>
+                )}
+              </div>
+            )
+          })}
         </div>
       ),
     },
@@ -225,10 +237,10 @@ function AuditMode() {
       title: 'Generation',
       render: () => (
         <div className="audit-generation">
-          {(Array.isArray(generated) ? generated : []).map((h, i) => (
+          {generated.map((h, i) => (
             <div key={h.id || i} className="audit-hypothesis">
               <span className="audit-hypothesis__name">{h.short_name}</span>
-              <TheoryTag theoryId={h.source_theory} />
+              <TheoryTag theoryId={h.source_theory || h.theory_id} />
             </div>
           ))}
           {generated.length === 0 && <div className="empty-state">No hypotheses generated.</div>}
@@ -286,8 +298,8 @@ function AuditMode() {
   return (
     <div className="pipeline-audit">
       <div className="audit-run-info">
-        <span className="audit-run-info__id">Run: {run.id || run.run_id || '--'}</span>
-        <span className="audit-run-info__date">{fmtDate(run.date || run.created_at)}</span>
+        <span className="audit-run-info__id">Run: {run.id || '--'}</span>
+        <span className="audit-run-info__date">{fmtDate(run.timestamp)}</span>
       </div>
 
       {stages.map(stage => (

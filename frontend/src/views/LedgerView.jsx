@@ -19,7 +19,7 @@ export default function LedgerView({ onSelectHypothesis }) {
     () => localStorage.getItem('last_reviewed_run_id') || null
   )
 
-  const { data: hypotheses, loading, refetch } = useApi('/api/hypotheses')
+  const { data: hypotheses, loading, error, refetch } = useApi('/api/hypotheses')
 
   // Fetch delta on mount
   useEffect(() => {
@@ -73,6 +73,7 @@ export default function LedgerView({ onSelectHypothesis }) {
   }
 
   if (loading) return <div className="loading">Loading hypotheses...</div>
+  if (error) return <div className="empty-state">Failed to load hypotheses. Is the backend running?</div>
 
   return (
     <div>
