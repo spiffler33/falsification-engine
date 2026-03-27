@@ -42,18 +42,35 @@ def _get_current_pipeline_state(db: Session) -> dict:
 
     briefing_data = _load_briefing()
     briefing_fresh = bool(briefing_data)
+    briefing_timestamp = briefing_data.get("timestamp", "") if briefing_data else ""
 
-    if not latest_run or latest_run.status == "complete":
-        # No active run -- check if briefing is fresh to determine readiness
+    if not latest_run:
+        # No runs at all
         return {
             "current_step": 1 if briefing_fresh else 0,
             "run_id": "",
+            "briefing_timestamp": briefing_timestamp,
             "steps": [
                 {"step": 1, "label": "Data Briefing", "type": "automated", "state": "complete" if briefing_fresh else "ready"},
                 {"step": 2, "label": "Activation Scoring", "type": "automated", "state": "waiting"},
                 {"step": 3, "label": "Generation Pass", "type": "human-in-loop", "state": "waiting"},
                 {"step": 4, "label": "Elimination Pass", "type": "human-in-loop", "state": "waiting"},
                 {"step": 5, "label": "Conviction Scoring", "type": "automated", "state": "waiting"},
+            ],
+        }
+
+    if latest_run.status == "complete":
+        # Last run is complete — show all steps as complete, ready for new run
+        return {
+            "current_step": 5,
+            "run_id": latest_run.id,
+            "briefing_timestamp": briefing_timestamp,
+            "steps": [
+                {"step": 1, "label": "Data Briefing", "type": "automated", "state": "complete"},
+                {"step": 2, "label": "Activation Scoring", "type": "automated", "state": "complete"},
+                {"step": 3, "label": "Generation Pass", "type": "human-in-loop", "state": "complete"},
+                {"step": 4, "label": "Elimination Pass", "type": "human-in-loop", "state": "complete"},
+                {"step": 5, "label": "Conviction Scoring", "type": "automated", "state": "complete"},
             ],
         }
 
@@ -82,6 +99,7 @@ def _get_current_pipeline_state(db: Session) -> dict:
     return {
         "current_step": current,
         "run_id": latest_run.id,
+        "briefing_timestamp": briefing_timestamp,
         "steps": steps,
     }
 
@@ -248,6 +266,11 @@ def import_generation(payload: dict = Body(...), db: Session = Depends(get_db)):
     # Get or create active run
     run = _get_or_create_active_run(db)
 
+    # Clear any existing hypotheses for this run (allows re-import)
+    db.query(HypothesisModel).filter(HypothesisModel.run_id == run.id).delete()
+    run.generation_output = None
+    db.flush()
+
     try:
         hypotheses = parse_generation_output(raw_json, run.id)
     except ParseError as e:
@@ -279,8 +302,8 @@ def import_elimination(payload: dict = Body(...), db: Session = Depends(get_db))
         raise HTTPException(status_code=400, detail="Missing 'json_text' field in request body")
 
     latest_run = db.query(Run).order_by(desc(Run.timestamp)).first()
-    if not latest_run or not latest_run.generation_output:
-        raise HTTPException(status_code=400, detail="Must import generation output first")
+    if not latest_run:
+        raise HTTPException(status_code=400, detail="No active run. Import generation output first.")
 
     # Get existing hypotheses for this run
     existing_hyps = db.query(HypothesisModel).filter(HypothesisModel.run_id == latest_run.id).all()
@@ -372,220 +395,88 @@ def import_elimination(payload: dict = Body(...), db: Session = Depends(get_db))
     }
 
 
-# --- Run-via-API endpoints (backup path) ---
+# --- Snapshot endpoint for static publishing ---
 
-@router.post("/pipeline/run/generation")
-def run_generation_via_api(
-    payload: dict = Body(default={}),
-    db: Session = Depends(get_db),
-):
-    """Run generation pass via Anthropic API instead of copy-paste.
+@router.get("/snapshot")
+def get_snapshot(db: Session = Depends(get_db)):
+    """Export the current state as a single JSON blob for static publishing.
 
-    This is the backup path for when the user doesn't want to use Claude.ai.
-    It calls the API with extended thinking and optional web search.
+    This powers the GitHub Pages read-only view. It bundles:
+    - All hypotheses from the latest completed run
+    - The latest briefing packet
+    - Activation scores
+    - Theory metadata
+    - Run metadata
     """
-    from backend.engine.llm_client import run_generation as llm_generate
+    from backend.api.hypotheses import _model_to_dict
 
-    use_web_search = payload.get("web_search", True)
+    # Latest completed run
+    latest_run = db.query(Run).filter(Run.status == "complete").order_by(desc(Run.timestamp)).first()
 
-    # Build the prompt (same as the copy-paste path)
-    theories = theory_parser.load_all_theories()
+    run_data = None
+    hypotheses = []
+    activation_scores = []
+
+    if latest_run:
+        run_data = {
+            "id": latest_run.id,
+            "timestamp": latest_run.timestamp,
+            "status": latest_run.status,
+        }
+        hyps = db.query(HypothesisModel).filter(HypothesisModel.run_id == latest_run.id).all()
+        hypotheses = [_model_to_dict(h, db) for h in hyps]
+        activation_scores = json.loads(latest_run.activation_scores) if latest_run.activation_scores else []
+
+    # Briefing
     briefing_data = _load_briefing()
-    if not briefing_data:
-        raise HTTPException(status_code=400, detail="No briefing packet available.")
 
-    briefing = BriefingPacket(**briefing_data)
-    activation_results = activation.score_all_theories(theories, briefing)
-
-    inbox_rows = db.query(InboxItem).filter(InboxItem.status == "queued").all()
-    inbox_items = [
-        {"date": item.date, "content": item.content, "source": item.source or "",
-         "theories": json.loads(item.theories) if item.theories else []}
-        for item in inbox_rows
+    # Theories (just names and IDs, not full markdown)
+    theories = theory_parser.load_all_theories()
+    theory_summaries = [
+        {"theory_id": t.theory_id, "name": t.name, "domain": t.domain, "is_two_phase": t.is_two_phase}
+        for t in theories
     ]
 
-    run = _get_or_create_active_run(db, activation_results)
-
-    prompt = build_generation_prompt(
-        theories=theories,
-        activation_results=activation_results,
-        briefing=briefing_data,
-        inbox_items=inbox_items,
-    )
-
-    # Call the API
-    try:
-        raw_response = llm_generate(prompt, use_web_search=use_web_search)
-    except Exception as e:
-        raise HTTPException(status_code=502, detail=f"Anthropic API error: {str(e)}")
-
-    # Parse and import (same logic as import_generation)
-    try:
-        hypotheses = parse_generation_output(raw_response, run.id)
-    except ParseError as e:
-        raise HTTPException(
-            status_code=422,
-            detail={
-                "message": f"API returned output that failed parsing: {e.message}",
-                "field_errors": e.field_errors,
-                "raw_preview": e.raw_input,
-            },
-        )
-
-    created = []
-    for h_data in hypotheses:
-        conv_inputs = h_data.pop("_conviction_inputs", {})
-        h = HypothesisModel(**h_data)
-        db.add(h)
-        created.append({**h_data, "_conviction_inputs": conv_inputs})
-
-    run.generation_output = raw_response
-    db.commit()
-
     return {
-        "run_id": run.id,
-        "hypotheses_created": len(created),
-        "via": "api",
+        "snapshot_timestamp": datetime.now().isoformat(),
+        "run": run_data,
+        "hypotheses": hypotheses,
+        "activation_scores": activation_scores,
+        "briefing": briefing_data,
+        "theories": theory_summaries,
     }
 
 
-@router.post("/pipeline/run/elimination")
-def run_elimination_via_api(
-    payload: dict = Body(default={}),
-    db: Session = Depends(get_db),
-):
-    """Run elimination pass via Anthropic API instead of copy-paste."""
-    from backend.engine.llm_client import run_elimination as llm_eliminate
+@router.post("/publish")
+def publish_to_ghpages(db: Session = Depends(get_db)):
+    """Trigger the GitHub Pages publish script.
 
-    use_web_search = payload.get("web_search", True)
+    Requires the backend to be running and git to be configured.
+    This runs scripts/publish_ghpages.sh as a subprocess.
+    """
+    import subprocess
+    from backend.config import BASE_DIR
 
-    latest_run = db.query(Run).order_by(desc(Run.timestamp)).first()
-    if not latest_run or not latest_run.generation_output:
-        raise HTTPException(status_code=400, detail="Must run generation first.")
-
-    # Build elimination prompt (same as copy-paste path)
-    theories = theory_parser.load_all_theories()
-    briefing_data = _load_briefing()
-    briefing = BriefingPacket(**briefing_data)
-    activation_results = activation.score_all_theories(theories, briefing)
-
-    hyps = db.query(HypothesisModel).filter(HypothesisModel.run_id == latest_run.id).all()
-    hypothesis_dicts = [
-        {
-            "id": h.id,
-            "theory_id": h.source_theory,
-            "source_theories": json.loads(h.source_theories) if h.source_theories else [h.source_theory],
-            "short_name": h.short_name,
-            "full_statement": h.full_statement,
-            "predicted_assets": json.loads(h.predicted_assets) if h.predicted_assets else [],
-            "asset_direction": json.loads(h.asset_direction) if h.asset_direction else {},
-            "hard_falsifiers": json.loads(h.hard_falsifiers) if h.hard_falsifiers else [],
-            "soft_falsifiers": json.loads(h.soft_falsifiers) if h.soft_falsifiers else [],
-            "timeframe": h.timeframe,
-        }
-        for h in hyps
-    ]
-
-    prompt = build_elimination_prompt(
-        hypotheses=hypothesis_dicts,
-        theories=theories,
-        activation_results=activation_results,
-        briefing=briefing_data,
-    )
-
-    # Call the API
-    try:
-        raw_response = llm_eliminate(prompt, use_web_search=use_web_search)
-    except Exception as e:
-        raise HTTPException(status_code=502, detail=f"Anthropic API error: {str(e)}")
-
-    # Parse and process (reuse import_elimination logic)
-    existing_dicts = [
-        {
-            "id": h.id,
-            "short_name": h.short_name,
-            "source_theory": h.source_theory,
-            "status": h.status,
-            "soft_falsifiers": h.soft_falsifiers or "[]",
-        }
-        for h in hyps
-    ]
+    script = BASE_DIR / "scripts" / "publish_ghpages.sh"
+    if not script.exists():
+        raise HTTPException(status_code=404, detail="Publish script not found")
 
     try:
-        updated = parse_elimination_output(raw_response, existing_dicts)
-    except ParseError as e:
-        raise HTTPException(
-            status_code=422,
-            detail={
-                "message": f"API returned output that failed parsing: {e.message}",
-                "field_errors": e.field_errors,
-                "raw_preview": e.raw_input,
-            },
+        result = subprocess.run(
+            [str(script)],
+            capture_output=True,
+            text=True,
+            timeout=120,
+            cwd=str(BASE_DIR),
         )
-
-    # Score and update (same as import_elimination)
-    scored_results = []
-    asset_counts: dict[str, int] = {}
-    for h_data in updated:
-        if h_data.get("status") != "KILLED":
-            assets = json.loads(h_data.get("predicted_assets", "[]")) if isinstance(h_data.get("predicted_assets"), str) else h_data.get("predicted_assets", [])
-            for asset in assets:
-                asset_counts[asset] = asset_counts.get(asset, 0) + 1
-
-    for h_data in updated:
-        h = db.query(HypothesisModel).filter(HypothesisModel.id == h_data["id"]).first()
-        if not h:
-            continue
-
-        h.status = h_data["status"]
-        h.elimination_notes = h_data.get("elimination_notes", "")
-        h.soft_falsifiers = h_data.get("soft_falsifiers", h.soft_falsifiers)
-
-        if h.status != "KILLED":
-            conv_inputs = h_data.get("_conviction_inputs", {})
-            soft_f = json.loads(h.soft_falsifiers) if h.soft_falsifiers else []
-            triggered_sf = [{"severity": sf["severity"]} for sf in soft_f if sf.get("status") == "TRIGGERED"]
-
-            assets = json.loads(h.predicted_assets) if h.predicted_assets else []
-            primary_asset = assets[0] if assets else ""
-            overlap = max(0, asset_counts.get(primary_asset, 1) - 1)
-
-            ci = ConvictionInput(
-                hypothesis_id=h.id,
-                support_strength=conv_inputs.get("support_strength", 0.5),
-                evidence_quality=conv_inputs.get("evidence_quality", 0.5),
-                convergence=conv_inputs.get("convergence", 0.3),
-                falsifier_clarity=conv_inputs.get("falsifier_clarity", 0.7),
-                triggered_soft_falsifiers=triggered_sf,
-                overlap_count=overlap,
-                horizon_alignment=conv_inputs.get("horizon_alignment", 0.5),
-                expression_efficiency=conv_inputs.get("expression_efficiency", 0.5),
+        if result.returncode != 0:
+            raise HTTPException(
+                status_code=500,
+                detail=f"Publish failed:\n{result.stderr[-500:] if result.stderr else result.stdout[-500:]}",
             )
-
-            result = conviction.score_conviction(ci)
-            h.conviction = result.stage3.final
-            h.conviction_math = json.dumps(result.model_dump())
-        else:
-            h.conviction = 0.0
-            h.conviction_math = None
-
-        scored_results.append({"id": h.id, "status": h.status, "conviction": h.conviction})
-
-    latest_run.elimination_output = raw_response
-    latest_run.status = "complete"
-
-    db.query(InboxItem).filter(InboxItem.status == "queued").update(
-        {"status": "incorporated", "incorporated_run_id": latest_run.id}
-    )
-
-    db.commit()
-
-    return {
-        "run_id": latest_run.id,
-        "hypotheses_updated": len(scored_results),
-        "results": scored_results,
-        "via": "api",
-    }
+        return {"status": "ok", "output": result.stdout[-1000:]}
+    except subprocess.TimeoutExpired:
+        raise HTTPException(status_code=504, detail="Publish timed out after 120 seconds")
 
 
 def _get_or_create_active_run(db: Session, activation_results=None) -> Run:

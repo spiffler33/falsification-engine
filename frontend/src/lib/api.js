@@ -1,9 +1,24 @@
 // API client — thin wrapper around fetch.
 // In dev, Vite proxies /api to the FastAPI backend.
+// In static mode (GitHub Pages), reads from embedded snapshot.
+
+import { isStaticMode, resolveFromSnapshot } from './snapshot'
 
 const BASE = ''
 
 async function request(method, path, body) {
+  // In static mode, intercept GET requests and serve from snapshot
+  if (isStaticMode() && method === 'GET') {
+    const result = resolveFromSnapshot(path)
+    if (result !== null) return result
+  }
+
+  // In static mode, block all write operations
+  if (isStaticMode() && method !== 'GET') {
+    console.warn(`[static mode] Write operation blocked: ${method} ${path}`)
+    return null
+  }
+
   const opts = {
     method,
     headers: {},

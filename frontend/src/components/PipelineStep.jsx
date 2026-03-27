@@ -1,7 +1,6 @@
 /**
  * PipelineStep — a single step in the pipeline workflow.
- * States: complete (green check), ready (accent, user action needed), waiting (gray).
- * Ready steps show action buttons (SHOW PROMPT, COPY, IMPORT).
+ * Always shows action buttons regardless of state.
  */
 
 export default function PipelineStep({
@@ -11,7 +10,6 @@ export default function PipelineStep({
   state,
   children,
 }) {
-  // state: 'complete' | 'ready' | 'waiting'
   const stateClass = `pipeline-step--${state}`
   const indicatorClass = `pipeline-step__indicator--${state}`
 
@@ -29,7 +27,7 @@ export default function PipelineStep({
           {state === 'complete' ? 'COMPLETE' : state === 'ready' ? 'READY' : 'WAITING'}
         </div>
       </div>
-      {state !== 'complete' && children && (
+      {children && (
         <div className="pipeline-step__actions">
           {children}
         </div>

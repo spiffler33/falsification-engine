@@ -52,17 +52,4 @@ app.include_router(user_state_router, prefix="/api")
 
 @app.get("/api/health")
 def health_check():
-    from backend.db.database import SessionLocal
-    from backend.db.models import UserState
-    db = SessionLocal()
-    try:
-        is_mock = db.query(UserState).filter(
-            UserState.key == "is_mock_data", UserState.value == "true"
-        ).first()
-        return {
-            "status": "ok",
-            "version": "0.1.0",
-            "is_mock_data": is_mock is not None,
-        }
-    finally:
-        db.close()
+    return {"status": "ok", "version": "0.1.0"}

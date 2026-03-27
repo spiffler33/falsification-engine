@@ -14,32 +14,28 @@ export default function ImportPanel({ stage, onImport, visible, onToggle }) {
     setError(null)
     setImporting(true)
     try {
-      // Validate JSON syntax before sending
-      try {
-        JSON.parse(text)
-      } catch {
-        setError('Invalid JSON. Please paste the complete output from Claude.')
-        setImporting(false)
-        return
-      }
-
       await onImport(text)
       setText('')
     } catch (err) {
-      // Surface structured error details from backend ParseError
-      if (err.message) {
+      // Surface the actual error from the backend
+      const raw = err.message || 'Import failed.'
+      // Try to extract structured detail from the API error
+      const jsonMatch = raw.match(/\d+\s+(\{.+)/)
+      if (jsonMatch) {
         try {
-          const detail = JSON.parse(err.message.replace(/^API POST [^:]+: \d+ /, ''))
-          const parts = [detail.message || 'Import failed.']
-          if (detail.field_errors && detail.field_errors.length > 0) {
-            parts.push('\n\nField errors:\n' + detail.field_errors.join('\n'))
+          const detail = JSON.parse(jsonMatch[1])
+          const msg = detail.detail?.message || detail.detail || detail.message || raw
+          const fieldErrors = detail.detail?.field_errors || detail.field_errors || []
+          const parts = [typeof msg === 'string' ? msg : JSON.stringify(msg)]
+          if (fieldErrors.length > 0) {
+            parts.push('\n\nField errors:\n' + fieldErrors.join('\n'))
           }
           setError(parts.join(''))
         } catch {
-          setError(err.message || 'Import failed. Check the output format.')
+          setError(raw)
         }
       } else {
-        setError('Import failed. Check the output format.')
+        setError(raw)
       }
     } finally {
       setImporting(false)

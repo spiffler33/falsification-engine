@@ -56,23 +56,22 @@ function RunMode() {
   const [showImport, setShowImport] = useState(null) // 'generation' | 'elimination' | null
   const [promptText, setPromptText] = useState('')
   const [copied, setCopied] = useState(false)
-  const [apiRunning, setApiRunning] = useState(null) // 'generation' | 'elimination' | null
+  const [apiRunning, setApiRunning] = useState(null) // 'data' | null
   const [apiError, setApiError] = useState(null)
+  const [dataProgress, setDataProgress] = useState([]) // progress log lines for data agent
 
-  const loadPrompt = useCallback(async (stage) => {
-    if (showPrompt === stage) {
-      setShowPrompt(null)
-      return
-    }
-    try {
-      const data = await api.get(`/api/pipeline/prompt/${stage}`)
-      setPromptText(typeof data === 'string' ? data : (data?.prompt || JSON.stringify(data, null, 2)))
-      setShowPrompt(stage)
-    } catch (err) {
-      setPromptText('Failed to load prompt: ' + err.message)
-      setShowPrompt(stage)
-    }
-  }, [showPrompt])
+  const loadPrompt = useCallback((stage) => {
+    setShowPrompt(prev => {
+      if (prev === stage) return null  // toggle off
+      // toggle on — fetch prompt
+      api.get(`/api/pipeline/prompt/${stage}`).then(data => {
+        setPromptText(typeof data === 'string' ? data : (data?.prompt || JSON.stringify(data, null, 2)))
+      }).catch(err => {
+        setPromptText('Failed to load prompt: ' + err.message)
+      })
+      return stage
+    })
+  }, [])
 
   const copyPrompt = useCallback(async (stage) => {
     try {
@@ -92,16 +91,53 @@ function RunMode() {
     refetchStatus()
   }, [refetchStatus])
 
-  const runViaApi = useCallback(async (stage) => {
-    setApiRunning(stage)
+  const refreshData = useCallback(() => {
+    setApiRunning('data')
     setApiError(null)
-    try {
-      await api.post(`/api/pipeline/run/${stage}`, { web_search: true })
-      refetchStatus()
-    } catch (err) {
-      setApiError(err.message || `API ${stage} failed`)
-    } finally {
-      setApiRunning(null)
+    setDataProgress([])
+
+    const evtSource = new EventSource('/api/briefing/refresh')
+
+    evtSource.onmessage = (event) => {
+      try {
+        const msg = JSON.parse(event.data)
+
+        if (msg.stage === 'error') {
+          setApiError(msg.detail)
+          evtSource.close()
+          setApiRunning(null)
+          return
+        }
+
+        // For yahoo ticker-by-ticker updates, replace the last yahoo line
+        // instead of appending every single ticker
+        setDataProgress(prev => {
+          if (msg.stage === 'yahoo' && prev.length > 0 && prev[prev.length - 1].stage === 'yahoo') {
+            return [...prev.slice(0, -1), msg]
+          }
+          return [...prev, msg]
+        })
+
+        if (msg.stage === 'complete') {
+          evtSource.close()
+          setApiRunning(null)
+          refetchStatus()
+        }
+      } catch {
+        // ignore malformed events
+      }
+    }
+
+    evtSource.onerror = () => {
+      evtSource.close()
+      // Only set error if we're still running (not already completed)
+      setApiRunning(prev => {
+        if (prev === 'data') {
+          setApiError('Connection to data agent lost')
+          return null
+        }
+        return prev
+      })
     }
   }, [refetchStatus])
 
@@ -134,55 +170,70 @@ function RunMode() {
             type={def.type}
             state={getState(i)}
           >
-            {/* Step 3: Generation — show prompt/copy/import buttons */}
-            {i === 2 && (
+            {/* Step 1: Data Briefing — refresh button + progress log */}
+            {i === 0 && (
               <>
+                {status?.briefing_timestamp && (
+                  <div className="pipeline-step__meta">
+                    Briefing data from: {new Date(status.briefing_timestamp).toLocaleString()}
+                  </div>
+                )}
                 <div className="pipeline-step__buttons">
-                  <button className="btn" onClick={() => loadPrompt('generation')}>
-                    {showPrompt === 'generation' ? 'HIDE PROMPT' : 'SHOW PROMPT'}
-                  </button>
-                  <button className="btn" onClick={() => copyPrompt('generation')}>
-                    {copied ? 'COPIED' : 'COPY TO CLIPBOARD'}
-                  </button>
-                  <button className="btn btn--primary" onClick={() => setShowImport(showImport === 'generation' ? null : 'generation')}>
-                    IMPORT RESULT
-                  </button>
-                </div>
-                <div className="pipeline-step__api-alt">
                   <button
-                    className="btn btn--subtle"
-                    onClick={() => runViaApi('generation')}
+                    className="btn btn--primary"
+                    onClick={refreshData}
                     disabled={apiRunning !== null}
                   >
-                    {apiRunning === 'generation' ? 'RUNNING VIA API...' : 'or run via API'}
+                    {apiRunning === 'data' ? 'REFRESHING...' : 'REFRESH DATA'}
                   </button>
                 </div>
+                {dataProgress.length > 0 && (
+                  <div className="data-progress">
+                    {dataProgress.map((p, idx) => (
+                      <div
+                        key={idx}
+                        className={`data-progress__line ${p.stage === 'complete' ? 'data-progress__line--done' : ''} ${p.stage === 'error' ? 'data-progress__line--error' : ''}`}
+                      >
+                        {p.detail}
+                      </div>
+                    ))}
+                  </div>
+                )}
               </>
+            )}
+            {/* Step 2: Activation — runs fresh every time prompt is built */}
+            {i === 1 && (
+              <div className="pipeline-step__meta">
+                Runs automatically on latest briefing data when you generate a prompt.
+              </div>
+            )}
+            {/* Step 3: Generation — show prompt/copy/import buttons */}
+            {i === 2 && (
+              <div className="pipeline-step__buttons">
+                <button className="btn" onClick={() => loadPrompt('generation')}>
+                  {showPrompt === 'generation' ? 'HIDE PROMPT' : 'SHOW PROMPT'}
+                </button>
+                <button className="btn" onClick={() => copyPrompt('generation')}>
+                  {copied ? 'COPIED' : 'COPY TO CLIPBOARD'}
+                </button>
+                <button className="btn btn--primary" onClick={() => setShowImport(showImport === 'generation' ? null : 'generation')}>
+                  IMPORT RESULT
+                </button>
+              </div>
             )}
             {/* Step 4: Elimination — same pattern */}
             {i === 3 && (
-              <>
-                <div className="pipeline-step__buttons">
-                  <button className="btn" onClick={() => loadPrompt('elimination')}>
-                    {showPrompt === 'elimination' ? 'HIDE PROMPT' : 'SHOW PROMPT'}
-                  </button>
-                  <button className="btn" onClick={() => copyPrompt('elimination')}>
-                    {copied ? 'COPIED' : 'COPY TO CLIPBOARD'}
-                  </button>
-                  <button className="btn btn--primary" onClick={() => setShowImport(showImport === 'elimination' ? null : 'elimination')}>
-                    IMPORT RESULT
-                  </button>
-                </div>
-                <div className="pipeline-step__api-alt">
-                  <button
-                    className="btn btn--subtle"
-                    onClick={() => runViaApi('elimination')}
-                    disabled={apiRunning !== null}
-                  >
-                    {apiRunning === 'elimination' ? 'RUNNING VIA API...' : 'or run via API'}
-                  </button>
-                </div>
-              </>
+              <div className="pipeline-step__buttons">
+                <button className="btn" onClick={() => loadPrompt('elimination')}>
+                  {showPrompt === 'elimination' ? 'HIDE PROMPT' : 'SHOW PROMPT'}
+                </button>
+                <button className="btn" onClick={() => copyPrompt('elimination')}>
+                  {copied ? 'COPIED' : 'COPY TO CLIPBOARD'}
+                </button>
+                <button className="btn btn--primary" onClick={() => setShowImport(showImport === 'elimination' ? null : 'elimination')}>
+                  IMPORT RESULT
+                </button>
+              </div>
             )}
           </PipelineStep>
         ))}

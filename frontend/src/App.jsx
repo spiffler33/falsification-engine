@@ -9,20 +9,15 @@ import PipelineView from './views/PipelineView'
 import BriefingView from './views/BriefingView'
 import HypothesisDetail from './overlays/HypothesisDetail'
 import { api } from './lib/api'
+import { isStaticMode, getSnapshot } from './lib/snapshot'
 
 export default function App() {
   const [inboxCount, setInboxCount] = useState(0)
   const [selectedHypothesis, setSelectedHypothesis] = useState(null)
-  const [isMockData, setIsMockData] = useState(false)
-  const [mockDismissed, setMockDismissed] = useState(false)
   const navigate = useNavigate()
   const location = useLocation()
 
   useEffect(() => {
-    api.get('/api/health').then(data => {
-      if (data?.is_mock_data) setIsMockData(true)
-    }).catch(() => {})
-
     api.get('/api/inbox?status=queued').then(data => {
       if (Array.isArray(data)) setInboxCount(data.length)
     }).catch(() => {})
@@ -57,17 +52,11 @@ export default function App() {
       <Header />
       <NavBar inboxCount={inboxCount} />
 
-      {isMockData && !mockDismissed && (
-        <div className="mock-banner">
-          <span className="mock-banner__text">
-            Displaying mock data. Run the pipeline to generate real hypotheses.
+      {isStaticMode() && (
+        <div className="static-banner">
+          <span className="static-banner__text">
+            Read-only snapshot -- published {getSnapshot()?.snapshot_timestamp?.split('T')[0] || ''}
           </span>
-          <button
-            className="mock-banner__dismiss"
-            onClick={() => setMockDismissed(true)}
-          >
-            DISMISS
-          </button>
         </div>
       )}
 

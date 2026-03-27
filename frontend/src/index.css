@@ -38,6 +38,48 @@
 }
 
 
+/* ─── Night Mode: Midnight Blue ────────────────────── */
+
+[data-theme="night"] {
+  /* Backgrounds — deep navy, not flat black */
+  --bg-primary:    #0F1724;
+  --bg-secondary:  #1A2540;
+  --bg-inset:      #141E33;
+  --bg-hover:      #1E2D4A;
+
+  /* Text — cream tones on dark */
+  --text-primary:   #E8E4DC;
+  --text-secondary: #A0998F;
+  --text-tertiary:  #6B6560;
+
+  /* Semantic accents — slightly brighter for dark bg readability */
+  --accent-negative: #C44B4B;
+  --accent-positive: #5A8A3C;
+  --accent-gold:     #C9922A;
+  --accent-high:     #C86B3A;
+
+  /* Borders — subtle slate lines */
+  --border-light:  #253350;
+  --border-medium: #2E3F5E;
+}
+
+[data-theme="night"] .modal-backdrop {
+  background: rgba(8, 12, 22, 0.75);
+}
+
+[data-theme="night"] .hypothesis-table tr.row--wounded {
+  background: rgba(201, 146, 42, 0.06);
+}
+
+[data-theme="night"] .falsifier-severity--medium {
+  border-color: rgba(201, 146, 42, 0.2);
+}
+
+[data-theme="night"] .falsifier-severity--major {
+  border-color: rgba(196, 75, 75, 0.2);
+}
+
+
 /* ─── Reset & Base ──────────────────────────────────── */
 
 *, *::before, *::after {
@@ -160,6 +202,37 @@ p, .body-text {
   color: var(--text-tertiary);
   letter-spacing: 0.04em;
   margin-top: 2px;
+}
+
+.app-header__row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+
+.app-header__actions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.theme-toggle {
+  font-family: var(--font-data);
+  font-size: 10px;
+  font-weight: 500;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: var(--text-tertiary);
+  background: none;
+  border: 1px solid var(--border-light);
+  padding: 4px 10px;
+  cursor: pointer;
+  transition: color 0.12s, border-color 0.12s;
+}
+
+.theme-toggle:hover {
+  color: var(--text-secondary);
+  border-color: var(--border-medium);
 }
 
 
@@ -1098,34 +1171,18 @@ p, .body-text {
   text-align: center;
 }
 
-/* First-run banner */
-.mock-banner {
+/* Static snapshot banner */
+.static-banner {
   background: var(--bg-secondary);
   border: 1px solid var(--border-medium);
   padding: 10px 16px;
   margin-bottom: 16px;
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
 }
 
-.mock-banner__text {
+.static-banner__text {
   font-family: var(--font-data);
   font-size: 11px;
   color: var(--text-secondary);
-}
-
-.mock-banner__dismiss {
-  font-family: var(--font-data);
-  font-size: 10px;
-  color: var(--text-tertiary);
-  background: none;
-  border: none;
-  cursor: pointer;
-}
-
-.mock-banner__dismiss:hover {
-  color: var(--text-primary);
 }
 
 
@@ -1568,6 +1625,42 @@ p, .body-text {
   justify-content: space-between;
   align-items: center;
   gap: 12px;
+}
+
+/* Pipeline step meta info */
+.pipeline-step__meta {
+  font-family: var(--font-data);
+  font-size: 10px;
+  color: var(--text-tertiary);
+  margin-bottom: 8px;
+}
+
+/* Data Agent Progress Log */
+.data-progress {
+  margin-top: 10px;
+  padding: 10px 14px;
+  background: var(--bg-inset);
+  border: 1px solid var(--border-light);
+  max-height: 180px;
+  overflow-y: auto;
+}
+
+.data-progress__line {
+  font-family: var(--font-data);
+  font-size: 11px;
+  color: var(--text-secondary);
+  padding: 2px 0;
+  line-height: 1.5;
+}
+
+.data-progress__line--done {
+  color: var(--accent-positive);
+  font-weight: 600;
+}
+
+.data-progress__line--error {
+  color: var(--accent-negative);
+  font-weight: 600;
 }
 
 /* Prompt Preview */

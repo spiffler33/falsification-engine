@@ -597,14 +597,19 @@ def fetch_fred_data() -> dict[str, Optional[float]]:
     return results
 
 
-def fetch_yahoo_data() -> dict[str, MarketData]:
+def fetch_yahoo_data(on_progress=None) -> dict[str, MarketData]:
     """Fetch market data for full ETF universe + special tickers.
 
     Uses concurrent curl subprocess calls to bypass Yahoo TLS fingerprinting.
+
+    Args:
+        on_progress: Optional callback(fetched, total, ticker) called as each ticker completes.
     """
     all_tickers = ETF_UNIVERSE + list(SPECIAL_TICKERS.keys())
     market_data: dict[str, MarketData] = {}
     failed: list[str] = []
+    total = len(all_tickers)
+    fetched = 0
 
     with ThreadPoolExecutor(max_workers=YAHOO_CONCURRENCY) as executor:
         futures = {
@@ -614,6 +619,7 @@ def fetch_yahoo_data() -> dict[str, MarketData]:
 
         for future in as_completed(futures):
             ticker = futures[future]
+            fetched += 1
             try:
                 result = future.result()
                 if result:
@@ -628,6 +634,9 @@ def fetch_yahoo_data() -> dict[str, MarketData]:
             except Exception as e:
                 logger.warning(f"Yahoo {ticker}: {e}")
                 failed.append(ticker)
+
+            if on_progress:
+                on_progress(fetched, total, ticker)
 
     if failed:
         logger.warning(f"Failed tickers ({len(failed)}): {', '.join(sorted(failed))}")
@@ -665,39 +674,55 @@ def _compute_spy_drawdown_curl() -> Optional[float]:
         return None
 
 
-def build_briefing(use_cache: bool = True) -> BriefingPacket:
+def build_briefing(use_cache: bool = True, on_progress=None) -> BriefingPacket:
     """Main entry point: fetch all data and build a BriefingPacket.
 
     If use_cache is True and a fresh cache exists, returns cached data.
+
+    Args:
+        use_cache: If True, return cached data when available.
+        on_progress: Optional callback(stage, detail) for progress reporting.
+                     stage: short phase name, detail: human-readable status string.
     """
+    def emit(stage, detail):
+        if on_progress:
+            on_progress(stage, detail)
+
     # Check cache
     if use_cache:
+        emit("cache", "Checking cache...")
         cached = _load_cache()
         if cached:
             try:
+                emit("cache", "Fresh cache found, using cached data")
                 return BriefingPacket.model_validate_json(json.dumps(cached))
             except Exception:
-                # If cache is malformed, proceed with fresh fetch
-                pass
+                emit("cache", "Cache malformed, fetching fresh data")
 
-    logger.info("Fetching fresh data...")
+    emit("start", "Starting fresh data fetch")
     fetch_timestamp = datetime.now(timezone.utc).isoformat()
 
     # Fetch FRED
-    logger.info("Fetching FRED data (%d series)...", len(FRED_SERIES))
+    emit("fred", f"Fetching FRED data ({len(FRED_SERIES)} series)...")
     fred_data = fetch_fred_data()
-    logger.info("FRED: %d/%d series fetched", sum(1 for v in fred_data.values() if v is not None), len(FRED_SERIES))
+    fred_ok = sum(1 for v in fred_data.values() if v is not None)
+    emit("fred", f"FRED complete: {fred_ok}/{len(FRED_SERIES)} series")
 
     # Fetch Yahoo
     total_tickers = len(ETF_UNIVERSE) + len(SPECIAL_TICKERS)
-    logger.info("Fetching Yahoo data (%d tickers)...", total_tickers)
-    market_data = fetch_yahoo_data()
-    logger.info("Yahoo: %d/%d tickers fetched", len(market_data), total_tickers)
+    emit("yahoo", f"Fetching Yahoo Finance data ({total_tickers} tickers)...")
+
+    def yahoo_progress(fetched, total, ticker):
+        emit("yahoo", f"Yahoo: {fetched}/{total} tickers ({ticker})")
+
+    market_data = fetch_yahoo_data(on_progress=yahoo_progress)
+    emit("yahoo", f"Yahoo complete: {len(market_data)}/{total_tickers} tickers")
 
     # Compute SPY drawdown
     spy_dd = _compute_spy_drawdown_curl()
 
     # Compute derived metrics
+    emit("compute", "Computing derived metrics...")
     computed = _compute_metrics(fred_data, market_data)
 
     # Patch in SPY drawdown if we got it
@@ -705,11 +730,14 @@ def build_briefing(use_cache: bool = True) -> BriefingPacket:
         computed["spy_drawdown_from_52w_high"] = spy_dd
 
     # Assemble briefing
+    emit("assemble", "Assembling briefing packet...")
     briefing = _build_briefing_from_data(fred_data, market_data, computed, fetch_timestamp)
 
     # Cache result
+    emit("save", "Saving to cache...")
     _save_cache(briefing)
 
+    emit("done", "Data briefing complete")
     return briefing
 
 

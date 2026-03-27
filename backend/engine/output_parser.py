@@ -2,15 +2,14 @@
 # Depends on: schemas/hypothesis.py, schemas/scoring.py
 # Depended on by: api/pipeline.py
 #
-# Handles both generation output (creates new hypotheses) and
-# elimination output (updates existing hypotheses with status + notes).
-# Validates schema with clear error messages for malformed input.
+# DESIGN PRINCIPLE: Be maximally tolerant of LLM output variations.
+# Never reject a hypothesis over a missing display field — default it.
+# Only reject if the data is completely unparseable (not JSON, not an array).
 from __future__ import annotations
 
 import json
 import re
-import uuid
-from datetime import date, datetime
+from datetime import date
 from typing import Any
 
 
@@ -24,14 +23,77 @@ class ParseError(Exception):
         super().__init__(message)
 
 
+# ---------------------------------------------------------------------------
+# Field name aliases — every reasonable name the LLM might use
+# ---------------------------------------------------------------------------
+FIELD_ALIASES: dict[str, list[str]] = {
+    "short_name": [
+        "name", "title", "hypothesis_name", "hypothesis", "hypothesis_title",
+        "summary", "label", "short_title",
+    ],
+    "theory_id": [
+        "source_theory", "theory", "theory_module", "module", "module_id",
+    ],
+    "predicted_assets": [
+        "assets", "tickers", "instruments", "etfs", "predicted_tickers",
+        "target_assets", "trade_instruments", "exposure", "positions",
+        "etf_tickers", "target_etfs", "relevant_assets", "affected_assets",
+    ],
+    "asset_direction": [
+        "direction", "directions", "asset_directions", "trade_direction",
+        "position_direction", "long_short", "side", "sides",
+        "directional_view", "directional_views",
+    ],
+    "full_statement": [
+        "statement", "mechanism", "description", "thesis", "rationale",
+        "full_description", "hypothesis_statement", "explanation",
+        "causal_chain", "narrative",
+    ],
+    "hard_falsifiers": [
+        "hard_falsifier", "kill_conditions", "hard_kill", "falsifiers_hard",
+        "hard_falsifier_conditions",
+    ],
+    "soft_falsifiers": [
+        "soft_falsifier", "wound_conditions", "soft_wound", "falsifiers_soft",
+        "soft_falsifier_conditions",
+    ],
+    "timeframe": [
+        "time_frame", "horizon", "time_horizon", "duration", "holding_period",
+        "expected_timeframe",
+    ],
+    "source_theories": [
+        "theories", "theory_ids", "source_theory_ids", "contributing_theories",
+    ],
+    "conviction_inputs": [
+        "conviction", "scoring_inputs", "conviction_scoring",
+        "epistemic_inputs", "scores",
+    ],
+}
+
+
+def _normalize_fields(item: dict) -> None:
+    """Apply all field name aliases in-place."""
+    for canonical, alternatives in FIELD_ALIASES.items():
+        if item.get(canonical):
+            continue
+        for alt in alternatives:
+            if item.get(alt):
+                item[canonical] = item.pop(alt)
+                break
+
+
+# ---------------------------------------------------------------------------
+# Generation output parsing
+# ---------------------------------------------------------------------------
+
 def parse_generation_output(
     raw_json: str,
     run_id: str,
 ) -> list[dict[str, Any]]:
     """Parse generation pass JSON output into hypothesis dicts.
 
-    Returns a list of hypothesis dicts ready for DB insertion.
-    Raises ParseError with specific field-level messages on failure.
+    Maximally tolerant: normalizes field names, derives missing fields,
+    and only skips a hypothesis if it has literally no identifiable name.
     """
     data = _extract_json_array(raw_json)
     if not data:
@@ -44,49 +106,76 @@ def parse_generation_output(
     field_errors = []
 
     for i, item in enumerate(data):
-        errors = _validate_generation_item(item, i)
-        if errors:
-            field_errors.extend(errors)
+        if not isinstance(item, dict):
+            field_errors.append(f"Hypothesis {i+1}: Expected object, got {type(item).__name__}")
             continue
 
-        # Generate hypothesis ID: H-YYYY-DDD-NN
-        today = date.today()
-        day_of_year = today.timetuple().tm_yday
-        seq = len(hypotheses) + 1
-        h_id = f"H-{today.year}-{day_of_year:03d}-{seq:02d}"
+        # Normalize all field names
+        _normalize_fields(item)
 
-        source_theory = item.get("theory_id", "")
+        # Must have SOME name — this is the one hard requirement
+        name = item.get("short_name", "")
+        if not name:
+            # Last resort: generate a name from theory_id
+            theory = item.get("theory_id", "")
+            if theory:
+                name = f"Hypothesis from {theory}"
+                item["short_name"] = name
+            else:
+                field_errors.append(
+                    f"Hypothesis {i+1}: No identifiable name (tried: short_name, name, title, hypothesis). "
+                    f"Keys present: {', '.join(sorted(item.keys()))}"
+                )
+                continue
+
+        # Generate hypothesis ID
+        run_ts = run_id.replace("R-", "") if run_id.startswith("R-") else run_id
+        seq = len(hypotheses) + 1
+        h_id = f"H-{run_ts}-{seq:02d}"
+
+        # Derive theory fields with sensible defaults
+        source_theory = item.get("theory_id", "unknown")
         source_theories = item.get("source_theories", [source_theory])
+        if isinstance(source_theories, str):
+            source_theories = [source_theories]
         if source_theory and source_theory not in source_theories:
             source_theories = [source_theory] + source_theories
+
+        # Derive asset fields — try every possible source
+        predicted_assets = _extract_assets(item)
+        asset_direction = _extract_directions(item, predicted_assets)
 
         hypothesis = {
             "id": h_id,
             "run_id": run_id,
-            "short_name": item["short_name"],
-            "full_statement": item.get("full_statement", item.get("mechanism", "")),
+            "short_name": name,
+            "full_statement": item.get("full_statement", item.get("prediction", "")),
             "source_theory": source_theory,
             "source_theories": json.dumps(source_theories),
-            "status": "SURVIVED",  # all start as survived; elimination updates this
-            "conviction": None,  # set by conviction scoring
+            "status": "SURVIVED",
+            "conviction": None,
             "conviction_math": None,
             "hard_falsifiers": json.dumps(_normalize_hard_falsifiers(item.get("hard_falsifiers", []))),
             "soft_falsifiers": json.dumps(_normalize_soft_falsifiers(item.get("soft_falsifiers", []))),
-            "predicted_assets": json.dumps(item.get("predicted_assets", [])),
-            "asset_direction": json.dumps(item.get("asset_direction", {})),
+            "predicted_assets": json.dumps(predicted_assets),
+            "asset_direction": json.dumps(asset_direction),
             "timeframe": item.get("timeframe", ""),
             "elimination_notes": "",
-            "generated_date": today.isoformat(),
+            "generated_date": date.today().isoformat(),
         }
 
         # Stash conviction inputs for later scoring
-        hypothesis["_conviction_inputs"] = item.get("conviction_inputs", {})
+        conv = item.get("conviction_inputs", {})
+        if isinstance(conv, dict):
+            hypothesis["_conviction_inputs"] = conv
+        else:
+            hypothesis["_conviction_inputs"] = {}
 
         hypotheses.append(hypothesis)
 
-    if field_errors and not hypotheses:
+    if not hypotheses:
         raise ParseError(
-            f"All {len(data)} hypotheses had validation errors.",
+            f"Could not parse any hypotheses from {len(data)} items.",
             raw_input=raw_json,
             field_errors=field_errors,
         )
@@ -94,15 +183,65 @@ def parse_generation_output(
     return hypotheses
 
 
+def _extract_assets(item: dict) -> list[str]:
+    """Extract predicted assets from any plausible field."""
+    # Direct field
+    assets = item.get("predicted_assets", [])
+    if isinstance(assets, list) and assets:
+        return assets
+
+    # From asset_direction keys
+    directions = item.get("asset_direction", {})
+    if isinstance(directions, dict) and directions:
+        return list(directions.keys())
+
+    # Search nested structures — Claude sometimes puts assets inside prediction
+    for key in ["prediction", "trade", "position", "exposure"]:
+        nested = item.get(key, {})
+        if isinstance(nested, dict):
+            for sub_key in ["assets", "tickers", "instruments", "etfs", "predicted_assets"]:
+                val = nested.get(sub_key, [])
+                if isinstance(val, list) and val:
+                    return val
+            for sub_key in ["direction", "directions", "asset_direction"]:
+                val = nested.get(sub_key, {})
+                if isinstance(val, dict) and val:
+                    return list(val.keys())
+
+    return []
+
+
+def _extract_directions(item: dict, assets: list[str]) -> dict[str, str]:
+    """Extract asset directions from any plausible field."""
+    directions = item.get("asset_direction", {})
+    if isinstance(directions, dict) and directions:
+        return directions
+
+    # Search nested
+    for key in ["prediction", "trade", "position", "exposure"]:
+        nested = item.get(key, {})
+        if isinstance(nested, dict):
+            for sub_key in ["direction", "directions", "asset_direction"]:
+                val = nested.get(sub_key, {})
+                if isinstance(val, dict) and val:
+                    return val
+
+    # Default: mark all assets as LONG
+    if assets:
+        return {a: "LONG" for a in assets}
+
+    return {}
+
+
+# ---------------------------------------------------------------------------
+# Elimination output parsing
+# ---------------------------------------------------------------------------
+
 def parse_elimination_output(
     raw_json: str,
     existing_hypotheses: list[dict[str, Any]],
 ) -> list[dict[str, Any]]:
-    """Parse elimination pass JSON output and merge with existing hypotheses.
-
-    Updates status, elimination_notes, soft falsifier states, and conviction inputs.
-    Returns updated hypothesis dicts.
-    """
+    """Parse elimination pass JSON output and merge with existing hypotheses."""
     data = _extract_json_array(raw_json)
     if not data:
         raise ParseError(
@@ -110,7 +249,7 @@ def parse_elimination_output(
             raw_input=raw_json,
         )
 
-    # Build lookup by various keys the LLM might use
+    # Build lookup by various keys
     existing_by_id = {}
     existing_by_index = {}
     existing_by_name = {}
@@ -121,19 +260,14 @@ def parse_elimination_output(
 
     updated = []
     for i, item in enumerate(data):
-        # Match to existing hypothesis
+        _normalize_fields(item)
+
         matched = None
 
-        # Try hypothesis_id first
-        h_id = item.get("hypothesis_id", "")
+        # Try hypothesis_id / id
+        h_id = item.get("hypothesis_id", item.get("id", ""))
         if h_id and h_id in existing_by_id:
             matched = existing_by_id[h_id]
-        elif str(h_id) in existing_by_index:
-            matched = existing_by_index[str(h_id)]
-
-        # Try by index
-        if not matched and str(i) in existing_by_index:
-            matched = existing_by_index[str(i)]
 
         # Try by short_name
         if not matched:
@@ -141,37 +275,48 @@ def parse_elimination_output(
             if name and name in existing_by_name:
                 matched = existing_by_name[name]
 
-        if not matched:
-            # If we can't match, use index-based matching as last resort
-            if i < len(existing_hypotheses):
-                matched = existing_hypotheses[i]
-            else:
-                continue
+        # Try by index
+        if not matched and i < len(existing_hypotheses):
+            matched = existing_hypotheses[i]
 
-        # Update the hypothesis
+        if not matched:
+            continue
+
+        # Update status
         status = item.get("status", "SURVIVED").upper()
         if status not in ("SURVIVED", "WOUNDED", "KILLED"):
             status = "SURVIVED"
 
         matched["status"] = status
-        matched["elimination_notes"] = item.get("elimination_notes", "")
+        matched["elimination_notes"] = item.get("elimination_notes", item.get("notes", item.get("reasoning", "")))
 
-        # Update soft falsifier states from elimination output
-        sf_check = item.get("soft_falsifier_check", {})
-        triggered_names = set(n.lower() for n in sf_check.get("triggered", []))
-        if triggered_names:
-            existing_sf = json.loads(matched.get("soft_falsifiers", "[]"))
-            for sf in existing_sf:
-                if sf.get("name", "").lower() in triggered_names:
-                    sf["status"] = "TRIGGERED"
-            matched["soft_falsifiers"] = json.dumps(existing_sf)
+        # Update soft falsifier states
+        sf_updates = item.get("soft_falsifiers", item.get("soft_falsifier_check", {}))
+        if isinstance(sf_updates, dict):
+            triggered_names = set(n.lower() for n in sf_updates.get("triggered", []))
+            if triggered_names:
+                existing_sf = json.loads(matched.get("soft_falsifiers", "[]"))
+                for sf in existing_sf:
+                    if sf.get("name", "").lower() in triggered_names:
+                        sf["status"] = "TRIGGERED"
+                matched["soft_falsifiers"] = json.dumps(existing_sf)
+        elif isinstance(sf_updates, list):
+            # Claude might return the full updated list
+            for sf_item in sf_updates:
+                if isinstance(sf_item, dict) and sf_item.get("status", "").upper() == "TRIGGERED":
+                    existing_sf = json.loads(matched.get("soft_falsifiers", "[]"))
+                    name = sf_item.get("name", sf_item.get("id", "")).lower()
+                    for sf in existing_sf:
+                        if sf.get("name", "").lower() == name or sf.get("condition", "").lower() == name:
+                            sf["status"] = "TRIGGERED"
+                    matched["soft_falsifiers"] = json.dumps(existing_sf)
 
-        # Store conviction inputs from elimination
+        # Store conviction inputs
         matched["_conviction_inputs"] = item.get("conviction_inputs", {})
 
         updated.append(matched)
 
-    # Include any hypotheses not in elimination output (shouldn't happen, but be safe)
+    # Include unmatched hypotheses as-is
     updated_ids = {h.get("id") for h in updated}
     for h in existing_hypotheses:
         if h.get("id") not in updated_ids:
@@ -179,6 +324,10 @@ def parse_elimination_output(
 
     return updated
 
+
+# ---------------------------------------------------------------------------
+# JSON extraction
+# ---------------------------------------------------------------------------
 
 def _extract_json_array(raw: str) -> list[dict] | None:
     """Extract a JSON array from potentially noisy LLM output.
@@ -219,56 +368,51 @@ def _extract_json_array(raw: str) -> list[dict] | None:
     return None
 
 
-def _validate_generation_item(item: dict, index: int) -> list[str]:
-    """Validate a single generation output item. Returns list of error messages."""
-    errors = []
-    prefix = f"Hypothesis {index + 1}"
-
-    if not isinstance(item, dict):
-        return [f"{prefix}: Expected object, got {type(item).__name__}"]
-
-    required = ["short_name", "theory_id"]
-    for field in required:
-        if not item.get(field):
-            errors.append(f"{prefix}: Missing required field '{field}'")
-
-    if not item.get("predicted_assets") and not item.get("asset_direction"):
-        errors.append(f"{prefix}: Must specify predicted_assets or asset_direction")
-
-    return errors
-
+# ---------------------------------------------------------------------------
+# Normalizers
+# ---------------------------------------------------------------------------
 
 def _normalize_hard_falsifiers(items: list) -> list[dict]:
     """Normalize hard falsifier items to consistent schema."""
+    if not isinstance(items, list):
+        return []
     result = []
     for item in items:
         if isinstance(item, str):
-            result.append({"condition": item, "status": "passed", "detail": ""})
+            result.append({"condition": item, "status": "passed", "detail": "", "metric": "", "threshold": ""})
         elif isinstance(item, dict):
             result.append({
-                "condition": item.get("condition", str(item)),
+                "condition": item.get("condition", item.get("description", str(item))),
                 "status": "passed",
                 "detail": "",
-                "metric": item.get("metric", ""),
-                "threshold": item.get("threshold", ""),
+                "metric": str(item.get("metric", "")),
+                "threshold": str(item.get("threshold", "")),
             })
     return result
 
 
 def _normalize_soft_falsifiers(items: list) -> list[dict]:
     """Normalize soft falsifier items to consistent schema."""
+    if not isinstance(items, list):
+        return []
     result = []
     for item in items:
-        if isinstance(item, dict):
-            severity = item.get("severity", "minor").lower()
+        if isinstance(item, str):
+            result.append({
+                "name": item, "severity": "minor", "status": "clear",
+                "metric": "", "threshold": "", "condition": item,
+            })
+        elif isinstance(item, dict):
+            severity = str(item.get("severity", "minor")).lower()
             if severity not in ("minor", "medium", "major"):
                 severity = "minor"
+            name = item.get("name", item.get("condition", item.get("description", "Unknown")))
             result.append({
-                "name": item.get("name", item.get("condition", "Unknown")),
+                "name": name,
                 "severity": severity,
                 "status": "clear",
                 "metric": str(item.get("metric", "")),
                 "threshold": str(item.get("threshold", "")),
-                "condition": item.get("condition", ""),
+                "condition": item.get("condition", name),
             })
     return result

@@ -2,9 +2,11 @@
 # Depends on: config.py (for API key)
 # Depended on by: api/pipeline.py (run-via-API endpoints)
 #
-# This is the BACKUP path. Primary workflow is copy-paste through Claude.ai
-# where the user gets web search, artifacts, and can iterate.
-# API path is for when the user wants a quick run without leaving the app.
+# Configured to match what you'd get doing it manually in Claude.ai:
+# - Opus 4.6 (latest, best adversarial reasoning)
+# - Adaptive thinking (model decides depth, same as Claude.ai)
+# - Web search on with generous allowance
+# - 128K max output (no artificial cap)
 from __future__ import annotations
 
 import logging
@@ -16,11 +18,13 @@ from backend.config import settings
 
 logger = logging.getLogger(__name__)
 
-# Model selection -- Opus for both passes (best adversarial reasoning)
-MODEL = "claude-opus-4-20250514"
+# Opus 4.6 — latest model, supports 128K output + adaptive thinking.
+MODEL = "claude-opus-4-6"
 
-# Budget tokens for extended thinking
-THINKING_BUDGET = 10000
+# 128K max output — let the model use what it needs.
+# With adaptive thinking the model decides how much to think,
+# so there's no need to manually budget thinking vs response tokens.
+MAX_OUTPUT = 128000
 
 
 def _get_client() -> anthropic.Anthropic:
@@ -60,6 +64,10 @@ def _stream_to_text(client: anthropic.Anthropic, kwargs: dict[str, Any]) -> str:
 def run_generation(prompt: str, use_web_search: bool = True) -> str:
     """Run the generation pass via Anthropic API.
 
+    Configured to match Claude.ai: adaptive thinking (model decides depth),
+    web search on, full output budget. The model will think as deeply as the
+    prompt demands — no artificial thinking cap.
+
     Args:
         prompt: The full generation prompt (built by prompt_builder).
         use_web_search: Enable web search tool for current data lookups.
@@ -71,10 +79,9 @@ def run_generation(prompt: str, use_web_search: bool = True) -> str:
 
     kwargs: dict[str, Any] = {
         "model": MODEL,
-        "max_tokens": THINKING_BUDGET + 16000,
+        "max_tokens": MAX_OUTPUT,
         "thinking": {
-            "type": "enabled",
-            "budget_tokens": THINKING_BUDGET,
+            "type": "adaptive",
         },
         "messages": [
             {"role": "user", "content": prompt},
@@ -86,7 +93,7 @@ def run_generation(prompt: str, use_web_search: bool = True) -> str:
             {
                 "type": "web_search_20250305",
                 "name": "web_search",
-                "max_uses": 5,
+                "max_uses": 10,
             }
         ]
 
@@ -97,9 +104,10 @@ def run_generation(prompt: str, use_web_search: bool = True) -> str:
 def run_elimination(prompt: str, use_web_search: bool = True) -> str:
     """Run the elimination pass via Anthropic API.
 
-    The elimination pass benefits most from extended thinking --
+    The elimination pass benefits most from deep thinking —
     the model needs to reason carefully about falsifier states
-    and cross-theory contradictions.
+    and cross-theory contradictions. Adaptive thinking lets
+    it use as much reasoning as the task demands.
 
     Args:
         prompt: The full elimination prompt (built by prompt_builder).
@@ -110,14 +118,11 @@ def run_elimination(prompt: str, use_web_search: bool = True) -> str:
     """
     client = _get_client()
 
-    elim_budget = THINKING_BUDGET * 2  # More thinking for adversarial work
-
     kwargs: dict[str, Any] = {
         "model": MODEL,
-        "max_tokens": 32000,  # Opus max
+        "max_tokens": MAX_OUTPUT,
         "thinking": {
-            "type": "enabled",
-            "budget_tokens": elim_budget,
+            "type": "adaptive",
         },
         "messages": [
             {"role": "user", "content": prompt},
@@ -129,7 +134,7 @@ def run_elimination(prompt: str, use_web_search: bool = True) -> str:
             {
                 "type": "web_search_20250305",
                 "name": "web_search",
-                "max_uses": 10,  # More searches for falsifier checking
+                "max_uses": 15,  # More searches for falsifier condition checking
             }
         ]
 
