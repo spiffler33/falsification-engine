@@ -29,7 +29,7 @@ export default function PipelineStep({
           {state === 'complete' ? 'COMPLETE' : state === 'ready' ? 'READY' : 'WAITING'}
         </div>
       </div>
-      {state === 'ready' && children && (
+      {state !== 'complete' && children && (
         <div className="pipeline-step__actions">
           {children}
         </div>

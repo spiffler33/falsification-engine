@@ -9,9 +9,9 @@ const PANELS = [
   {
     title: 'Growth',
     fields: [
-      { key: 'growth.gdp_yoy', label: 'GDP YoY' },
-      { key: 'growth.ism_manufacturing', label: 'ISM Mfg' },
-      { key: 'growth.unemployment_rate', label: 'Unemployment' },
+      { key: 'growth.real_gdp', label: 'Real GDP' },
+      { key: 'growth.ism_proxy', label: 'ISM Mfg' },
+      { key: 'growth.unemployment', label: 'Unemployment' },
       { key: 'growth.nonfarm_payrolls', label: 'Payrolls' },
       { key: 'growth.initial_claims', label: 'Initial Claims' },
     ],
@@ -20,7 +20,7 @@ const PANELS = [
     title: 'Inflation',
     fields: [
       { key: 'inflation.cpi_yoy', label: 'CPI YoY' },
-      { key: 'inflation.core_pce_yoy', label: 'Core PCE' },
+      { key: 'inflation.core_pce', label: 'Core PCE' },
       { key: 'inflation.breakeven_5y', label: '5Y Breakeven' },
       { key: 'inflation.breakeven_10y', label: '10Y Breakeven' },
     ],
@@ -29,10 +29,10 @@ const PANELS = [
     title: 'Rates',
     fields: [
       { key: 'rates.fed_funds', label: 'Fed Funds' },
-      { key: 'rates.yield_2y', label: '2Y Yield' },
-      { key: 'rates.yield_10y', label: '10Y Yield' },
-      { key: 'rates.yield_30y', label: '30Y Yield' },
-      { key: 'computed.spread_2s10s', label: '2s10s Spread' },
+      { key: 'rates.treasury_2y', label: '2Y Yield' },
+      { key: 'rates.treasury_10y', label: '10Y Yield' },
+      { key: 'rates.treasury_30y', label: '30Y Yield' },
+      { key: 'rates.curve_2s10s', label: '2s10s Spread' },
       { key: 'computed.real_10y', label: 'Real 10Y' },
     ],
   },
@@ -41,9 +41,9 @@ const PANELS = [
     fields: [
       { key: 'computed.net_liquidity', label: 'Net Liquidity' },
       { key: 'liquidity.fed_balance_sheet', label: 'Fed BS' },
-      { key: 'liquidity.treasury_general_account', label: 'TGA' },
+      { key: 'liquidity.tga', label: 'TGA' },
       { key: 'liquidity.reverse_repo', label: 'RRP' },
-      { key: 'liquidity.m2_yoy', label: 'M2 YoY' },
+      { key: 'liquidity.m2', label: 'M2' },
     ],
   },
   {
@@ -56,8 +56,10 @@ const PANELS = [
   {
     title: 'Sentiment',
     fields: [
-      { key: 'sentiment.vix', label: 'VIX' },
+      { key: 'markets.^VIX.price', label: 'VIX' },
       { key: 'computed.vix_vs_realized', label: 'VIX vs Realized' },
+      { key: 'computed.spy_drawdown_from_52w_high', label: 'SPY Drawdown' },
+      { key: 'computed.qqq_iwm_ratio', label: 'QQQ/IWM Ratio' },
     ],
   },
 ]

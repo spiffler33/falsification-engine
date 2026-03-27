@@ -56,6 +56,8 @@ function RunMode() {
   const [showImport, setShowImport] = useState(null) // 'generation' | 'elimination' | null
   const [promptText, setPromptText] = useState('')
   const [copied, setCopied] = useState(false)
+  const [apiRunning, setApiRunning] = useState(null) // 'generation' | 'elimination' | null
+  const [apiError, setApiError] = useState(null)
 
   const loadPrompt = useCallback(async (stage) => {
     if (showPrompt === stage) {
@@ -90,6 +92,19 @@ function RunMode() {
     refetchStatus()
   }, [refetchStatus])
 
+  const runViaApi = useCallback(async (stage) => {
+    setApiRunning(stage)
+    setApiError(null)
+    try {
+      await api.post(`/api/pipeline/run/${stage}`, { web_search: true })
+      refetchStatus()
+    } catch (err) {
+      setApiError(err.message || `API ${stage} failed`)
+    } finally {
+      setApiRunning(null)
+    }
+  }, [refetchStatus])
+
   if (loading) return <div className="loading">Loading pipeline status...</div>
 
   // Derive step states from status
@@ -121,35 +136,64 @@ function RunMode() {
           >
             {/* Step 3: Generation — show prompt/copy/import buttons */}
             {i === 2 && (
-              <div className="pipeline-step__buttons">
-                <button className="btn" onClick={() => loadPrompt('generation')}>
-                  {showPrompt === 'generation' ? 'HIDE PROMPT' : 'SHOW PROMPT'}
-                </button>
-                <button className="btn" onClick={() => copyPrompt('generation')}>
-                  {copied ? 'COPIED' : 'COPY TO CLIPBOARD'}
-                </button>
-                <button className="btn btn--primary" onClick={() => setShowImport(showImport === 'generation' ? null : 'generation')}>
-                  IMPORT RESULT
-                </button>
-              </div>
+              <>
+                <div className="pipeline-step__buttons">
+                  <button className="btn" onClick={() => loadPrompt('generation')}>
+                    {showPrompt === 'generation' ? 'HIDE PROMPT' : 'SHOW PROMPT'}
+                  </button>
+                  <button className="btn" onClick={() => copyPrompt('generation')}>
+                    {copied ? 'COPIED' : 'COPY TO CLIPBOARD'}
+                  </button>
+                  <button className="btn btn--primary" onClick={() => setShowImport(showImport === 'generation' ? null : 'generation')}>
+                    IMPORT RESULT
+                  </button>
+                </div>
+                <div className="pipeline-step__api-alt">
+                  <button
+                    className="btn btn--subtle"
+                    onClick={() => runViaApi('generation')}
+                    disabled={apiRunning !== null}
+                  >
+                    {apiRunning === 'generation' ? 'RUNNING VIA API...' : 'or run via API'}
+                  </button>
+                </div>
+              </>
             )}
             {/* Step 4: Elimination — same pattern */}
             {i === 3 && (
-              <div className="pipeline-step__buttons">
-                <button className="btn" onClick={() => loadPrompt('elimination')}>
-                  {showPrompt === 'elimination' ? 'HIDE PROMPT' : 'SHOW PROMPT'}
-                </button>
-                <button className="btn" onClick={() => copyPrompt('elimination')}>
-                  {copied ? 'COPIED' : 'COPY TO CLIPBOARD'}
-                </button>
-                <button className="btn btn--primary" onClick={() => setShowImport(showImport === 'elimination' ? null : 'elimination')}>
-                  IMPORT RESULT
-                </button>
-              </div>
+              <>
+                <div className="pipeline-step__buttons">
+                  <button className="btn" onClick={() => loadPrompt('elimination')}>
+                    {showPrompt === 'elimination' ? 'HIDE PROMPT' : 'SHOW PROMPT'}
+                  </button>
+                  <button className="btn" onClick={() => copyPrompt('elimination')}>
+                    {copied ? 'COPIED' : 'COPY TO CLIPBOARD'}
+                  </button>
+                  <button className="btn btn--primary" onClick={() => setShowImport(showImport === 'elimination' ? null : 'elimination')}>
+                    IMPORT RESULT
+                  </button>
+                </div>
+                <div className="pipeline-step__api-alt">
+                  <button
+                    className="btn btn--subtle"
+                    onClick={() => runViaApi('elimination')}
+                    disabled={apiRunning !== null}
+                  >
+                    {apiRunning === 'elimination' ? 'RUNNING VIA API...' : 'or run via API'}
+                  </button>
+                </div>
+              </>
             )}
           </PipelineStep>
         ))}
       </div>
+
+      {apiError && (
+        <div className="pipeline-api-error">
+          {apiError}
+          <button className="btn btn--subtle" onClick={() => setApiError(null)}>DISMISS</button>
+        </div>
+      )}
 
       {showPrompt && (
         <PromptPreview

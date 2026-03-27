@@ -1529,6 +1529,47 @@ p, .body-text {
   flex-wrap: wrap;
 }
 
+.pipeline-step__api-alt {
+  margin-top: 6px;
+}
+
+.btn--subtle {
+  background: none;
+  border: none;
+  color: var(--text-tertiary);
+  font-family: var(--font-data);
+  font-size: 10px;
+  letter-spacing: 0.04em;
+  cursor: pointer;
+  padding: 2px 0;
+  text-decoration: underline;
+  text-underline-offset: 2px;
+}
+
+.btn--subtle:hover {
+  color: var(--text-secondary);
+}
+
+.btn--subtle:disabled {
+  color: var(--accent-gold);
+  text-decoration: none;
+  cursor: wait;
+}
+
+.pipeline-api-error {
+  background: var(--bg-inset);
+  border-left: 3px solid var(--accent-negative);
+  padding: 10px 14px;
+  margin-top: 12px;
+  font-family: var(--font-data);
+  font-size: 11px;
+  color: var(--accent-negative);
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 12px;
+}
+
 /* Prompt Preview */
 .prompt-preview {
   background: var(--bg-inset);
