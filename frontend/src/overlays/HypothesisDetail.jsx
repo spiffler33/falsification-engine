@@ -281,9 +281,14 @@ export default function HypothesisDetail({ hypothesis: h, onClose }) {
             <div className="detail-section__title">Trades</div>
             {trades.map(t => {
               const isOpen = t.status === 'OPEN'
-              const pnl = isOpen ? t.unrealized_pnl : t.realized_pnl
-              const pct = isOpen ? t.unrealized_pct : t.realized_pct
+              const sign = t.direction === 'LONG' ? 1 : -1
+              const refPrice = isOpen ? null : t.exit_price
+              const pnl = refPrice != null ? (refPrice - t.entry_price) * t.shares * sign : null
+              const pct = refPrice != null ? ((refPrice - t.entry_price) / t.entry_price) * sign * 100 : null
               const pnlClass = (pnl || 0) >= 0 ? 'perf--positive' : 'perf--negative'
+              const entryDt = t.entry_date ? new Date(t.entry_date) : null
+              const endDt = t.exit_date ? new Date(t.exit_date) : new Date()
+              const days = entryDt ? Math.round((endDt - entryDt) / 86400000) : null
               return (
                 <div key={t.id} className="detail-trade-card">
                   <div className="detail-trade-card__header">
@@ -298,13 +303,16 @@ export default function HypothesisDetail({ hypothesis: h, onClose }) {
                   </div>
                   <div className="detail-trade-card__meta">
                     <span>Entry: ${t.entry_price?.toFixed(2)}</span>
-                    {isOpen && t.current_price && <span>Current: ${t.current_price.toFixed(2)}</span>}
-                    {!isOpen && t.exit_price && <span>Exit: ${t.exit_price.toFixed(2)}</span>}
-                    <span className={pnlClass}>
-                      {pnl != null ? `${pnl >= 0 ? '+' : ''}$${pnl.toFixed(2)} (${pct >= 0 ? '+' : ''}${pct?.toFixed(2)}%)` : '---'}
-                    </span>
+                    {!isOpen && t.exit_price != null && <span>Exit: ${t.exit_price.toFixed(2)}</span>}
+                    {pnl != null ? (
+                      <span className={pnlClass}>
+                        {pnl >= 0 ? '+' : ''}${pnl.toFixed(2)} ({pct >= 0 ? '+' : ''}{pct.toFixed(2)}%)
+                      </span>
+                    ) : (
+                      isOpen && <span className="detail-trade-card__open-note">Use Trades view to refresh prices</span>
+                    )}
                     <span>{t.shares} shares</span>
-                    {t.days_held != null && <span>{t.days_held}d</span>}
+                    {days != null && <span>{days}d</span>}
                   </div>
                 </div>
               )

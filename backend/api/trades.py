@@ -1,11 +1,13 @@
-# trades.py -- Trade tracker CRUD + price refresh + performance aggregation.
+# trades.py -- Trade tracker CRUD + price lookup.
+# Backend stores primitives only. All derived values (P&L, days held,
+# notional, performance stats) are computed at render time by the frontend.
 # Depends on: db/database.py, db/models.py
 # Depended on by: main.py (router registration)
 from __future__ import annotations
 
 import json
 import subprocess
-from datetime import date, datetime
+from datetime import date
 
 from typing import Optional
 
@@ -71,16 +73,7 @@ def _next_trade_id(db: Session) -> str:
 
 
 def _trade_to_dict(t: Trade) -> dict:
-    """Convert Trade model to frontend-friendly dict."""
-    direction_sign = 1 if t.direction == "LONG" else -1
-    days = None
-    if t.entry_date:
-        try:
-            entry_dt = datetime.fromisoformat(t.entry_date).date()
-            days = (date.today() - entry_dt).days
-        except (ValueError, TypeError):
-            pass
-
+    """Convert Trade model to frontend-friendly dict — primitives only."""
     return {
         "id": t.id,
         "hypothesis_id": t.hypothesis_id,
@@ -90,16 +83,9 @@ def _trade_to_dict(t: Trade) -> dict:
         "entry_date": t.entry_date,
         "entry_price": t.entry_price,
         "shares": t.shares,
-        "notional": t.notional,
         "conviction_at_entry": t.conviction_at_entry,
-        "current_price": t.current_price,
-        "unrealized_pnl": t.unrealized_pnl,
-        "unrealized_pct": t.unrealized_pct,
-        "days_held": days if t.status == "OPEN" else t.days_held,
         "exit_date": t.exit_date,
         "exit_price": t.exit_price,
-        "realized_pnl": t.realized_pnl,
-        "realized_pct": t.realized_pct,
         "exit_reason": t.exit_reason,
         "status": t.status,
         "hypothesis_short_name": t.hypothesis_short_name,
@@ -145,7 +131,6 @@ def create_trade(payload: dict = Body(...), db: Session = Depends(get_db)):
         raise HTTPException(status_code=400, detail="ticker, entry_price, and shares are required")
 
     entry_date = payload.get("entry_date", date.today().isoformat())
-    notional = float(entry_price) * float(shares)
 
     # Get current run_id
     latest_run = db.query(Run).order_by(desc(Run.timestamp)).first()
@@ -159,11 +144,7 @@ def create_trade(payload: dict = Body(...), db: Session = Depends(get_db)):
         entry_date=entry_date,
         entry_price=float(entry_price),
         shares=float(shares),
-        notional=notional,
         conviction_at_entry=h.conviction,
-        current_price=float(entry_price),  # starts at entry
-        unrealized_pnl=0.0,
-        unrealized_pct=0.0,
         status="OPEN",
         hypothesis_short_name=h.short_name,
         hypothesis_theory=h.source_theory,
@@ -176,129 +157,35 @@ def create_trade(payload: dict = Body(...), db: Session = Depends(get_db)):
 
 
 @router.patch("/trades/{trade_id}")
-def update_trade(trade_id: str, payload: dict = Body(...), db: Session = Depends(get_db)):
+def close_trade(trade_id: str, payload: dict = Body(...), db: Session = Depends(get_db)):
     trade = db.query(Trade).filter(Trade.id == trade_id).first()
     if not trade:
         raise HTTPException(status_code=404, detail=f"Trade {trade_id} not found")
 
-    # Close trade
     if "exit_price" in payload:
-        exit_price = float(payload["exit_price"])
-        direction_sign = 1 if trade.direction == "LONG" else -1
-        realized_pnl = (exit_price - trade.entry_price) * trade.shares * direction_sign
-        realized_pct = ((exit_price - trade.entry_price) / trade.entry_price) * direction_sign * 100
-
-        trade.exit_price = exit_price
+        trade.exit_price = float(payload["exit_price"])
         trade.exit_date = payload.get("exit_date", date.today().isoformat())
         trade.exit_reason = payload.get("exit_reason", "manual")
-        trade.realized_pnl = round(realized_pnl, 2)
-        trade.realized_pct = round(realized_pct, 2)
         trade.status = "CLOSED"
-        trade.current_price = exit_price
-        trade.unrealized_pnl = 0.0
-        trade.unrealized_pct = 0.0
-
-        # Compute final days held
-        try:
-            entry_dt = datetime.fromisoformat(trade.entry_date).date()
-            exit_dt = datetime.fromisoformat(trade.exit_date).date()
-            trade.days_held = (exit_dt - entry_dt).days
-        except (ValueError, TypeError):
-            pass
-
-    # Update current price manually
-    if "current_price" in payload and "exit_price" not in payload:
-        current = float(payload["current_price"])
-        direction_sign = 1 if trade.direction == "LONG" else -1
-        trade.current_price = current
-        trade.unrealized_pnl = round(
-            (current - trade.entry_price) * trade.shares * direction_sign, 2
-        )
-        trade.unrealized_pct = round(
-            ((current - trade.entry_price) / trade.entry_price) * direction_sign * 100, 2
-        )
 
     db.commit()
     db.refresh(trade)
     return _trade_to_dict(trade)
 
 
-@router.get("/trades/refresh")
-def refresh_trade_prices(db: Session = Depends(get_db)):
-    """Fetch current prices for all open trades via Yahoo Finance."""
-    open_trades = db.query(Trade).filter(Trade.status == "OPEN").all()
-    if not open_trades:
-        return {"updated": 0, "trades": []}
+@router.get("/prices")
+def get_prices(tickers: str = Query(...)):
+    """Fetch current prices for given tickers. Stores nothing.
+    Usage: GET /api/prices?tickers=GLD,SPY,RSP
+    """
+    ticker_list = [t.strip().upper() for t in tickers.split(",") if t.strip()]
+    if not ticker_list:
+        raise HTTPException(status_code=400, detail="No tickers provided")
 
-    tickers = list({t.ticker for t in open_trades})
-
-    # Fetch prices via curl (same approach as data_agent.py — avoids TLS fingerprinting blocks)
     prices = {}
-    for tick in tickers:
+    for tick in ticker_list:
         price = _fetch_current_price(tick)
         if price is not None:
             prices[tick] = price
 
-    if not prices:
-        raise HTTPException(status_code=502, detail="No price data returned from Yahoo Finance")
-
-    updated = 0
-    for trade in open_trades:
-        if trade.ticker in prices:
-            current = prices[trade.ticker]
-            direction_sign = 1 if trade.direction == "LONG" else -1
-            trade.current_price = round(current, 2)
-            trade.unrealized_pnl = round(
-                (current - trade.entry_price) * trade.shares * direction_sign, 2
-            )
-            trade.unrealized_pct = round(
-                ((current - trade.entry_price) / trade.entry_price) * direction_sign * 100, 2
-            )
-            updated += 1
-
-    db.commit()
-
-    refreshed = [_trade_to_dict(t) for t in open_trades]
-    return {"updated": updated, "prices": prices, "trades": refreshed}
-
-
-@router.get("/trades/performance")
-def trade_performance(db: Session = Depends(get_db)):
-    """Aggregate performance stats across all trades."""
-    all_trades = db.query(Trade).all()
-    open_trades = [t for t in all_trades if t.status == "OPEN"]
-    closed_trades = [t for t in all_trades if t.status == "CLOSED"]
-
-    # Open P&L
-    open_pnl = sum(t.unrealized_pnl or 0 for t in open_trades)
-    open_notional = sum(t.notional or 0 for t in open_trades)
-
-    # Closed stats
-    wins = [t for t in closed_trades if (t.realized_pnl or 0) > 0]
-    losses = [t for t in closed_trades if (t.realized_pnl or 0) <= 0]
-    win_rate = len(wins) / len(closed_trades) if closed_trades else None
-    total_realized = sum(t.realized_pnl or 0 for t in closed_trades)
-
-    # Avg return by conviction tier
-    conviction_tiers = {}
-    for t in closed_trades:
-        conv = int(t.conviction_at_entry) if t.conviction_at_entry else 0
-        if conv not in conviction_tiers:
-            conviction_tiers[conv] = []
-        conviction_tiers[conv].append(t.realized_pct or 0)
-
-    avg_by_conviction = {
-        k: round(sum(v) / len(v), 2) for k, v in conviction_tiers.items()
-    }
-
-    return {
-        "open_count": len(open_trades),
-        "closed_count": len(closed_trades),
-        "open_pnl": round(open_pnl, 2),
-        "open_notional": round(open_notional, 2),
-        "total_realized": round(total_realized, 2),
-        "win_rate": round(win_rate, 3) if win_rate is not None else None,
-        "wins": len(wins),
-        "losses": len(losses),
-        "avg_return_by_conviction": avg_by_conviction,
-    }
+    return prices

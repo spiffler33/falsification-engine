@@ -24,43 +24,36 @@ The following pipeline is built and working end-to-end:
 
 **Goal:** Record live trades linked to hypotheses, track P&L, and see how conviction level correlates with actual performance over time.
 
-**This is NOT a portfolio optimizer.** It tracks individual trades in isolation — entry, current price, P&L, and which hypothesis justified the trade. The user decides sizing and timing. The system tracks outcomes.
+**This is NOT a portfolio optimizer.** It tracks individual trades in isolation — entry, exit, and which hypothesis justified the trade. The user decides sizing and timing. The system tracks outcomes.
 
-#### Data Model
+**Design principle:** Backend stores primitives only. All derived values (P&L, days held, notional, performance stats) are computed at render time by the frontend. The backend has no concept of "current price" — it only knows what you paid and what you sold for.
+
+#### Data Model (primitives only)
 
 ```python
 class Trade(Base):
     __tablename__ = "trades"
-    
+
     id: str                          # "T-2026-001"
     hypothesis_id: str               # FK to hypothesis that justified this trade
     run_id: str                      # which pipeline run was current at entry
-    
-    # Entry
+
+    # Primitives
     ticker: str                      # e.g., "GLD"
     direction: str                   # "LONG" or "SHORT"
     entry_date: str                  # ISO date
     entry_price: float               # price at entry
-    shares: int                      # number of shares/units
-    notional: float                  # entry_price × shares
-    conviction_at_entry: int         # conviction score when trade was opened
-    
-    # Current state
-    current_price: float | None      # updated on refresh
-    unrealized_pnl: float | None     # (current - entry) × shares × direction_sign
-    unrealized_pct: float | None     # percentage return
-    days_held: int | None            # calendar days since entry
-    
+    shares: float                    # number of shares/units
+    conviction_at_entry: float       # conviction score when trade was opened
+
     # Exit (null until closed)
     exit_date: str | None
     exit_price: float | None
-    realized_pnl: float | None
-    realized_pct: float | None
     exit_reason: str | None          # "hypothesis_killed" | "target_reached" | "stop_hit" | "manual" | "expired"
-    
+
     # Status
     status: str                      # "OPEN" | "CLOSED"
-    
+
     # Hypothesis snapshot at entry (denormalized for historical record)
     hypothesis_short_name: str
     hypothesis_theory: str
@@ -73,19 +66,34 @@ class Trade(Base):
 |--------|----------|---------|
 | GET | `/api/trades` | All trades. Query: `status=OPEN\|CLOSED`, `ticker`, `hypothesis_id` |
 | POST | `/api/trades` | Open a new trade. Requires: ticker, direction, entry_price, shares, hypothesis_id |
-| PATCH | `/api/trades/{id}` | Update (close trade, update current_price) |
-| GET | `/api/trades/refresh` | Fetch current prices for all open trades via Yahoo Finance, update P&L |
-| GET | `/api/trades/performance` | Aggregate stats: win rate, avg return by conviction tier, Sharpe-like metric |
+| PATCH | `/api/trades/{id}` | Close trade (sets exit_price, exit_date, exit_reason, status=CLOSED). No P&L computation. |
+| GET | `/api/prices?tickers=GLD,SPY` | Fetch current prices via Yahoo Finance. Returns `{ticker: price}` dict. Stores nothing. |
 
-#### Frontend — Trade View
+No `/api/trades/refresh` — the frontend calls `/api/prices` directly and computes P&L.
+No `/api/trades/performance` — the frontend computes win rate, avg return, etc. from the trade list.
+
+#### Frontend — Trade View (all computation client-side)
 
 New tab in NavBar: **TRADES** (between JOURNAL and OBSERVATORY).
+
+On mount: fetch trades via GET `/api/trades`, then call GET `/api/prices` with all OPEN trade tickers.
+
+**Computed per-trade at render time:**
+- `notional = entry_price * shares`
+- `unrealized_pnl = (current_price - entry_price) * shares * direction_sign`
+- `unrealized_pct = (current_price - entry_price) / entry_price * direction_sign`
+- `days_held = today - entry_date` (or exit_date - entry_date for closed)
+- For CLOSED trades: same math using exit_price instead of current_price
+
+**Performance summary** (computed client-side): open P&L, total notional, win rate, W/L, avg return by conviction tier.
+
+**REFRESH PRICES button** just re-calls `/api/prices` and re-renders. No backend writes.
 
 **Layout:**
 
 ```
 ┌──────────────────────────────────────────────────────────────────┐
-│  OPEN TRADES                                         [+ NEW TRADE] │
+│  OPEN TRADES                       [REFRESH PRICES] [+ NEW TRADE] │
 ├──────────────────────────────────────────────────────────────────┤
 │  Ticker  Dir   Entry    Current   P&L      %      Days  Conv  Hyp │
 │  GLD     LONG  $295.40  $298.10   +$810   +0.91%   3    7    H-05 │
@@ -107,9 +115,7 @@ New tab in NavBar: **TRADES** (between JOURNAL and OBSERVATORY).
 - User enters: entry_price, shares
 - System records: conviction_at_entry, hypothesis snapshot
 
-**Hypothesis Detail integration:** Add a "TRADES" section at the bottom of the hypothesis detail overlay showing all trades linked to that hypothesis.
-
-**Price refresh:** Button on the trade view header that calls `/api/trades/refresh`. Uses Yahoo Finance (same as data_agent.py). No auto-refresh — manual trigger only.
+**Hypothesis Detail integration:** Add a "TRADES" section at the bottom of the hypothesis detail overlay showing all trades linked to that hypothesis. For OPEN trades, shows "Use Trades view to refresh prices" since live prices are only fetched on the Trades view.
 
 ---
 

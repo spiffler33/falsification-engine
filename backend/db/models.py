@@ -77,26 +77,17 @@ class Trade(Base):
     hypothesis_id = Column(Text, ForeignKey("hypotheses.id"), nullable=False)
     run_id = Column(Text)  # pipeline run at entry
 
-    # Entry
+    # Primitives
     ticker = Column(Text, nullable=False)
     direction = Column(Text, nullable=False)  # "LONG" | "SHORT"
     entry_date = Column(Text, nullable=False)
     entry_price = Column(Float, nullable=False)
     shares = Column(Float, nullable=False)
-    notional = Column(Float)  # entry_price * shares
     conviction_at_entry = Column(Float)
-
-    # Current state (updated on refresh)
-    current_price = Column(Float)
-    unrealized_pnl = Column(Float)
-    unrealized_pct = Column(Float)
-    days_held = Column(Float)
 
     # Exit (null until closed)
     exit_date = Column(Text)
     exit_price = Column(Float)
-    realized_pnl = Column(Float)
-    realized_pct = Column(Float)
     exit_reason = Column(Text)  # hypothesis_killed | target_reached | stop_hit | manual | expired
 
     # Status

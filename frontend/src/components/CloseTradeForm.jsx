@@ -13,7 +13,7 @@ const EXIT_REASONS = [
 ]
 
 export default function CloseTradeForm({ trade, onSubmit, onCancel }) {
-  const [exitPrice, setExitPrice] = useState(trade.current_price?.toString() || '')
+  const [exitPrice, setExitPrice] = useState('')
   const [exitDate, setExitDate] = useState(new Date().toISOString().slice(0, 10))
   const [exitReason, setExitReason] = useState('manual')
 

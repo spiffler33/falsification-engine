@@ -1,35 +1,120 @@
 /**
  * TradesView — Trade tracker linked to hypotheses.
- * Records live trades, tracks P&L, correlates conviction with outcomes.
+ * Backend stores primitives only. All derived values (P&L, days held,
+ * notional, performance stats) are computed here at render time.
  *
  * Depends on: GET /api/trades, POST /api/trades, PATCH /api/trades/:id,
- *             GET /api/trades/refresh, GET /api/trades/performance,
- *             GET /api/hypotheses?status=SURVIVED&status=WOUNDED
+ *             GET /api/prices?tickers=...
  */
-import { useState, useCallback } from 'react'
+import { useState, useCallback, useEffect, useMemo } from 'react'
 import { useApi } from '../hooks/useApi'
 import { api } from '../lib/api'
-import { fmtDate } from '../lib/format'
 import NewTradeForm from '../components/NewTradeForm'
 import CloseTradeForm from '../components/CloseTradeForm'
 
+// ---------------------------------------------------------------------------
+// Derived-value helpers — all computation lives here, not in the backend
+// ---------------------------------------------------------------------------
+
+function dirSign(direction) {
+  return direction === 'LONG' ? 1 : -1
+}
+
+function daysHeld(entryDate, exitDate) {
+  if (!entryDate) return null
+  const entry = new Date(entryDate)
+  const end = exitDate ? new Date(exitDate) : new Date()
+  return Math.round((end - entry) / 86400000)
+}
+
+function enrichTrade(t, prices) {
+  const sign = dirSign(t.direction)
+  const days = daysHeld(t.entry_date, t.exit_date)
+  const notional = t.entry_price * t.shares
+
+  if (t.status === 'CLOSED' && t.exit_price != null) {
+    const pnl = (t.exit_price - t.entry_price) * t.shares * sign
+    const pct = ((t.exit_price - t.entry_price) / t.entry_price) * sign * 100
+    return { ...t, notional, days_held: days, realized_pnl: pnl, realized_pct: pct }
+  }
+
+  // OPEN trade — use live price if available
+  const current = prices[t.ticker] ?? null
+  const pnl = current != null ? (current - t.entry_price) * t.shares * sign : null
+  const pct = current != null ? ((current - t.entry_price) / t.entry_price) * sign * 100 : null
+  return { ...t, notional, days_held: days, current_price: current, unrealized_pnl: pnl, unrealized_pct: pct }
+}
+
+function computePerformance(openTrades, closedTrades) {
+  const openPnl = openTrades.reduce((s, t) => s + (t.unrealized_pnl || 0), 0)
+  const openNotional = openTrades.reduce((s, t) => s + (t.notional || 0), 0)
+
+  const wins = closedTrades.filter(t => (t.realized_pnl || 0) > 0)
+  const losses = closedTrades.filter(t => (t.realized_pnl || 0) <= 0)
+  const winRate = closedTrades.length > 0 ? wins.length / closedTrades.length : null
+  const totalRealized = closedTrades.reduce((s, t) => s + (t.realized_pnl || 0), 0)
+
+  // Avg return by conviction tier
+  const tiers = {}
+  for (const t of closedTrades) {
+    const conv = Math.round(t.conviction_at_entry || 0)
+    if (!tiers[conv]) tiers[conv] = []
+    tiers[conv].push(t.realized_pct || 0)
+  }
+  const avgByConviction = {}
+  for (const [k, v] of Object.entries(tiers)) {
+    avgByConviction[k] = v.reduce((a, b) => a + b, 0) / v.length
+  }
+
+  return { openPnl, openNotional, totalRealized, winRate, wins: wins.length, losses: losses.length, avgByConviction }
+}
+
+// ---------------------------------------------------------------------------
+// Component
+// ---------------------------------------------------------------------------
+
 export default function TradesView({ onSelectHypothesis }) {
   const { data: trades, loading, error, refetch } = useApi('/api/trades')
-  const { data: perf, refetch: refetchPerf } = useApi('/api/trades/performance')
+  const [prices, setPrices] = useState({})
   const [showNewForm, setShowNewForm] = useState(false)
   const [closingTrade, setClosingTrade] = useState(null)
   const [refreshing, setRefreshing] = useState(false)
+
+  // Fetch prices for open trade tickers
+  const fetchPrices = useCallback(async (tradeList) => {
+    const openTickers = [...new Set((tradeList || []).filter(t => t.status === 'OPEN').map(t => t.ticker))]
+    if (openTickers.length === 0) return
+    setRefreshing(true)
+    try {
+      const data = await api.get(`/api/prices?tickers=${openTickers.join(',')}`)
+      if (data) setPrices(data)
+    } catch (err) {
+      console.error('Failed to fetch prices:', err)
+    } finally {
+      setRefreshing(false)
+    }
+  }, [])
+
+  // Auto-fetch prices on mount when trades load
+  useEffect(() => {
+    if (trades && trades.length > 0) fetchPrices(trades)
+  }, [trades, fetchPrices])
+
+  // Enrich trades with derived values
+  const enriched = useMemo(() => (trades || []).map(t => enrichTrade(t, prices)), [trades, prices])
+  const openTrades = useMemo(() => enriched.filter(t => t.status === 'OPEN'), [enriched])
+  const closedTrades = useMemo(() => enriched.filter(t => t.status === 'CLOSED'), [enriched])
+  const perf = useMemo(() => computePerformance(openTrades, closedTrades), [openTrades, closedTrades])
 
   const handleCreate = useCallback(async (data) => {
     try {
       await api.post('/api/trades', data)
       setShowNewForm(false)
       refetch()
-      refetchPerf()
     } catch (err) {
       console.error('Failed to create trade:', err)
     }
-  }, [refetch, refetchPerf])
+  }, [refetch])
 
   const handleClose = useCallback(async (data) => {
     try {
@@ -40,24 +125,14 @@ export default function TradesView({ onSelectHypothesis }) {
       })
       setClosingTrade(null)
       refetch()
-      refetchPerf()
     } catch (err) {
       console.error('Failed to close trade:', err)
     }
-  }, [refetch, refetchPerf])
+  }, [refetch])
 
-  const handleRefresh = useCallback(async () => {
-    setRefreshing(true)
-    try {
-      await api.get('/api/trades/refresh')
-      refetch()
-      refetchPerf()
-    } catch (err) {
-      console.error('Failed to refresh prices:', err)
-    } finally {
-      setRefreshing(false)
-    }
-  }, [refetch, refetchPerf])
+  const handleRefresh = useCallback(() => {
+    fetchPrices(trades)
+  }, [trades, fetchPrices])
 
   const handleHypothesisClick = useCallback((hypothesisId) => {
     if (onSelectHypothesis && hypothesisId) {
@@ -69,10 +144,6 @@ export default function TradesView({ onSelectHypothesis }) {
 
   if (loading) return <div className="loading">Loading trades...</div>
   if (error) return <div className="empty-state">Failed to load trades.</div>
-
-  const allTrades = trades || []
-  const openTrades = allTrades.filter(t => t.status === 'OPEN')
-  const closedTrades = allTrades.filter(t => t.status === 'CLOSED')
 
   return (
     <div className="trades-view">
@@ -158,23 +229,23 @@ export default function TradesView({ onSelectHypothesis }) {
       )}
 
       {/* Performance */}
-      {perf && (openTrades.length > 0 || closedTrades.length > 0) && (
+      {(openTrades.length > 0 || closedTrades.length > 0) && (
         <div className="trades-view__performance">
           <h3>Performance</h3>
           <div className="perf-grid">
-            <PerfStat label="Open P&L" value={fmtPnl(perf.open_pnl)} pnl={perf.open_pnl} />
-            <PerfStat label="Open Notional" value={fmtDollar(perf.open_notional)} />
-            {perf.closed_count > 0 && (
+            <PerfStat label="Open P&L" value={fmtPnl(perf.openPnl)} pnl={perf.openPnl} />
+            <PerfStat label="Open Notional" value={fmtDollar(perf.openNotional)} />
+            {closedTrades.length > 0 && (
               <>
-                <PerfStat label="Realized" value={fmtPnl(perf.total_realized)} pnl={perf.total_realized} />
-                <PerfStat label="Win Rate" value={perf.win_rate != null ? `${(perf.win_rate * 100).toFixed(0)}%` : '---'} />
+                <PerfStat label="Realized" value={fmtPnl(perf.totalRealized)} pnl={perf.totalRealized} />
+                <PerfStat label="Win Rate" value={perf.winRate != null ? `${(perf.winRate * 100).toFixed(0)}%` : '---'} />
                 <PerfStat label="W / L" value={`${perf.wins} / ${perf.losses}`} />
               </>
             )}
-            {Object.keys(perf.avg_return_by_conviction || {}).length > 0 && (
+            {Object.keys(perf.avgByConviction).length > 0 && (
               <div className="perf-conviction-breakdown">
                 <span className="perf-stat__label">Avg Return by Conviction:</span>
-                {Object.entries(perf.avg_return_by_conviction)
+                {Object.entries(perf.avgByConviction)
                   .sort(([a], [b]) => Number(b) - Number(a))
                   .map(([conv, avg]) => (
                     <span key={conv} className="perf-conviction-tier">
@@ -220,7 +291,7 @@ function TradeRow({ trade: t, onClose, onHypothesisClick }) {
         {t.direction}
       </td>
       <td className="trades-table__num">${t.entry_price?.toFixed(2)}</td>
-      <td className="trades-table__num">{t.current_price ? `$${t.current_price.toFixed(2)}` : '---'}</td>
+      <td className="trades-table__num">{t.current_price != null ? `$${t.current_price.toFixed(2)}` : '---'}</td>
       <td className={`trades-table__num ${pnlClass}`}>{fmtPnl(t.unrealized_pnl)}</td>
       <td className={`trades-table__num ${pnlClass}`}>{fmtPct(t.unrealized_pct)}</td>
       <td className="trades-table__num">{t.days_held ?? '---'}</td>
