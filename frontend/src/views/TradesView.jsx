@@ -9,6 +9,7 @@
 import { useState, useCallback, useEffect, useMemo } from 'react'
 import { useApi } from '../hooks/useApi'
 import { api } from '../lib/api'
+import { isStaticMode } from '../lib/snapshot'
 import NewTradeForm from '../components/NewTradeForm'
 import CloseTradeForm from '../components/CloseTradeForm'
 import PendingTradesPanel from '../components/PendingTradesPanel'
@@ -165,20 +166,22 @@ export default function TradesView({ onSelectHypothesis }) {
       {/* Open Trades */}
       <div className="trades-view__header">
         <h2>Open Trades</h2>
-        <div className="trades-view__actions">
-          {openTrades.length > 0 && (
-            <button
-              className="btn"
-              onClick={handleRefresh}
-              disabled={refreshing}
-            >
-              {refreshing ? 'REFRESHING...' : 'REFRESH PRICES'}
+        {!isStaticMode() && (
+          <div className="trades-view__actions">
+            {openTrades.length > 0 && (
+              <button
+                className="btn"
+                onClick={handleRefresh}
+                disabled={refreshing}
+              >
+                {refreshing ? 'REFRESHING...' : 'REFRESH PRICES'}
+              </button>
+            )}
+            <button className="btn btn--primary" onClick={() => setShowNewForm(true)}>
+              + NEW TRADE
             </button>
-          )}
-          <button className="btn btn--primary" onClick={() => setShowNewForm(true)}>
-            + NEW TRADE
-          </button>
-        </div>
+          </div>
+        )}
       </div>
 
       {openTrades.length === 0 ? (
@@ -324,9 +327,11 @@ function TradeRow({ trade: t, onClose, onHypothesisClick }) {
           {t.hypothesis_id}
         </button>
       </td>
-      <td>
-        <button className="btn btn--small" onClick={onClose}>CLOSE</button>
-      </td>
+      {!isStaticMode() && (
+        <td>
+          <button className="btn btn--small" onClick={onClose}>CLOSE</button>
+        </td>
+      )}
     </tr>
   )
 }

@@ -12,12 +12,14 @@ import { useState, useEffect, useCallback } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { useApi } from '../hooks/useApi'
 import { api } from '../lib/api'
+import { isStaticMode } from '../lib/snapshot'
 import NewsletterList from '../components/NewsletterList'
 import NewsletterImportPanel from '../components/NewsletterImportPanel'
 import ResearchInbox from '../components/ResearchInbox'
 
 export default function ResearchView() {
   const navigate = useNavigate()
+  const isStatic = isStaticMode()
   const { data: newsletters, loading: nlLoading, refetch: refetchNewsletters } = useApi('/api/newsletters')
   const { data: inboxItems, loading: inboxLoading, refetch: refetchInbox } = useApi('/api/inbox')
 
@@ -84,21 +86,23 @@ export default function ResearchView() {
       <div className="research-view__section">
         <div className="research-view__section-header">
           <h2>Newsletter</h2>
-          <div className="research-view__actions">
-            <button
-              className="btn btn--newsletter"
-              onClick={handleGeneratePrompt}
-              disabled={promptLoading}
-            >
-              {promptLoading ? 'LOADING...' : showPrompt ? 'HIDE PROMPT' : 'GENERATE PROMPT'}
-            </button>
-            <button
-              className="btn btn--primary"
-              onClick={() => { setShowImport(!showImport); setImportResult(null) }}
-            >
-              {showImport ? 'CANCEL IMPORT' : 'IMPORT NEWSLETTER'}
-            </button>
-          </div>
+          {!isStatic && (
+            <div className="research-view__actions">
+              <button
+                className="btn btn--newsletter"
+                onClick={handleGeneratePrompt}
+                disabled={promptLoading}
+              >
+                {promptLoading ? 'LOADING...' : showPrompt ? 'HIDE PROMPT' : 'GENERATE PROMPT'}
+              </button>
+              <button
+                className="btn btn--primary"
+                onClick={() => { setShowImport(!showImport); setImportResult(null) }}
+              >
+                {showImport ? 'CANCEL IMPORT' : 'IMPORT NEWSLETTER'}
+              </button>
+            </div>
+          )}
         </div>
 
         {promptError && (

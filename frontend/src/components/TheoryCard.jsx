@@ -1,8 +1,9 @@
 /**
  * TheoryCard — displays a single theory module with activation state.
  * Activation bar colored by tier, phase label for two-phase theories.
+ * Clickable — opens TheoryDetail overlay.
  */
-export default function TheoryCard({ theory }) {
+export default function TheoryCard({ theory, onClick }) {
   const score = theory.activation_score ?? 0
   const pct = Math.round(score * 100)
   const tier = theory.tier || (score >= 0.60 ? 'active' : score >= 0.30 ? 'adjacent' : 'inactive')
@@ -13,7 +14,11 @@ export default function TheoryCard({ theory }) {
   const barClass = `theory-card__bar-fill--${tier}`
 
   return (
-    <div className={`theory-card ${tierClass}`}>
+    <div
+      className={`theory-card ${tierClass}`}
+      onClick={() => onClick && onClick(theory)}
+      style={{ cursor: 'pointer' }}
+    >
       <div className="theory-card__header">
         <div className="theory-card__name">{theory.name || theory.theory_id}</div>
         <span className={`theory-card__tier theory-card__tier--${tier}`}>{tierLabel}</span>

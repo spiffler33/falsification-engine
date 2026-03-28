@@ -143,3 +143,10 @@ Math does: activation scoring, conviction scoring (all dimensions), overlap pena
 **Horizon alignment decay: symmetric → asymmetric (2026-03-28)**
 
 Changed from symmetric hyperbolic `90/days` to asymmetric square root `(90/days)^0.5` for hypotheses exceeding the 90-day ideal window. Rationale: above-90 hypotheses describe mechanisms that are active now — the penalty is for dilution of per-period return expectation, not inability to execute. The gate cap (H < 0.40 → max conviction 4) now fires at ~562 days (~19 months) instead of ~135 days (~4.5 months). Below-30 linear penalty unchanged.
+
+**GitHub Pages polish (2026-03-28)**
+
+- Static mode UI stripping: Pipeline tab hidden from nav in static mode. All write-action buttons (GENERATE PROMPT, IMPORT NEWSLETTER, NEW TRADE, CLOSE, REFRESH PRICES, ADD inbox, ADD NOTE) hidden when `isStaticMode()`. Read-only data fully visible.
+- Theory detail overlay: Clicking any theory card on Observatory opens a full overlay showing summary, core mechanism (5-step causal chain), activation indicators with thresholds/weights, predictions when active, hard falsifiers, and soft falsifiers with severity. Content embedded in `theoryDescriptions.js` (works on GitHub Pages without backend). All 8 theories covered.
+- Night mode button color: `--accent-high` from `#C86B3A` (burnt orange) to `#A08B6E` (warm brass). Consistent with Hermes Editorial.
+- README rewrite: Practitioner-facing README with intellectual approach, five-pass pipeline diagram, theory modules, conviction math, tech stack, setup, and GitHub Pages deployment.

@@ -1,14 +1,17 @@
 import { NavLink, useLocation } from 'react-router-dom'
+import { isStaticMode } from '../lib/snapshot'
 
-const tabs = [
+const allTabs = [
   { to: '/', label: 'Research', primary: true, badge: true },
   { to: '/observatory', label: 'Observatory' },
-  { to: '/pipeline', label: 'Pipeline' },
+  { to: '/pipeline', label: 'Pipeline', liveOnly: true },
   { to: '/trades', label: 'Trades' },
 ]
 
 export default function NavBar({ inboxCount = 0 }) {
   const location = useLocation()
+  const isStatic = isStaticMode()
+  const tabs = isStatic ? allTabs.filter(t => !t.liveOnly) : allTabs
 
   return (
     <nav className="nav-bar">

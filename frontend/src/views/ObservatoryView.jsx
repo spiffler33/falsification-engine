@@ -7,10 +7,11 @@
  * Depends on: GET /api/theories, GET /api/hypotheses, GET /api/hypotheses/delta,
  *             GET /api/briefing/latest
  */
-import { useState, useEffect, useMemo } from 'react'
+import { useState, useEffect, useMemo, useCallback } from 'react'
 import { useApi } from '../hooks/useApi'
 import { api } from '../lib/api'
 import TheoryCard from '../components/TheoryCard'
+import TheoryDetail from '../overlays/TheoryDetail'
 import DeltaBanner from '../components/DeltaBanner'
 import HypothesisTable from '../components/HypothesisTable'
 import AssetGroupView from '../components/AssetGroupView'
@@ -19,6 +20,11 @@ import BriefingGrid from '../components/BriefingGrid'
 const FILTERS = ['ALIVE', 'ALL', 'WOUNDED', 'KILLED']
 
 export default function ObservatoryView({ onSelectHypothesis }) {
+  // ---- Theory detail overlay ----
+  const [selectedTheory, setSelectedTheory] = useState(null)
+  const handleTheoryClick = useCallback((theory) => setSelectedTheory(theory), [])
+  const closeTheoryDetail = useCallback(() => setSelectedTheory(null), [])
+
   // ---- Theories ----
   const { data: theories, loading: theoriesLoading } = useApi('/api/theories')
 
@@ -97,7 +103,7 @@ export default function ObservatoryView({ onSelectHypothesis }) {
       ) : sortedTheories.length > 0 ? (
         <div className="observatory-grid">
           {sortedTheories.map(t => (
-            <TheoryCard key={t.theory_id} theory={t} />
+            <TheoryCard key={t.theory_id} theory={t} onClick={handleTheoryClick} />
           ))}
         </div>
       ) : (
@@ -183,6 +189,10 @@ export default function ObservatoryView({ onSelectHypothesis }) {
           <div className="empty-state">No briefing data available.</div>
         )}
       </div>
+
+      {selectedTheory && (
+        <TheoryDetail theory={selectedTheory} onClose={closeTheoryDetail} />
+      )}
     </div>
   )
 }

@@ -5,6 +5,7 @@ import { AssetTags } from '../shared/AssetTag'
 import Sparkline from '../shared/Sparkline'
 import { fmtConviction, fmtDate, convictionTier } from '../lib/format'
 import { api } from '../lib/api'
+import { isStaticMode } from '../lib/snapshot'
 
 /**
  * HypothesisDetail — full interrogation modal overlay.
@@ -201,7 +202,7 @@ export default function HypothesisDetail({ hypothesis: h, onClose }) {
         <div className="detail-section">
           <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '12px' }}>
             <span className="detail-section__title" style={{ margin: 0 }}>Research Notes</span>
-            {!showNoteInput && (
+            {!showNoteInput && !isStaticMode() && (
               <button className="research-notes__add" onClick={() => setShowNoteInput(true)}>
                 + ADD NOTE
               </button>

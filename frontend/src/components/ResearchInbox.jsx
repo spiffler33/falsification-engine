@@ -7,6 +7,7 @@
  */
 import { useState, useCallback } from 'react'
 import { api } from '../lib/api'
+import { isStaticMode } from '../lib/snapshot'
 import { fmtDate, shortTheory } from '../lib/format'
 
 const THEORY_IDS = [
@@ -62,24 +63,26 @@ export default function ResearchInbox({ items, onRefetch }) {
         </span>
       </div>
 
-      <div className="research-inbox__input-row">
-        <input
-          className="research-inbox__input"
-          type="text"
-          placeholder="paste a link or write a note..."
-          value={content}
-          onChange={e => setContent(e.target.value)}
-          onKeyDown={handleKeyDown}
-          disabled={submitting}
-        />
-        <button
-          className="btn btn--primary research-inbox__add"
-          onClick={handleAdd}
-          disabled={!content.trim() || submitting}
-        >
-          ADD
-        </button>
-      </div>
+      {!isStaticMode() && (
+        <div className="research-inbox__input-row">
+          <input
+            className="research-inbox__input"
+            type="text"
+            placeholder="paste a link or write a note..."
+            value={content}
+            onChange={e => setContent(e.target.value)}
+            onKeyDown={handleKeyDown}
+            disabled={submitting}
+          />
+          <button
+            className="btn btn--primary research-inbox__add"
+            onClick={handleAdd}
+            disabled={!content.trim() || submitting}
+          >
+            ADD
+          </button>
+        </div>
+      )}
 
       <div className="research-inbox__list">
         {(items || []).map(item => (
