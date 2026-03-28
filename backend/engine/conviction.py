@@ -9,6 +9,8 @@
 from __future__ import annotations
 
 import json
+import re
+from datetime import date, timedelta
 from typing import Any, Optional
 
 from backend.schemas.scoring import (
@@ -51,6 +53,172 @@ EXPRESSION_CAPS = [
     (0.15, 1),   # E < 0.15 → capped at 1/10
     (0.30, 3),   # E < 0.30 → capped at 3/10
 ]
+
+# ETF liquidity tiers for expression efficiency
+TIER_1 = {"SPY", "QQQ", "GLD", "TLT", "SHY", "IEF", "HYG", "LQD",
+           "EEM", "VWO", "DBC", "XLE", "XLF", "IWM", "TIP", "UUP"}
+TIER_2 = {"RSP", "XLU", "XLP", "XLY", "XLK", "EWZ", "EWY", "FXI",
+           "STIP", "XOP", "MDY", "JETS", "ITB", "VEA"}
+
+# Full ETF universe (imported from data_agent at module level would create circular dep)
+from backend.engine.data_agent import ETF_UNIVERSE as _ETF_LIST
+_ETF_SET = set(_ETF_LIST)
+
+# Horizon alignment ideal window (days)
+IDEAL_MIN_DAYS = 30
+IDEAL_MAX_DAYS = 90
+
+# Month name lookup
+_MONTH_MAP = {
+    "jan": 1, "january": 1, "feb": 2, "february": 2,
+    "mar": 3, "march": 3, "apr": 4, "april": 4,
+    "may": 5, "jun": 6, "june": 6, "jul": 7, "july": 7,
+    "aug": 8, "august": 8, "sep": 9, "september": 9,
+    "oct": 10, "october": 10, "nov": 11, "november": 11,
+    "dec": 12, "december": 12,
+}
+
+# Quarter end months
+_QUARTER_END = {"q1": 3, "q2": 6, "q3": 9, "q4": 12}
+
+
+def _parse_timeframe_to_days(timeframe: str, today: date | None = None) -> int | None:
+    """Parse a hypothesis timeframe string to approximate calendar days from today.
+
+    Handles patterns like:
+      "Through Q3 2026", "Next 6-8 weeks", "1-3 months", "By June 2026",
+      "Within 30 days", "3-6 months", "Q2 2026", "Through mid-2026"
+    """
+    if not timeframe:
+        return None
+    today = today or date.today()
+    s = timeframe.strip().lower()
+
+    # "within N days" / "next N days"
+    m = re.search(r'(\d+)\s*days?', s)
+    if m:
+        return int(m.group(1))
+
+    # "N-M weeks" / "next N weeks" / "N weeks"
+    m = re.search(r'(\d+)\s*[-–to]+\s*(\d+)\s*weeks?', s)
+    if m:
+        avg_weeks = (int(m.group(1)) + int(m.group(2))) / 2
+        return int(avg_weeks * 7)
+    m = re.search(r'(\d+)\s*weeks?', s)
+    if m:
+        return int(m.group(1)) * 7
+
+    # "N-M months" / "N months"
+    m = re.search(r'(\d+)\s*[-–to]+\s*(\d+)\s*months?', s)
+    if m:
+        avg_months = (int(m.group(1)) + int(m.group(2))) / 2
+        return int(avg_months * 30)
+    m = re.search(r'(\d+)\s*months?', s)
+    if m:
+        return int(m.group(1)) * 30
+
+    # "through Q3 2026" / "Q2 2026" / "by Q1 2027"
+    m = re.search(r'(q[1-4])\s*(\d{4})', s)
+    if m:
+        qtr = m.group(1)
+        year = int(m.group(2))
+        end_month = _QUARTER_END[qtr]
+        # End of quarter month
+        if end_month == 12:
+            end_date = date(year, 12, 31)
+        else:
+            end_date = date(year, end_month + 1, 1) - timedelta(days=1)
+        return max(1, (end_date - today).days)
+
+    # "by June 2026" / "through March 2027" / "June 2026"
+    for month_name, month_num in _MONTH_MAP.items():
+        if month_name in s:
+            m_year = re.search(r'(\d{4})', s)
+            if m_year:
+                year = int(m_year.group(1))
+                # Use mid-month as approximation
+                try:
+                    end_date = date(year, month_num, 15)
+                except ValueError:
+                    end_date = date(year, month_num, 1)
+                return max(1, (end_date - today).days)
+
+    # "mid-2026" / "through mid 2026"
+    m = re.search(r'mid[-\s]*(\d{4})', s)
+    if m:
+        year = int(m.group(1))
+        end_date = date(year, 7, 1)
+        return max(1, (end_date - today).days)
+
+    # "end of 2026" / "late 2026"
+    m = re.search(r'(?:end|late)[-\s]*(?:of\s+)?(\d{4})', s)
+    if m:
+        year = int(m.group(1))
+        end_date = date(year, 12, 31)
+        return max(1, (end_date - today).days)
+
+    # "early 2026"
+    m = re.search(r'early[-\s]*(\d{4})', s)
+    if m:
+        year = int(m.group(1))
+        end_date = date(year, 3, 1)
+        return max(1, (end_date - today).days)
+
+    return None
+
+
+def compute_horizon_alignment(timeframe: str, today: date | None = None) -> float:
+    """Mechanical horizon alignment: overlap with 30-90 day ideal window.
+
+    Returns 0.0-1.0. If timeframe can't be parsed, returns 0.50 (neutral).
+    """
+    days = _parse_timeframe_to_days(timeframe, today)
+    if days is None:
+        return 0.50  # unparseable — neutral default
+
+    if IDEAL_MIN_DAYS <= days <= IDEAL_MAX_DAYS:
+        return 1.0
+    elif days < IDEAL_MIN_DAYS:
+        return days / IDEAL_MIN_DAYS
+    else:
+        return IDEAL_MAX_DAYS / days
+
+
+def compute_expression_efficiency(predicted_assets: list[str]) -> float:
+    """Mechanical expression efficiency from ETF universe coverage + liquidity tiers.
+
+    predicted_assets: list of ticker strings (e.g., ["GLD", "SPY"])
+    Returns 0.0-1.0.
+    """
+    if not predicted_assets:
+        return 0.0
+
+    tickers = [t.upper().strip() for t in predicted_assets if t]
+    n = len(tickers)
+    if n == 0:
+        return 0.0
+
+    # Coverage: fraction of tickers in our ETF universe
+    in_universe = sum(1 for t in tickers if t in _ETF_SET)
+    coverage = in_universe / n
+
+    # Liquidity weighting by tier
+    tier_scores = []
+    for t in tickers:
+        if t in TIER_1:
+            tier_scores.append(1.0)
+        elif t in TIER_2:
+            tier_scores.append(0.75)
+        elif t in _ETF_SET:
+            tier_scores.append(0.50)
+        else:
+            tier_scores.append(0.0)
+    liquidity = sum(tier_scores) / n
+
+    # Directness: 1/sqrt(n) — fewer assets = cleaner expression
+    directness = 1.0 / (n ** 0.5)
+
+    return coverage * 0.30 + liquidity * 0.40 + directness * 0.30
 
 
 def score_conviction(inp: ConvictionInput) -> ConvictionMath:

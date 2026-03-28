@@ -403,6 +403,15 @@ def import_elimination(payload: dict = Body(...), db: Session = Depends(get_db))
                 elimination_result=elim_result,
             )
 
+            # Mechanical Stage 3 gates: horizon alignment + expression efficiency
+            mech_horizon = conviction.compute_horizon_alignment(h.timeframe or "")
+            pred_assets_raw = h.predicted_assets or "[]"
+            try:
+                pred_assets = json.loads(pred_assets_raw) if isinstance(pred_assets_raw, str) else (pred_assets_raw or [])
+            except (json.JSONDecodeError, TypeError):
+                pred_assets = []
+            mech_expression = conviction.compute_expression_efficiency(pred_assets)
+
             ci = ConvictionInput(
                 hypothesis_id=h.id,
                 support_strength=mech.support_strength,
@@ -413,17 +422,21 @@ def import_elimination(payload: dict = Body(...), db: Session = Depends(get_db))
                 untestable_soft_falsifiers=untestable_sf,
                 same_theory_overlap=same_theory,
                 diff_theory_overlap=diff_theory,
-                horizon_alignment=llm_inputs.get("horizon_alignment", 0.5),
-                expression_efficiency=llm_inputs.get("expression_efficiency", 0.5),
+                horizon_alignment=mech_horizon,
+                expression_efficiency=mech_expression,
             )
 
             result = conviction.score_conviction(ci)
             h.conviction = result.stage3.final
 
-            # Store full math with both mechanical and LLM inputs for audit
+            # Store full math with mechanical + LLM inputs for audit comparison
             math_dump = result.model_dump()
             math_dump["llm_conviction_inputs"] = llm_inputs
+            math_dump["llm_horizon_alignment"] = llm_inputs.get("horizon_alignment", None)
+            math_dump["llm_expression_efficiency"] = llm_inputs.get("expression_efficiency", None)
             math_dump["mechanical_conviction_inputs"] = mech.model_dump()
+            math_dump["mechanical_horizon_alignment"] = mech_horizon
+            math_dump["mechanical_expression_efficiency"] = mech_expression
             h.conviction_math = json.dumps(math_dump)
 
             # Conviction floor: mechanical kill for scores below 5
