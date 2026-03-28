@@ -11,10 +11,12 @@ The following pipeline is built and working end-to-end:
 - Three-stage conviction scoring: mechanical Stage 1 inputs (support_strength, evidence_quality, convergence, falsifier_clarity) → Stage 2 discounts (soft falsifier, UNTESTABLE, theory-aware overlap) → Stage 3 gates
 - Conviction floor at 5/10
 - Consolidation check preventing redundant hypotheses
-- React frontend: Ledger, Hypothesis Detail, Trades, Observatory, Pipeline, Briefing views
+- React frontend: Ledger, Hypothesis Detail, Trades, Observatory, Pipeline, Briefing, About views
 - Hermes Editorial design system (Cormorant Garamond / EB Garamond / JetBrains Mono, cream/brick/olive/gold)
+- GitHub Pages static publishing: snapshot endpoint bakes all data into window.__SNAPSHOT__, publish script deploys to gh-pages branch via temp directory. Read-only mode auto-detected by frontend (HashRouter, API interception from snapshot).
+- About page: 12-step pipeline description grouped into 5 sections with architectural premise, continuous CSS counter
 
-**Current output quality:** Conviction range 5-8 with 3-point spread (after evidence quality denominator fix), mechanical scores producing 4.5x wider differentiation than LLM self-evaluation, UNTESTABLE classification working, overlap penalty differentiating redundancy from convergence. Stage 2 inputs (triggered/untestable falsifier lists, overlap counts) now serialized losslessly in conviction_math JSON for exact reconstruction.
+**Current output quality:** 4 survived, 3 killed (all by horizon gate, not weak raw scores). Conviction range 6-8 for survivors. Horizon gate is dominant kill mechanism — debt_cycle_long hypotheses with 9-12 month timeframes capped at 2-4/10 despite raw scores of 6.5-8.5. Stage 2 inputs serialized losslessly. Mechanical scores producing 4.5x wider differentiation than LLM self-evaluation.
 
 ---
 
