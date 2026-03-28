@@ -18,7 +18,11 @@ class Stage1Raw(BaseModel):
 class Stage2Discounts(BaseModel):
     """Stage 2: Multiplicative discounts from falsifier health and overlap."""
     soft_falsifier_discount: float = 0.0  # the D_f multiplier (0.05 to 1.0)
+    triggered_soft_falsifiers: List[Dict] = []  # [{severity: ...}] inputs that produced D_f
     untestable_discount: float = 0.0      # the D_u multiplier for UNTESTABLE falsifiers
+    untestable_soft_falsifiers: List[Dict] = []  # [{severity: ...}] inputs that produced D_u
+    overlap_same_theory: int = 0          # same-theory overlap count input
+    overlap_diff_theory: int = 0          # cross-theory overlap count input
     overlap_adjustment: float = 0.0       # additive: same-theory penalty + cross-theory bonus
     adjusted: float = 0.0                 # (raw * D_f * D_u) + overlap_adjustment
 

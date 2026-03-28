@@ -14,7 +14,7 @@ The following pipeline is built and working end-to-end:
 - React frontend: Ledger, Hypothesis Detail, Trades, Observatory, Pipeline, Briefing views
 - Hermes Editorial design system (Cormorant Garamond / EB Garamond / JetBrains Mono, cream/brick/olive/gold)
 
-**Current output quality:** Conviction range 5-7 with 2-point spread, mechanical scores producing 4.5x wider differentiation than LLM self-evaluation, UNTESTABLE classification working, overlap penalty differentiating redundancy from convergence.
+**Current output quality:** Conviction range 5-8 with 3-point spread (after evidence quality denominator fix), mechanical scores producing 4.5x wider differentiation than LLM self-evaluation, UNTESTABLE classification working, overlap penalty differentiating redundancy from convergence. Stage 2 inputs (triggered/untestable falsifier lists, overlap counts) now serialized losslessly in conviction_math JSON for exact reconstruction.
 
 ---
 
@@ -308,7 +308,8 @@ WHAT THIS SYSTEM DOES
     2+ major soft falsifiers = killed, 3+ any soft falsifiers = killed.
 
  7. Scores conviction mechanically (zero LLM): support strength from
-    activation score, evidence quality from data coverage ratio, convergence
+    activation score, evidence quality from mechanical data coverage ratio
+    (excludes qualitative/web-search indicators from denominator), convergence
     from 30-day price alignment, falsifier clarity from verification ratio.
 
  8. Applies Stage 2 discounts: soft falsifier severity discount (multiplicative),

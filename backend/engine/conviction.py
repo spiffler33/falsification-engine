@@ -300,7 +300,11 @@ def _stage2_discounts(inp: ConvictionInput, raw_score: float) -> Stage2Discounts
 
     return Stage2Discounts(
         soft_falsifier_discount=d_f,
+        triggered_soft_falsifiers=inp.triggered_soft_falsifiers,
         untestable_discount=d_u,
+        untestable_soft_falsifiers=inp.untestable_soft_falsifiers,
+        overlap_same_theory=inp.same_theory_overlap,
+        overlap_diff_theory=inp.diff_theory_overlap,
         overlap_adjustment=overlap_adj,
         adjusted=adjusted,
     )
@@ -448,8 +452,13 @@ def _compute_evidence_quality(
     source_theories: list[str],
     act_map: dict[str, dict],
 ) -> float:
-    """evidence_quality = indicators with data / total indicators."""
-    total_indicators = 0
+    """evidence_quality = indicators with data / mechanical indicators only.
+
+    Skipped indicators (qualitative, web-search-required) are excluded from
+    the denominator — they are structurally unfillable by the mechanical
+    pipeline and would uniformly deflate every theory's score.
+    """
+    mechanical_indicators = 0
     indicators_with_data = 0
 
     for tid in source_theories:
@@ -458,21 +467,17 @@ def _compute_evidence_quality(
             continue
 
         ir = ar.get("indicator_results", {})
-        skipped = ar.get("skipped_indicators", [])
 
-        # Mechanical indicators (in indicator_results)
+        # Only count mechanical indicators (those in indicator_results)
         for result in ir.values():
-            total_indicators += 1
+            mechanical_indicators += 1
             if result.get("value") is not None:
                 indicators_with_data += 1
 
-        # Skipped indicators (qualitative, web-search) count toward total
-        total_indicators += len(skipped)
-
-    if total_indicators == 0:
+    if mechanical_indicators == 0:
         return 0.20  # hard floor
 
-    ratio = indicators_with_data / total_indicators
+    ratio = indicators_with_data / mechanical_indicators
     return max(0.20, ratio)
 
 
