@@ -121,86 +121,58 @@ On mount: fetch trades via GET `/api/trades`, then call GET `/api/prices` with a
 
 ---
 
-### Feature 2: Newsletter Generator
+### Feature 2: Newsletter Prompt Builder
 
-**Goal:** One-click generation of a single A4 page newsletter showing highest-conviction trades and their justification. Uses the Anthropic API (claude-sonnet-4-20250514) to produce crisp prose from structured hypothesis data.
+**Goal:** One-click assembly of a structured prompt for newsletter generation. The user copies the prompt into Claude.ai, gets the newsletter there, and can iterate conversationally.
+
+**Design note:** Newsletter follows the same operational pattern as the rest of the pipeline: backend assembles the prompt, frontend presents it for copy-paste into Claude chat. No API calls from the backend. This keeps the system as a prompt engine, not an inference engine, and lets the user leverage their Claude Max subscription (free, with web search) instead of paying per API call.
 
 #### Architecture
 
 ```
 [GENERATE NEWSLETTER] button on Ledger view
         ↓
-Frontend collects: all SURVIVED hypotheses with conviction ≥ 6,
-    their conviction_math, falsifier health, predicted assets
+GET /api/newsletter/prompt
         ↓
-POST /api/newsletter/generate
+Backend assembles system_prompt + user_prompt from:
+  - SURVIVED hypotheses with conviction >= 6 from latest run
+  - Active theory names + activation scores
+  - Briefing summary from latest run
+  - UNTESTABLE falsifiers across qualifying hypotheses
         ↓
-Backend constructs prompt with structured data + style instructions
+Frontend displays two-section overlay with [COPY] buttons
         ↓
-Calls Anthropic API (claude-sonnet-4-20250514, max_tokens 1500)
-        ↓
-Returns formatted newsletter text
-        ↓
-Frontend renders in a print-ready overlay (A4 proportions)
-    with [COPY] and [PRINT] buttons
-```
-
-#### Newsletter Format (strict — exactly this structure)
-
-```
-MERIDIAN MACRO WEEKLY                                    28 March 2026
-━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-
-HIGHEST CONVICTION: [trade name]                    Conviction: [X]/10
-  ▸ THESIS: [2-3 sentences: what the mechanism is, why now]
-  ▸ EXPRESSION: [ticker(s) and direction]
-  ▸ WHAT BREAKS IT: [the 2 most important falsifiers, current status]
-
-[Repeat for each hypothesis with conviction ≥ 6, max 4 entries]
-
-━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-REGIME CONTEXT
-  ▸ Active theories: [list with activation %]
-  ▸ Key data: [3-4 most relevant data points from briefing]
-  ▸ What we're watching: [top UNTESTABLE falsifiers awaiting data]
-
-━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-SYSTEM: Falsification Engine v2 | 8 theory modules | Mechanical scoring
-This is not investment advice. These are hypotheses that survived
-systematic falsification. What the system found ≠ what you should do.
+User pastes system prompt into Claude project instructions,
+    user prompt as a message, iterates in Claude chat
 ```
 
 #### API
 
 | Method | Endpoint | Purpose |
 |--------|----------|---------|
-| POST | `/api/newsletter/generate` | Generate newsletter from current hypothesis ledger |
-| GET | `/api/newsletter/latest` | Retrieve most recently generated newsletter |
-| GET | `/api/newsletter/history` | List of past newsletters with dates |
+| GET | `/api/newsletter/prompt` | Assemble system + user prompts from latest run |
 
-#### Prompt Construction (backend builds this, sends to Anthropic API)
-
-System prompt:
-```
-You are a macro strategist writing a weekly newsletter. Your style is:
-- Terse, declarative sentences. No hedging language.
-- Lead with the trade, then the mechanism, then the risk.
-- Every sentence must be load-bearing. No filler, no "in conclusion."
-- Use the structured data provided. Do not add analysis beyond what the data supports.
-- The newsletter must fit on one A4 page when printed in 11pt type.
-- Maximum 4 trade ideas. Only include hypotheses with conviction ≥ 6.
-- For "WHAT BREAKS IT": pick the 2 falsifiers closest to triggering or the 2 with highest severity. State the condition and the current data value.
+Returns:
+```json
+{
+  "system_prompt": "...",
+  "user_prompt": "..."
+}
 ```
 
-User prompt: the full hypothesis objects for all survivors with conviction ≥ 6, including conviction_math, falsifier arrays, and the current briefing packet summary.
+Returns 400 if no hypotheses meet conviction >= 6 threshold.
+
+No Newsletter DB model. No storage. No caching. No history. Every click regenerates from the latest run data.
 
 #### Frontend
 
-- **Button:** "GENERATE NEWSLETTER" on Ledger view header, right side. Only enabled when at least 1 hypothesis has conviction ≥ 6.
-- **Overlay:** Full-screen overlay with A4-proportioned content area (595px × 842px at 72dpi, scaled). Hermes Editorial typography. Monospace for data values.
-- **Actions:** [COPY TO CLIPBOARD] [PRINT] [CLOSE]
-- **Loading state:** "Generating..." with the Meridian compass mark.
-- **Caching:** Store generated newsletter in DB. If hypothesis ledger hasn't changed since last generation, serve cached version with "Generated [timestamp]" note.
+- **Button:** "GENERATE NEWSLETTER" on Ledger view header, right side of controls bar. `--accent-brick` background, cream text, JetBrains Mono 11px uppercase. Only visible when at least 1 SURVIVED hypothesis has conviction >= 6.
+- **Overlay:** Full-screen modal (720px max-width), same backdrop pattern as HypothesisDetail.
+- **Section 1: SYSTEM PROMPT** — label in Cormorant Garamond 14px, content in JetBrains Mono 11px `--text-secondary`, scrollable pre block, own [COPY] button.
+- **Section 2: USER PROMPT** — same layout, `--text-primary`, own [COPY] button.
+- **Top bar:** [COPY ALL] copies both sections as one block, [CLOSE] closes overlay.
+- **States:** Loading ("Assembling prompt..."), Error (accent-negative), Success (two prompt sections).
+- No print button. No storage. No caching. No history.
 
 ---
 
@@ -362,11 +334,11 @@ WHAT THIS SYSTEM DOES
 | 1 | Feature 3: Mechanize H + E | 1.5 | None (pure backend) |
 | 2 | Feature 1: Trade Tracker | 3.0 | None |
 | 3 | Feature 4: About Page | 0.5 | Feature 3 (content references zero-LLM pipeline) |
-| 4 | Feature 2: Newsletter Generator | 2.5 | Anthropic API key in .env |
+| 4 | Feature 2: Newsletter Prompt Builder | 1.0 | None (prompt assembly only) |
 
 **Total: ~7.5 hours**
 
-Feature 3 goes first because it completes the mechanical pipeline — everything after it can reference "zero-LLM conviction scoring" as a fact. Feature 1 is the most user-facing value. Feature 4 is trivial once the pipeline is finalized. Feature 2 is last because it requires API integration and prompt tuning.
+Feature 3 goes first because it completes the mechanical pipeline — everything after it can reference "zero-LLM conviction scoring" as a fact. Feature 1 is the most user-facing value. Feature 4 is trivial once the pipeline is finalized. Feature 2 is last but trivial — it's just prompt assembly, no API integration needed.
 
 ---
 

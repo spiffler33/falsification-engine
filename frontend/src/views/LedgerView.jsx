@@ -11,7 +11,7 @@ const FILTERS = ['ALIVE', 'ALL', 'WOUNDED', 'KILLED']
  * LedgerView — the primary daily entry point.
  * Delta banner at top, controls bar, then hypothesis table or asset group view.
  */
-export default function LedgerView({ onSelectHypothesis }) {
+export default function LedgerView({ onSelectHypothesis, onOpenNewsletter }) {
   const [viewMode, setViewMode] = useState('hypothesis') // 'hypothesis' | 'asset'
   const [filter, setFilter] = useState('ALIVE')
   const [delta, setDelta] = useState(null)
@@ -57,6 +57,12 @@ export default function LedgerView({ onSelectHypothesis }) {
     list.sort((a, b) => (b.conviction || 0) - (a.conviction || 0))
     return list
   }, [hypotheses, filter])
+
+  // Check if any hypothesis qualifies for newsletter (conviction >= 6, SURVIVED)
+  const hasHighConviction = useMemo(() => {
+    if (!hypotheses) return false
+    return hypotheses.some(h => h.status === 'SURVIVED' && (h.conviction || 0) >= 6)
+  }, [hypotheses])
 
   const handleMarkReviewed = () => {
     // Find the latest run_id from the hypotheses
@@ -114,6 +120,14 @@ export default function LedgerView({ onSelectHypothesis }) {
         </div>
 
         <div className="controls-bar__right">
+          {hasHighConviction && (
+            <button
+              className="btn btn--newsletter"
+              onClick={onOpenNewsletter}
+            >
+              GENERATE NEWSLETTER
+            </button>
+          )}
           <span className="controls-bar__count">
             {filtered.length} {filtered.length === 1 ? 'hypothesis' : 'hypotheses'}
           </span>
