@@ -375,6 +375,44 @@ p, .body-text {
   .perf-grid {
     gap: 16px;
   }
+
+  /* ── Research view mobile ── */
+  .research-view {
+    padding: var(--padding-mobile);
+  }
+
+  .research-view__section-header {
+    flex-direction: column;
+    gap: 8px;
+  }
+
+  .research-view__actions {
+    flex-wrap: wrap;
+  }
+
+  .research-view__prompt-content {
+    max-height: 280px;
+    font-size: 10px;
+  }
+
+  .newsletter-import__textarea {
+    font-size: 11px;
+  }
+
+  .newsletter-list__row {
+    flex-wrap: wrap;
+    gap: 4px;
+  }
+
+  .newsletter-list__content {
+    max-height: 400px;
+    font-size: 11px;
+  }
+
+  /* ── Pending trades mobile ── */
+  .pending-trades {
+    padding: 12px;
+  }
 }
 
 
@@ -2872,4 +2910,386 @@ p, .body-text {
 
 .newsletter-prompt__content--user {
   color: var(--text-primary);
+}
+
+
+/* ─── Research View ─────────────────────────────── */
+
+.research-view {
+  max-width: var(--max-width);
+  margin: 0 auto;
+  padding: var(--padding-desktop);
+}
+
+.research-view__section {
+  margin-bottom: 32px;
+}
+
+.research-view__section-header {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  margin-bottom: 16px;
+  flex-wrap: wrap;
+  gap: 12px;
+}
+
+.research-view__section-header h2 {
+  font-family: var(--font-display);
+  font-weight: 600;
+}
+
+.research-view__actions {
+  display: flex;
+  gap: 8px;
+}
+
+.research-view__error {
+  padding: 8px 12px;
+  margin-bottom: 12px;
+  border-left: 3px solid var(--accent-negative);
+  color: var(--accent-negative);
+  font-family: var(--font-body);
+  font-size: 14px;
+}
+
+.research-view__success {
+  padding: 8px 12px;
+  margin-bottom: 12px;
+  border-left: 3px solid var(--accent-positive);
+  color: var(--accent-positive);
+  font-family: var(--font-body);
+  font-size: 14px;
+}
+
+.research-view__trades-link {
+  background: none;
+  border: none;
+  font-family: var(--font-body);
+  font-size: 14px;
+  color: var(--accent-high);
+  text-decoration: underline;
+  cursor: pointer;
+  padding: 0;
+}
+
+.research-view__prompt {
+  margin-top: 12px;
+  border: 1px solid var(--border-light);
+}
+
+.research-view__prompt-bar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 8px 12px;
+  border-bottom: 1px solid var(--border-light);
+  background: var(--bg-inset);
+}
+
+.research-view__prompt-hint {
+  font-family: var(--font-body);
+  font-size: 13px;
+  color: var(--text-secondary);
+}
+
+.research-view__prompt-content {
+  font-family: var(--font-data);
+  font-size: 11px;
+  line-height: 1.6;
+  white-space: pre-wrap;
+  word-wrap: break-word;
+  max-height: 400px;
+  overflow-y: auto;
+  padding: 12px;
+  background: var(--bg-secondary);
+  color: var(--text-primary);
+}
+
+.research-view__divider {
+  height: 1px;
+  background: var(--border-medium);
+  margin: 24px 0;
+}
+
+
+/* ─── Newsletter Import Panel ───────────────────── */
+
+.newsletter-import {
+  margin-top: 12px;
+  border: 1px solid var(--border-light);
+  padding: 16px;
+}
+
+.newsletter-import__header {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  margin-bottom: 8px;
+}
+
+.newsletter-import__header h3 {
+  font-family: var(--font-display);
+  font-weight: 600;
+  font-size: 16px;
+}
+
+.newsletter-import__hint {
+  font-family: var(--font-body);
+  font-size: 13px;
+  color: var(--text-secondary);
+  margin-bottom: 12px;
+}
+
+.newsletter-import__textarea {
+  width: 100%;
+  font-family: var(--font-data);
+  font-size: 12px;
+  line-height: 1.5;
+  padding: 12px;
+  border: 1px solid var(--border-light);
+  background: var(--bg-secondary);
+  color: var(--text-primary);
+  resize: vertical;
+}
+
+.newsletter-import__textarea:focus {
+  outline: none;
+  border-color: var(--accent-high);
+}
+
+.newsletter-import__error {
+  padding: 8px 12px;
+  margin-top: 8px;
+  border-left: 3px solid var(--accent-negative);
+  color: var(--accent-negative);
+  font-size: 13px;
+}
+
+.newsletter-import__preview {
+  margin-top: 12px;
+  padding: 8px 12px;
+  border: 1px solid var(--border-light);
+  background: var(--bg-inset);
+}
+
+.newsletter-import__preview-header {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  font-family: var(--font-body);
+  font-size: 13px;
+  color: var(--text-secondary);
+}
+
+.newsletter-import__trade-count {
+  font-family: var(--font-data);
+  font-size: 11px;
+  color: var(--accent-positive);
+}
+
+.newsletter-import__trades-preview {
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+  margin-top: 8px;
+}
+
+.newsletter-import__trade-tag {
+  font-family: var(--font-data);
+  font-size: 11px;
+  padding: 2px 8px;
+  border: 1px solid var(--border-light);
+  color: var(--text-primary);
+}
+
+.newsletter-import__actions {
+  margin-top: 12px;
+  display: flex;
+  gap: 8px;
+}
+
+
+/* ─── Newsletter List (Archive) ─────────────────── */
+
+.newsletter-list__empty {
+  font-family: var(--font-body);
+  font-size: 14px;
+  color: var(--text-secondary);
+  font-style: italic;
+  padding: 16px 0;
+}
+
+.newsletter-list__item {
+  border-bottom: 1px solid var(--border-light);
+}
+
+.newsletter-list__row {
+  display: flex;
+  align-items: baseline;
+  gap: 16px;
+  width: 100%;
+  padding: 10px 0;
+  background: none;
+  border: none;
+  font-family: var(--font-body);
+  font-size: 14px;
+  color: var(--text-primary);
+  cursor: pointer;
+  text-align: left;
+}
+
+.newsletter-list__row:hover {
+  background: var(--bg-hover);
+}
+
+.newsletter-list__row--expanded {
+  border-bottom: 1px solid var(--border-medium);
+}
+
+.newsletter-list__date {
+  font-family: var(--font-data);
+  font-size: 11px;
+  color: var(--text-secondary);
+  flex-shrink: 0;
+  min-width: 80px;
+}
+
+.newsletter-list__title {
+  flex: 1;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.newsletter-list__meta {
+  display: flex;
+  gap: 12px;
+  align-items: baseline;
+  flex-shrink: 0;
+}
+
+.newsletter-list__trade-count {
+  font-family: var(--font-data);
+  font-size: 11px;
+  color: var(--accent-gold);
+}
+
+.newsletter-list__id {
+  font-family: var(--font-data);
+  font-size: 10px;
+  color: var(--text-tertiary);
+}
+
+.newsletter-list__detail {
+  padding: 0 0 16px 0;
+}
+
+.newsletter-list__content {
+  font-family: var(--font-data);
+  font-size: 12px;
+  line-height: 1.6;
+  white-space: pre-wrap;
+  word-wrap: break-word;
+  padding: 16px;
+  background: var(--bg-secondary);
+  border: 1px solid var(--border-light);
+  color: var(--text-primary);
+  max-height: 600px;
+  overflow-y: auto;
+}
+
+
+/* ─── Observatory Ledger Section ────────────────── */
+
+.observatory-view__ledger {
+  margin-top: 32px;
+  padding-top: 24px;
+  border-top: 1px solid var(--border-medium);
+}
+
+.observatory-view__briefing {
+  margin-top: 32px;
+  padding-top: 24px;
+  border-top: 1px solid var(--border-medium);
+}
+
+.observatory-view__briefing h3 {
+  font-family: var(--font-display);
+  font-weight: 600;
+  margin-bottom: 8px;
+}
+
+
+/* ─── Pending Trades Panel ──────────────────────── */
+
+.pending-trades {
+  margin-bottom: 32px;
+  border: 2px solid var(--accent-gold);
+  padding: 16px;
+}
+
+.pending-trades__header {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  margin-bottom: 12px;
+}
+
+.pending-trades__header h3 {
+  font-family: var(--font-display);
+  font-weight: 600;
+}
+
+.pending-trades__count {
+  font-family: var(--font-data);
+  font-size: 11px;
+  color: var(--accent-gold);
+}
+
+.pending-trades__error {
+  padding: 8px 12px;
+  margin-bottom: 8px;
+  border-left: 3px solid var(--accent-negative);
+  color: var(--accent-negative);
+  font-size: 13px;
+}
+
+.pending-trades__action {
+  font-family: var(--font-data);
+  font-size: 11px;
+  font-weight: 600;
+  padding: 1px 6px;
+  border: 1px solid;
+}
+
+.pending-trades__action--open {
+  color: var(--accent-positive);
+  border-color: var(--accent-positive);
+}
+
+.pending-trades__action--close {
+  color: var(--accent-negative);
+  border-color: var(--accent-negative);
+}
+
+.pending-trades__action--reduce {
+  color: var(--accent-gold);
+  border-color: var(--accent-gold);
+}
+
+.pending-trades__hyp {
+  font-family: var(--font-data);
+  font-size: 10px;
+  color: var(--text-secondary);
+}
+
+.pending-trades__actions {
+  margin-top: 12px;
+  display: flex;
+  gap: 8px;
+}
+
+.trades-table__row--rejected {
+  opacity: 0.4;
 }

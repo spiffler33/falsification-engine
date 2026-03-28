@@ -76,6 +76,7 @@ class Trade(Base):
     id = Column(Text, primary_key=True)  # "T-2026-001"
     hypothesis_id = Column(Text, ForeignKey("hypotheses.id"), nullable=False)
     run_id = Column(Text)  # pipeline run at entry
+    newsletter_id = Column(Text, ForeignKey("newsletters.id"))  # originating newsletter
 
     # Primitives
     ticker = Column(Text, nullable=False)
@@ -97,6 +98,44 @@ class Trade(Base):
     hypothesis_short_name = Column(Text)
     hypothesis_theory = Column(Text)
     hypothesis_status_at_entry = Column(Text)  # SURVIVED | WOUNDED
+
+    created_at = Column(Text, server_default="(datetime('now'))")
+
+
+class Newsletter(Base):
+    __tablename__ = "newsletters"
+
+    id = Column(Text, primary_key=True)  # "NL-2026-001"
+    date = Column(Text, nullable=False)  # ISO date of import
+    run_id = Column(Text, ForeignKey("runs.id"))
+    content = Column(Text, nullable=False)  # full ASCII newsletter text
+    trade_recommendations = Column(Text)  # JSON array of structured recs
+    created_at = Column(Text, server_default="(datetime('now'))")
+
+
+class PendingTradeAction(Base):
+    __tablename__ = "pending_trade_actions"
+
+    id = Column(Text, primary_key=True)  # "PTA-001"
+    newsletter_id = Column(Text, ForeignKey("newsletters.id"), nullable=False)
+    action_type = Column(Text, nullable=False)  # "OPEN" | "CLOSE" | "REDUCE"
+
+    # For OPEN: new trade info (no FK — hypothesis may come from newsletter rec, not always in DB)
+    hypothesis_id = Column(Text)
+    ticker = Column(Text)
+    direction = Column(Text)
+    conviction = Column(Float)
+    proposed_shares = Column(Float)
+    proposed_price = Column(Float)
+
+    # For CLOSE/REDUCE: existing trade reference
+    existing_trade_id = Column(Text)
+    reduce_to_shares = Column(Float)  # for REDUCE: new target share count
+
+    # Status
+    status = Column(Text, nullable=False, server_default="PENDING")
+    executed_at = Column(Text)
+    executed_price = Column(Float)
 
     created_at = Column(Text, server_default="(datetime('now'))")
 

@@ -11,6 +11,7 @@ import { useApi } from '../hooks/useApi'
 import { api } from '../lib/api'
 import NewTradeForm from '../components/NewTradeForm'
 import CloseTradeForm from '../components/CloseTradeForm'
+import PendingTradesPanel from '../components/PendingTradesPanel'
 
 // ---------------------------------------------------------------------------
 // Derived-value helpers — all computation lives here, not in the backend
@@ -75,10 +76,16 @@ function computePerformance(openTrades, closedTrades) {
 
 export default function TradesView({ onSelectHypothesis }) {
   const { data: trades, loading, error, refetch } = useApi('/api/trades')
+  const { data: pendingActions, refetch: refetchPending } = useApi('/api/trades/pending')
   const [prices, setPrices] = useState({})
   const [showNewForm, setShowNewForm] = useState(false)
   const [closingTrade, setClosingTrade] = useState(null)
   const [refreshing, setRefreshing] = useState(false)
+
+  const handleSignoffComplete = useCallback(() => {
+    refetch()
+    refetchPending()
+  }, [refetch, refetchPending])
 
   // Fetch prices for open trade tickers
   const fetchPrices = useCallback(async (tradeList) => {
@@ -147,6 +154,14 @@ export default function TradesView({ onSelectHypothesis }) {
 
   return (
     <div className="trades-view">
+      {/* Pending Trade Actions */}
+      {pendingActions && pendingActions.length > 0 && (
+        <PendingTradesPanel
+          pendingActions={pendingActions}
+          onSignoffComplete={handleSignoffComplete}
+        />
+      )}
+
       {/* Open Trades */}
       <div className="trades-view__header">
         <h2>Open Trades</h2>

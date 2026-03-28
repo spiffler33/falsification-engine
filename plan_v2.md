@@ -11,7 +11,7 @@ The following pipeline is built and working end-to-end:
 - Three-stage conviction scoring: mechanical Stage 1 inputs (support_strength, evidence_quality, convergence, falsifier_clarity) → Stage 2 discounts (soft falsifier, UNTESTABLE, theory-aware overlap) → Stage 3 gates (horizon alignment from timeframe parsing, expression efficiency from ETF liquidity tiers)
 - Conviction floor at 5/10
 - Consolidation check preventing redundant hypotheses
-- React frontend: Ledger, Trades, Observatory, Pipeline, Briefing, About views
+- React frontend: Research, Observatory, Pipeline, Trades views (+ About via header link)
 - Hermes Editorial design system (Cormorant Garamond / EB Garamond / JetBrains Mono, cream/brick/olive/gold) with night mode
 - GitHub Pages static publishing: snapshot endpoint bakes all hypotheses (across all runs) into window.__SNAPSHOT__, publish script deploys to gh-pages branch via temp directory with cache-busting query params. Read-only mode auto-detected by frontend (HashRouter, API interception from snapshot). Human-readable timestamp on static banner.
 - About page: 12-step pipeline description grouped into 5 sections with architectural premise, continuous CSS counter
@@ -27,11 +27,18 @@ The following pipeline is built and working end-to-end:
 
 4. **Newsletter Prompt Builder (Feature 2):** One-click prompt assembly from survived hypotheses (conviction >= 6). System + user prompt sections with copy buttons. Copy-paste into Claude.ai for newsletter generation. No API calls, no storage.
 
+5. **Newsletter Import + Archive (Feature 5):** Full paste-back workflow for newsletter output. Claude appends a `<TRADES>` JSON block to the newsletter text; frontend strips it before display and sends structured trade recommendations to backend. Newsletters stored with date and run context. Archive view shows all newsletters with click-to-expand full text.
+
+6. **Navigation Restructure (Feature 6):** Collapsed from 5 tabs to 4: Research (newsletter workflow + research inbox) | Observatory (theory cards + hypothesis ledger + data briefing) | Pipeline | Trades. Ledger absorbed into Observatory. Briefing absorbed into Observatory. `/briefing` redirects to `/observatory`.
+
+7. **Auto-Managed Trades via Newsletter (Feature 7):** Newsletter import diffs trade recommendations against open positions using desired-state reconciliation. Generates PENDING trade actions (OPEN / CLOSE / REDUCE) sized by conviction ($10k base allocation * conviction/10). Manual signoff required — user reviews pending actions on Trades tab, approves/rejects individually, executes at live Yahoo Finance prices. REDUCE uses close-and-reopen pattern for complete P&L audit trail.
+
 ### Infrastructure Improvements
 
 - **Snapshot parity fix:** Snapshot endpoint now includes all hypotheses across all runs, matching the local ledger view (was previously filtered to latest run only).
 - **Cache-busting:** Publish script appends `?v=<unix_timestamp>` to snapshot.js script tag, preventing GitHub Pages CDN from serving stale data.
 - **Mobile tightening:** Comprehensive `@media (max-width: 768px)` block covering all views — header, nav, controls, modals, pipeline, about, briefing, trades (horizontal scroll wrappers), journal, inbox, audit, newsletter.
+- **Lightweight DB migration:** `_migrate()` in database.py handles ALTER TABLE for adding columns to existing tables (e.g., `newsletter_id` on trades). Runs on every startup, idempotent.
 
 **Current output quality:** Two completed runs with 13 total hypotheses. Conviction range 5-8 for survivors. Horizon gate is dominant kill mechanism — debt_cycle_long hypotheses with 9-12 month timeframes capped at 2-4/10 despite raw scores of 6.5-8.5. Stage 2 inputs serialized losslessly. Mechanical scores producing 4.5x wider differentiation than LLM self-evaluation.
 
@@ -45,8 +52,11 @@ The following pipeline is built and working end-to-end:
 | 2 | Feature 1: Trade Tracker | COMPLETE |
 | 3 | Feature 4: About Page | COMPLETE |
 | 4 | Feature 2: Newsletter Prompt Builder | COMPLETE |
-| 5 | Mobile responsive CSS | COMPLETE |
-| 6 | Snapshot parity + cache-busting | COMPLETE |
+| 5 | Feature 5: Newsletter Import + Archive | COMPLETE |
+| 6 | Feature 6: Navigation Restructure (5 tabs -> 4) | COMPLETE |
+| 7 | Feature 7: Auto-Managed Trades via Newsletter | COMPLETE |
+| 8 | Mobile responsive CSS | COMPLETE |
+| 9 | Snapshot parity + cache-busting | COMPLETE |
 
 ---
 
@@ -82,6 +92,39 @@ class Trade(Base):
     hypothesis_short_name: str
     hypothesis_theory: str
     hypothesis_status_at_entry: str  # SURVIVED / WOUNDED
+```
+
+### Newsletter
+
+```python
+class Newsletter(Base):
+    __tablename__ = "newsletters"
+    id: str            # "NL-2026-001"
+    date: str          # ISO date of import
+    run_id: str        # FK to runs — pipeline run at time of import
+    content: str       # full ASCII newsletter text (TRADES block stripped)
+    trade_recommendations: str  # JSON array: [{hypothesis_id, ticker, direction, conviction}]
+```
+
+### PendingTradeAction
+
+```python
+class PendingTradeAction(Base):
+    __tablename__ = "pending_trade_actions"
+    id: str             # "PTA-001"
+    newsletter_id: str  # FK to newsletters
+    action_type: str    # "OPEN" | "CLOSE" | "REDUCE"
+    hypothesis_id: str  # which hypothesis drives this action
+    ticker: str
+    direction: str
+    conviction: float
+    proposed_shares: float
+    proposed_price: float   # price at time of newsletter import
+    existing_trade_id: str  # for CLOSE/REDUCE: which open trade to modify
+    reduce_to_shares: float # for REDUCE: target share count
+    status: str         # "PENDING" | "EXECUTED" | "REJECTED"
+    executed_at: str
+    executed_price: float   # actual price at signoff time
 ```
 
 ### Conviction Pipeline (zero-LLM)

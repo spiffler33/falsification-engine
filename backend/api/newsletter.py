@@ -1,25 +1,38 @@
-# newsletter.py -- Newsletter prompt builder endpoint.
+# newsletter.py -- Newsletter prompt builder + import/storage/trade-diffing.
 # Depends on: db/database.py, db/models.py, config.py
 # Depended on by: main.py (router registration)
 #
 # Assembles a system prompt + user prompt for the newsletter.
-# The user copies these into Claude.ai — no API call from the backend.
+# The user copies these into Claude.ai, then pastes the output back.
+# On import, the backend stores the newsletter and generates pending
+# trade actions by diffing recommendations against open trades.
 from __future__ import annotations
 
 import json
-from datetime import date
+import re
+import subprocess
+from datetime import date, datetime
 
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Body, Depends, HTTPException, Query
 from sqlalchemy import desc
 from sqlalchemy.orm import Session
 
 from backend.db.database import get_db
-from backend.db.models import Hypothesis, Run
+from backend.db.models import (
+    Hypothesis,
+    Newsletter,
+    PendingTradeAction,
+    Run,
+    Trade,
+)
 from backend.config import DATA_DIR, MOCK_DATA_DIR
 
 router = APIRouter(tags=["newsletter"])
 
 CONVICTION_THRESHOLD = 6
+BASE_ALLOCATION = 10000  # $10k notional per trade at conviction 10
+
+YAHOO_BASE_URL = "https://query1.finance.yahoo.com/v8/finance/chart"
 
 SYSTEM_PROMPT = """You are a macro strategist writing a weekly newsletter. Your style is:
 - Terse, declarative sentences. No hedging language.
@@ -53,19 +66,148 @@ SYSTEM: Falsification Engine v2 | 8 theory modules | Mechanical scoring
 This is not investment advice. These are hypotheses that survived
 systematic falsification. What the system found != what you should do.
 
-Maximum 800 words total. Use ASCII characters only — no emoji, no unicode arrows."""
+Maximum 800 words total. Use ASCII characters only -- no emoji, no unicode arrows.
 
+IMPORTANT: After the newsletter text, on a new line, output a JSON block wrapped in
+<TRADES> tags containing the trade recommendations from the newsletter. Each entry
+must include the hypothesis_id, primary ticker, direction, and conviction score.
+Format:
+
+<TRADES>
+[{"hypothesis_id": "H-...", "ticker": "GLD", "direction": "LONG", "conviction": 8}]
+</TRADES>
+
+Include ONLY the hypotheses that appear in the newsletter. Use the exact hypothesis_id
+values from the data provided below."""
+
+
+# ---------------------------------------------------------------------------
+# Helpers
+# ---------------------------------------------------------------------------
+
+def _fetch_current_price(ticker: str) -> float | None:
+    """Fetch latest closing price for a ticker via Yahoo v8 chart API + curl."""
+    url = f"{YAHOO_BASE_URL}/{ticker}?range=5d&interval=1d&includePrePost=false"
+    try:
+        result = subprocess.run(
+            [
+                "curl", "-s", "--max-time", "10",
+                "-H", "User-Agent: Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36",
+                url,
+            ],
+            capture_output=True, text=True, timeout=15,
+        )
+        if result.returncode != 0 or not result.stdout:
+            return None
+        data = json.loads(result.stdout)
+        chart_result = data.get("chart", {}).get("result")
+        if not chart_result:
+            return None
+        quotes = chart_result[0].get("indicators", {}).get("quote", [{}])[0]
+        closes = quotes.get("close", [])
+        valid = [c for c in closes if c is not None]
+        return round(valid[-1], 2) if valid else None
+    except (subprocess.TimeoutExpired, json.JSONDecodeError, Exception):
+        return None
+
+
+def _next_newsletter_id(db: Session) -> str:
+    year = date.today().year
+    prefix = f"NL-{year}-"
+    existing = (
+        db.query(Newsletter)
+        .filter(Newsletter.id.like(f"{prefix}%"))
+        .order_by(desc(Newsletter.id))
+        .first()
+    )
+    seq = int(existing.id.split("-")[-1]) + 1 if existing else 1
+    return f"{prefix}{seq:03d}"
+
+
+_pta_counter = 0
+
+def _next_pta_id(db: Session) -> str:
+    global _pta_counter
+    existing = (
+        db.query(PendingTradeAction)
+        .order_by(desc(PendingTradeAction.id))
+        .first()
+    )
+    db_seq = int(existing.id.replace("PTA-", "")) if existing else 0
+    _pta_counter = max(_pta_counter, db_seq) + 1
+    return f"PTA-{_pta_counter:03d}"
+
+
+def _next_trade_id(db: Session) -> str:
+    year = date.today().year
+    prefix = f"T-{year}-"
+    existing = (
+        db.query(Trade)
+        .filter(Trade.id.like(f"{prefix}%"))
+        .order_by(desc(Trade.id))
+        .first()
+    )
+    seq = int(existing.id.split("-")[-1]) + 1 if existing else 1
+    return f"{prefix}{seq:03d}"
+
+
+def _compute_shares(conviction: float, price: float) -> float:
+    """Compute position size based on conviction and price."""
+    if price <= 0:
+        return 0
+    allocation = BASE_ALLOCATION * (conviction / 10)
+    return round(allocation / price)
+
+
+def _newsletter_to_dict(nl: Newsletter, truncate_content: bool = False) -> dict:
+    recs = json.loads(nl.trade_recommendations) if nl.trade_recommendations else []
+    content = nl.content
+    if truncate_content:
+        # First non-empty line as preview
+        lines = [l for l in content.split("\n") if l.strip()]
+        content = lines[0] if lines else ""
+    return {
+        "id": nl.id,
+        "date": nl.date,
+        "run_id": nl.run_id,
+        "content": content,
+        "trade_recommendations": recs,
+        "trade_count": len(recs),
+        "created_at": nl.created_at,
+    }
+
+
+def _pta_to_dict(pta: PendingTradeAction) -> dict:
+    return {
+        "id": pta.id,
+        "newsletter_id": pta.newsletter_id,
+        "action_type": pta.action_type,
+        "hypothesis_id": pta.hypothesis_id,
+        "ticker": pta.ticker,
+        "direction": pta.direction,
+        "conviction": pta.conviction,
+        "proposed_shares": pta.proposed_shares,
+        "proposed_price": pta.proposed_price,
+        "existing_trade_id": pta.existing_trade_id,
+        "reduce_to_shares": pta.reduce_to_shares,
+        "status": pta.status,
+        "executed_at": pta.executed_at,
+        "executed_price": pta.executed_price,
+    }
+
+
+# ---------------------------------------------------------------------------
+# Prompt builder (existing)
+# ---------------------------------------------------------------------------
 
 @router.get("/newsletter/prompt")
 def get_newsletter_prompt(db: Session = Depends(get_db)):
     """Assemble system + user prompts for newsletter generation via Claude.ai."""
 
-    # 1. Find the latest run
     latest_run = db.query(Run).order_by(desc(Run.timestamp)).first()
     if not latest_run:
         raise HTTPException(status_code=400, detail="No pipeline runs found")
 
-    # 2. Fetch SURVIVED hypotheses with conviction >= threshold from latest run
     qualifying = (
         db.query(Hypothesis)
         .filter(
@@ -83,13 +225,9 @@ def get_newsletter_prompt(db: Session = Depends(get_db)):
             detail="No hypotheses meet conviction >= 6 threshold in the latest run",
         )
 
-    # 3. Parse activation scores from the run
     activation_scores = json.loads(latest_run.activation_scores) if latest_run.activation_scores else {}
-
-    # 4. Load briefing summary
     briefing_summary = _load_briefing_summary()
 
-    # 5. Collect UNTESTABLE falsifiers across qualifying hypotheses
     untestable = []
     for h in qualifying:
         soft_f = json.loads(h.soft_falsifiers) if h.soft_falsifiers else []
@@ -102,7 +240,6 @@ def get_newsletter_prompt(db: Session = Depends(get_db)):
                     "severity": f.get("severity", ""),
                 })
 
-    # 6. Build the user prompt
     user_prompt = _build_user_prompt(qualifying, activation_scores, briefing_summary, untestable)
 
     return {
@@ -110,6 +247,168 @@ def get_newsletter_prompt(db: Session = Depends(get_db)):
         "user_prompt": user_prompt,
     }
 
+
+# ---------------------------------------------------------------------------
+# Newsletter import + trade diffing
+# ---------------------------------------------------------------------------
+
+@router.post("/newsletter/import")
+def import_newsletter(payload: dict = Body(...), db: Session = Depends(get_db)):
+    """Import a newsletter and generate pending trade actions."""
+    content = payload.get("content", "").strip()
+    trade_recs = payload.get("trade_recommendations", [])
+
+    if not content:
+        raise HTTPException(status_code=400, detail="Newsletter content is required")
+
+    # Get latest run for context
+    latest_run = db.query(Run).order_by(desc(Run.timestamp)).first()
+
+    # Store newsletter
+    nl = Newsletter(
+        id=_next_newsletter_id(db),
+        date=date.today().isoformat(),
+        run_id=latest_run.id if latest_run else None,
+        content=content,
+        trade_recommendations=json.dumps(trade_recs) if trade_recs else None,
+    )
+    db.add(nl)
+    db.flush()  # flush so newsletter FK is available for pending actions
+
+    # Cancel any previous PENDING actions (only latest newsletter matters)
+    db.query(PendingTradeAction).filter(
+        PendingTradeAction.status == "PENDING"
+    ).update({"status": "REJECTED"})
+
+    # Diff recommendations against current open trades
+    open_trades = db.query(Trade).filter(Trade.status == "OPEN").all()
+
+    # Build lookup: hypothesis_id -> open trade
+    open_by_hyp = {}
+    for t in open_trades:
+        open_by_hyp[t.hypothesis_id] = t
+
+    # Track which open trades are accounted for by recommendations
+    accounted_trade_ids = set()
+    pending_actions = []
+
+    for rec in trade_recs:
+        hyp_id = rec.get("hypothesis_id")
+        ticker = rec.get("ticker", "").upper()
+        direction = rec.get("direction", "LONG").upper()
+        conviction = rec.get("conviction", 0)
+
+        if not hyp_id or not ticker:
+            continue
+
+        # Fetch current price for sizing
+        price = _fetch_current_price(ticker)
+        if price is None:
+            price = 0
+
+        target_shares = _compute_shares(conviction, price) if price > 0 else 0
+
+        existing = open_by_hyp.get(hyp_id)
+        if existing and existing.ticker == ticker:
+            accounted_trade_ids.add(existing.id)
+
+            if conviction < existing.conviction_at_entry:
+                # Conviction dropped -> REDUCE
+                new_shares = _compute_shares(conviction, existing.entry_price)
+                if new_shares < existing.shares:
+                    pta = PendingTradeAction(
+                        id=_next_pta_id(db),
+                        newsletter_id=nl.id,
+                        action_type="REDUCE",
+                        hypothesis_id=hyp_id,
+                        ticker=ticker,
+                        direction=direction,
+                        conviction=conviction,
+                        proposed_shares=new_shares,
+                        proposed_price=price,
+                        existing_trade_id=existing.id,
+                        reduce_to_shares=new_shares,
+                        status="PENDING",
+                    )
+                    db.add(pta)
+                    pending_actions.append(pta)
+            # Same or higher conviction -> no action needed
+        else:
+            # New recommendation -> OPEN
+            pta = PendingTradeAction(
+                id=_next_pta_id(db),
+                newsletter_id=nl.id,
+                action_type="OPEN",
+                hypothesis_id=hyp_id,
+                ticker=ticker,
+                direction=direction,
+                conviction=conviction,
+                proposed_shares=target_shares,
+                proposed_price=price,
+                status="PENDING",
+            )
+            db.add(pta)
+            pending_actions.append(pta)
+
+    # Open trades not in recommendations -> CLOSE
+    for t in open_trades:
+        if t.id not in accounted_trade_ids:
+            price = _fetch_current_price(t.ticker)
+            pta = PendingTradeAction(
+                id=_next_pta_id(db),
+                newsletter_id=nl.id,
+                action_type="CLOSE",
+                hypothesis_id=t.hypothesis_id,
+                ticker=t.ticker,
+                direction=t.direction,
+                conviction=0,
+                proposed_shares=0,
+                proposed_price=price or 0,
+                existing_trade_id=t.id,
+                status="PENDING",
+            )
+            db.add(pta)
+            pending_actions.append(pta)
+
+    db.commit()
+    db.refresh(nl)
+
+    return {
+        "newsletter": _newsletter_to_dict(nl),
+        "pending_actions": [_pta_to_dict(p) for p in pending_actions],
+        "pending_count": len(pending_actions),
+    }
+
+
+@router.get("/newsletters")
+def list_newsletters(db: Session = Depends(get_db)):
+    """List all newsletters, newest first."""
+    newsletters = db.query(Newsletter).order_by(desc(Newsletter.date)).all()
+    return [_newsletter_to_dict(nl, truncate_content=True) for nl in newsletters]
+
+
+@router.get("/newsletters/{newsletter_id}")
+def get_newsletter(newsletter_id: str, db: Session = Depends(get_db)):
+    """Get full newsletter detail."""
+    nl = db.query(Newsletter).filter(Newsletter.id == newsletter_id).first()
+    if not nl:
+        raise HTTPException(status_code=404, detail=f"Newsletter {newsletter_id} not found")
+
+    # Include pending actions for this newsletter
+    actions = (
+        db.query(PendingTradeAction)
+        .filter(PendingTradeAction.newsletter_id == newsletter_id)
+        .all()
+    )
+
+    result = _newsletter_to_dict(nl)
+    result["pending_actions"] = [_pta_to_dict(a) for a in actions]
+    return result
+
+
+# ---------------------------------------------------------------------------
+# Briefing helpers (unchanged)
+# ---------------------------------------------------------------------------
 
 def _load_briefing_summary() -> str:
     """Load key data points from the briefing packet."""
@@ -119,7 +418,6 @@ def _load_briefing_summary() -> str:
             lines = []
             lines.append(f"Timestamp: {data.get('timestamp', 'unknown')}")
 
-            # Extract key sections
             for section_name in ["growth", "inflation", "rates", "liquidity", "credit", "sentiment"]:
                 section = data.get(section_name, {})
                 if isinstance(section, dict):
@@ -127,7 +425,6 @@ def _load_briefing_summary() -> str:
                         if val is not None:
                             lines.append(f"  {section_name}.{key}: {val}")
 
-            # Computed metrics
             computed = data.get("computed", {})
             if isinstance(computed, dict):
                 for key, val in computed.items():
@@ -149,7 +446,6 @@ def _build_user_prompt(
     sections.append("Generate the newsletter from this data:")
     sections.append("")
 
-    # Hypotheses
     sections.append(f"HYPOTHESES (conviction >= {CONVICTION_THRESHOLD}, ordered by conviction desc):")
     sections.append("")
     for h in hypotheses:
@@ -160,19 +456,18 @@ def _build_user_prompt(
         directions = json.loads(h.asset_direction) if h.asset_direction else {}
 
         sections.append(f"  [{h.short_name}]")
+        sections.append(f"    Hypothesis ID: {h.id}")
         sections.append(f"    Theory: {h.source_theory}")
         sections.append(f"    Conviction: {h.conviction}/10")
         sections.append(f"    Thesis: {h.full_statement}")
         sections.append(f"    Timeframe: {h.timeframe}")
 
-        # Assets with direction
         asset_lines = []
         for ticker in assets:
             direction = directions.get(ticker, "?")
             asset_lines.append(f"{ticker} {direction}")
         sections.append(f"    Expression: {', '.join(asset_lines)}")
 
-        # Top falsifiers (sorted by severity: major > medium > minor)
         severity_order = {"major": 0, "medium": 1, "minor": 2}
         all_falsifiers = []
         for f in hard_f:
@@ -192,14 +487,13 @@ def _build_user_prompt(
                 "threshold": f.get("threshold", ""),
             })
 
-        # Sort: triggered first, then by severity
         all_falsifiers.sort(key=lambda x: (
             0 if x["status"] in ("TRIGGERED", "FAILED") else 1,
             severity_order.get(x.get("severity", "minor"), 3),
         ))
 
         sections.append("    Falsifiers:")
-        for f in all_falsifiers[:6]:  # Cap at 6 most important
+        for f in all_falsifiers[:6]:
             if f["type"] == "HARD":
                 sections.append(f"      HARD: {f['condition']} [{f['status']}]")
             else:
@@ -210,9 +504,7 @@ def _build_user_prompt(
 
         sections.append("")
 
-    # Active theories
     sections.append("ACTIVE THEORIES:")
-    # activation_scores is a list of objects, each with theory_id, tier/effective_tier, score
     theories_list = activation_scores if isinstance(activation_scores, list) else []
     active_found = False
     for t in theories_list:
@@ -226,19 +518,16 @@ def _build_user_prompt(
                 sections.append(f"  {theory_id}: {tier}")
             active_found = True
     if not active_found:
-        # Show all non-inactive for context
         for t in theories_list:
             tier = t.get("tier") or t.get("effective_tier") or "Unknown"
             if tier != "Inactive":
                 sections.append(f"  {t.get('theory_id', '?')}: {tier}")
     sections.append("")
 
-    # Briefing summary
     sections.append("BRIEFING SUMMARY:")
     sections.append(briefing_summary)
     sections.append("")
 
-    # Untestable falsifiers
     sections.append("UNTESTABLE FALSIFIERS:")
     if untestable:
         for u in untestable:

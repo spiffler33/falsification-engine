@@ -1,22 +1,19 @@
-import { Routes, Route, useLocation, useNavigate } from 'react-router-dom'
+import { Routes, Route, Navigate, useLocation, useNavigate } from 'react-router-dom'
 import { useState, useEffect, useCallback } from 'react'
 import Header from './components/Header'
 import NavBar from './components/NavBar'
-import LedgerView from './views/LedgerView'
+import ResearchView from './views/ResearchView'
 import ObservatoryView from './views/ObservatoryView'
 import PipelineView from './views/PipelineView'
-import BriefingView from './views/BriefingView'
 import TradesView from './views/TradesView'
 import AboutView from './views/AboutView'
 import HypothesisDetail from './overlays/HypothesisDetail'
-import NewsletterPromptOverlay from './overlays/NewsletterPromptOverlay'
 import { api } from './lib/api'
 import { isStaticMode, getSnapshot } from './lib/snapshot'
 
 export default function App() {
   const [inboxCount, setInboxCount] = useState(0)
   const [selectedHypothesis, setSelectedHypothesis] = useState(null)
-  const [showNewsletter, setShowNewsletter] = useState(false)
   const navigate = useNavigate()
   const location = useLocation()
 
@@ -33,7 +30,7 @@ export default function App() {
       api.get(`/api/hypotheses/${match[1]}`).then(h => {
         setSelectedHypothesis(h)
       }).catch(() => {
-        navigate('/', { replace: true })
+        navigate('/observatory', { replace: true })
       })
     }
   }, [location.pathname, navigate])
@@ -44,9 +41,8 @@ export default function App() {
 
   const closeDetail = useCallback(() => {
     setSelectedHypothesis(null)
-    // If we were on a deep-link, go back to ledger
     if (location.pathname.startsWith('/hypothesis/')) {
-      navigate('/', { replace: true })
+      navigate('/observatory', { replace: true })
     }
   }, [location.pathname, navigate])
 
@@ -70,13 +66,13 @@ export default function App() {
       )}
 
       <Routes>
-        <Route path="/" element={<LedgerView onSelectHypothesis={openDetail} onOpenNewsletter={() => setShowNewsletter(true)} />} />
-        <Route path="/trades" element={<TradesView onSelectHypothesis={openDetail} />} />
-        <Route path="/observatory" element={<ObservatoryView />} />
+        <Route path="/" element={<ResearchView />} />
+        <Route path="/observatory" element={<ObservatoryView onSelectHypothesis={openDetail} />} />
         <Route path="/pipeline" element={<PipelineView />} />
-        <Route path="/briefing" element={<BriefingView />} />
+        <Route path="/trades" element={<TradesView onSelectHypothesis={openDetail} />} />
         <Route path="/about" element={<AboutView />} />
-        <Route path="/hypothesis/:id" element={<LedgerView onSelectHypothesis={openDetail} onOpenNewsletter={() => setShowNewsletter(true)} />} />
+        <Route path="/briefing" element={<Navigate to="/observatory" replace />} />
+        <Route path="/hypothesis/:id" element={<ObservatoryView onSelectHypothesis={openDetail} />} />
       </Routes>
 
       {selectedHypothesis && (
@@ -84,10 +80,6 @@ export default function App() {
           hypothesis={selectedHypothesis}
           onClose={closeDetail}
         />
-      )}
-
-      {showNewsletter && (
-        <NewsletterPromptOverlay onClose={() => setShowNewsletter(false)} />
       )}
     </div>
   )

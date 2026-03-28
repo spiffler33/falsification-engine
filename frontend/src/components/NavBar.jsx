@@ -1,11 +1,10 @@
 import { NavLink, useLocation } from 'react-router-dom'
 
 const tabs = [
-  { to: '/', label: 'Ledger', primary: true },
-  { to: '/trades', label: 'Trades' },
+  { to: '/', label: 'Research', primary: true, badge: true },
   { to: '/observatory', label: 'Observatory' },
   { to: '/pipeline', label: 'Pipeline' },
-  { to: '/briefing', label: 'Briefing', badge: true },
+  { to: '/trades', label: 'Trades' },
 ]
 
 export default function NavBar({ inboxCount = 0 }) {

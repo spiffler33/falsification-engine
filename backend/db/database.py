@@ -42,6 +42,25 @@ def get_db():
 
 
 def init_db():
-    """Create all tables if they don't exist."""
+    """Create all tables if they don't exist, and apply lightweight migrations."""
     from backend.db import models  # noqa: F401 — import triggers table registration
     Base.metadata.create_all(bind=engine)
+    _migrate(engine)
+
+
+def _migrate(eng):
+    """Apply column additions that create_all won't handle on existing tables."""
+    import sqlite3
+    raw = eng.raw_connection()
+    try:
+        cursor = raw.cursor()
+        # Add newsletter_id to trades if missing
+        cols = [r[1] for r in cursor.execute("PRAGMA table_info(trades)").fetchall()]
+        if "newsletter_id" in cols:
+            return
+        cursor.execute("ALTER TABLE trades ADD COLUMN newsletter_id TEXT REFERENCES newsletters(id)")
+        raw.commit()
+    except Exception:
+        pass  # Column may already exist or table may not exist yet
+    finally:
+        raw.close()
