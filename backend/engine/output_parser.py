@@ -320,11 +320,12 @@ def parse_elimination_output(
 
         if isinstance(sf_updates, dict):
             triggered_names = [n.lower().strip() for n in sf_updates.get("triggered", [])]
+            untestable_names = [n.lower().strip() for n in sf_updates.get("untestable", [])]
             triggered_count = sf_updates.get("triggered_count", len(triggered_names))
 
+            # Match TRIGGERED falsifiers
             if triggered_names or triggered_count > 0:
                 matched_count = 0
-                # Try matching by name, condition, or substring
                 for sf in existing_sf:
                     sf_name = sf.get("name", "").lower().strip()
                     sf_cond = sf.get("condition", "").lower().strip()
@@ -340,22 +341,41 @@ def parse_elimination_output(
                 if matched_count < triggered_count:
                     remaining = triggered_count - matched_count
                     severity_order = {"major": 0, "medium": 1, "minor": 2}
-                    unmatched = [sf for sf in existing_sf if sf.get("status") != "TRIGGERED"]
+                    unmatched = [sf for sf in existing_sf if sf.get("status") not in ("TRIGGERED", "UNTESTABLE")]
                     unmatched.sort(key=lambda x: severity_order.get(x.get("severity", "minor"), 2))
                     for sf in unmatched[:remaining]:
                         sf["status"] = "TRIGGERED"
 
+            # Match UNTESTABLE falsifiers
+            if untestable_names:
+                for sf in existing_sf:
+                    if sf.get("status") == "TRIGGERED":
+                        continue  # TRIGGERED takes precedence
+                    sf_name = sf.get("name", "").lower().strip()
+                    sf_cond = sf.get("condition", "").lower().strip()
+                    for un in untestable_names:
+                        if (un == sf_name or un == sf_cond
+                                or un in sf_name or un in sf_cond
+                                or sf_name in un or sf_cond in un):
+                            sf["status"] = "UNTESTABLE"
+                            break
+
         elif isinstance(sf_updates, list):
             for sf_item in sf_updates:
-                if isinstance(sf_item, dict) and sf_item.get("status", "").upper() == "TRIGGERED":
+                if not isinstance(sf_item, dict):
+                    continue
+                item_status = sf_item.get("status", "").upper()
+                if item_status in ("TRIGGERED", "UNTESTABLE"):
                     name = sf_item.get("name", sf_item.get("id", "")).lower().strip()
                     for sf in existing_sf:
+                        if sf.get("status") == "TRIGGERED":
+                            continue  # TRIGGERED takes precedence
                         sf_name = sf.get("name", "").lower().strip()
                         sf_cond = sf.get("condition", "").lower().strip()
                         if (name == sf_name or name == sf_cond
                                 or name in sf_name or name in sf_cond
                                 or sf_name in name or sf_cond in name):
-                            sf["status"] = "TRIGGERED"
+                            sf["status"] = item_status
                             break
 
         matched["soft_falsifiers"] = json.dumps(existing_sf)

@@ -327,6 +327,13 @@ def import_elimination(payload: dict = Body(...), db: Session = Depends(get_db))
             detail={"message": e.message, "field_errors": e.field_errors, "raw_preview": e.raw_input},
         )
 
+    # Load activation scores and briefing for mechanical conviction computation
+    activation_data = json.loads(latest_run.activation_scores) if latest_run.activation_scores else []
+    briefing_raw = _load_briefing()
+
+    # Parse elimination JSON for per-hypothesis elimination results
+    data = _extract_json_for_lookup(raw_json)
+
     # Update hypotheses in database and run conviction scoring
     scored_results = []
 
@@ -354,9 +361,10 @@ def import_elimination(payload: dict = Body(...), db: Session = Depends(get_db))
 
         # Run conviction scoring for non-KILLED hypotheses
         if h.status != "KILLED":
-            conv_inputs = h_data.get("_conviction_inputs", {})
+            llm_inputs = h_data.get("_conviction_inputs", {})
             soft_f = json.loads(h.soft_falsifiers) if h.soft_falsifiers else []
             triggered_sf = [{"severity": sf["severity"]} for sf in soft_f if sf.get("status") == "TRIGGERED"]
+            untestable_sf = [{"severity": sf["severity"]} for sf in soft_f if sf.get("status") == "UNTESTABLE"]
 
             # Compute theory-aware overlap for primary asset
             assets = json.loads(h.predicted_assets) if h.predicted_assets else []
@@ -372,22 +380,51 @@ def import_elimination(payload: dict = Body(...), db: Session = Depends(get_db))
                     else:
                         diff_theory += 1
 
+            # Find the elimination result for this hypothesis (for falsifier_clarity)
+            elim_result = None
+            for er in data:
+                er_id = er.get("hypothesis_id", er.get("id", ""))
+                if er_id == h.id:
+                    elim_result = er
+                    break
+
+            # Compute mechanical Stage 1 inputs (replaces LLM-assigned values)
+            h_dict = {
+                "source_theory": h.source_theory,
+                "source_theories": h.source_theories or json.dumps([h.source_theory]),
+                "asset_direction": h.asset_direction or "{}",
+                "hard_falsifiers": h.hard_falsifiers or "[]",
+                "soft_falsifiers": h.soft_falsifiers or "[]",
+            }
+            mech = conviction.compute_mechanical_conviction_inputs(
+                hypothesis=h_dict,
+                activation_results=activation_data,
+                briefing=briefing_raw,
+                elimination_result=elim_result,
+            )
+
             ci = ConvictionInput(
                 hypothesis_id=h.id,
-                support_strength=conv_inputs.get("support_strength", 0.5),
-                evidence_quality=conv_inputs.get("evidence_quality", 0.5),
-                convergence=conv_inputs.get("convergence", 0.3),
-                falsifier_clarity=conv_inputs.get("falsifier_clarity", 0.7),
+                support_strength=mech.support_strength,
+                evidence_quality=mech.evidence_quality,
+                convergence=mech.convergence,
+                falsifier_clarity=mech.falsifier_clarity,
                 triggered_soft_falsifiers=triggered_sf,
+                untestable_soft_falsifiers=untestable_sf,
                 same_theory_overlap=same_theory,
                 diff_theory_overlap=diff_theory,
-                horizon_alignment=conv_inputs.get("horizon_alignment", 0.5),
-                expression_efficiency=conv_inputs.get("expression_efficiency", 0.5),
+                horizon_alignment=llm_inputs.get("horizon_alignment", 0.5),
+                expression_efficiency=llm_inputs.get("expression_efficiency", 0.5),
             )
 
             result = conviction.score_conviction(ci)
             h.conviction = result.stage3.final
-            h.conviction_math = json.dumps(result.model_dump())
+
+            # Store full math with both mechanical and LLM inputs for audit
+            math_dump = result.model_dump()
+            math_dump["llm_conviction_inputs"] = llm_inputs
+            math_dump["mechanical_conviction_inputs"] = mech.model_dump()
+            h.conviction_math = json.dumps(math_dump)
 
             # Conviction floor: mechanical kill for scores below 5
             if result.stage3.floor_killed:
@@ -501,6 +538,28 @@ def publish_to_ghpages(db: Session = Depends(get_db)):
         return {"status": "ok", "output": result.stdout[-1000:]}
     except subprocess.TimeoutExpired:
         raise HTTPException(status_code=504, detail="Publish timed out after 120 seconds")
+
+
+def _extract_json_for_lookup(raw_json: str) -> list[dict]:
+    """Parse elimination raw JSON into a list for per-hypothesis lookup."""
+    try:
+        parsed = json.loads(raw_json)
+        if isinstance(parsed, list):
+            return parsed
+    except (json.JSONDecodeError, TypeError):
+        pass
+    # Try extracting array from noisy output
+    import re
+    start = raw_json.find("[")
+    end = raw_json.rfind("]")
+    if start >= 0 and end > start:
+        try:
+            parsed = json.loads(raw_json[start:end + 1])
+            if isinstance(parsed, list):
+                return parsed
+        except json.JSONDecodeError:
+            pass
+    return []
 
 
 def _get_or_create_active_run(db: Session, activation_results=None) -> Run:

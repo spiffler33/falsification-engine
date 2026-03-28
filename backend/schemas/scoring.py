@@ -18,8 +18,9 @@ class Stage1Raw(BaseModel):
 class Stage2Discounts(BaseModel):
     """Stage 2: Multiplicative discounts from falsifier health and overlap."""
     soft_falsifier_discount: float = 0.0  # the D_f multiplier (0.05 to 1.0)
+    untestable_discount: float = 0.0      # the D_u multiplier for UNTESTABLE falsifiers
     overlap_adjustment: float = 0.0       # additive: same-theory penalty + cross-theory bonus
-    adjusted: float = 0.0                 # (raw * D_f) + overlap_adjustment
+    adjusted: float = 0.0                 # (raw * D_f * D_u) + overlap_adjustment
 
 
 class Stage3Gates(BaseModel):
@@ -40,6 +41,14 @@ class ConvictionMath(BaseModel):
     stage3: Stage3Gates = Stage3Gates()
 
 
+class MechanicalConvictionInputs(BaseModel):
+    """Mechanically computed Stage 1 inputs — no LLM involvement."""
+    support_strength: float = 0.0
+    evidence_quality: float = 0.0
+    convergence: float = 0.0
+    falsifier_clarity: float = 0.0
+
+
 class ConvictionInput(BaseModel):
     """Input to the conviction scoring pipeline for a single hypothesis."""
     hypothesis_id: str
@@ -50,6 +59,7 @@ class ConvictionInput(BaseModel):
     falsifier_clarity: float = 0.0
     # Stage 2 inputs
     triggered_soft_falsifiers: List[Dict] = []  # [{severity: "minor"|"medium"|"major"}]
+    untestable_soft_falsifiers: List[Dict] = []  # [{severity: "minor"|"medium"|"major"}]
     same_theory_overlap: int = 0   # other surviving hypotheses on same asset from same theory
     diff_theory_overlap: int = 0   # other surviving hypotheses on same asset from different theories
     # Stage 3 inputs

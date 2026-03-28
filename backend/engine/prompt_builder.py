@@ -244,9 +244,16 @@ Your ONLY job is to mechanically audit each hypothesis against its pre-registere
 For each hypothesis, evaluate every pre-registered hard and soft falsifier against the current data briefing and your web search findings. For each falsifier, state:
 (a) the exact condition
 (b) the current data value or observation
-(c) TRIGGERED or CLEAR
+(c) TRIGGERED, CLEAR, or UNTESTABLE
 
-This is a data lookup, not an argument. Do not explain, reframe, or contextualize. Just check.
+Status definitions:
+- TRIGGERED: The data meets the stated condition.
+- CLEAR: The data exists AND contradicts the stated condition. You must cite a specific current number or observation.
+- UNTESTABLE: The data required to evaluate this condition is not available, not yet published, or would require forward-looking information you do not have.
+
+CRITICAL: The default status is UNTESTABLE, not CLEAR. You must cite specific current data to justify a CLEAR status. If you cannot point to a concrete number or observation that contradicts the falsifier condition, the status is UNTESTABLE.
+
+Do not infer CLEAR from price action or market performance unless the falsifier condition specifically references price action. Do not infer CLEAR from "it seems unlikely." Either you have the data or you do not.
 
 ## STAGE B -- KILL RULES (mechanical)
 
@@ -292,6 +299,7 @@ def _elimination_output_schema() -> str:
     "soft_falsifier_check": {
       "triggered_count": 0,
       "triggered": ["list of triggered soft falsifier names"],
+      "untestable": ["list of soft falsifier names where data is unavailable"],
       "close_to_triggering": ["list approaching threshold"],
       "details": "Explanation"
     },
