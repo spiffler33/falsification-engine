@@ -1,4 +1,5 @@
 import { useState, useEffect, useCallback } from 'react'
+import { Link } from 'react-router-dom'
 import { isStaticMode } from '../lib/snapshot'
 import { api } from '../lib/api'
 
@@ -41,6 +42,7 @@ export default function Header() {
           <div className="app-header__subtitle">Global Macro Hypothesis Ledger</div>
         </div>
         <div className="app-header__actions">
+          <Link to="/about" className="app-header__about-link">ABOUT</Link>
           {!isStaticMode() && (
             <button
               className="theme-toggle"

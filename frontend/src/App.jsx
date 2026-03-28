@@ -7,6 +7,7 @@ import ObservatoryView from './views/ObservatoryView'
 import PipelineView from './views/PipelineView'
 import BriefingView from './views/BriefingView'
 import TradesView from './views/TradesView'
+import AboutView from './views/AboutView'
 import HypothesisDetail from './overlays/HypothesisDetail'
 import { api } from './lib/api'
 import { isStaticMode, getSnapshot } from './lib/snapshot'
@@ -66,6 +67,7 @@ export default function App() {
         <Route path="/observatory" element={<ObservatoryView />} />
         <Route path="/pipeline" element={<PipelineView />} />
         <Route path="/briefing" element={<BriefingView />} />
+        <Route path="/about" element={<AboutView />} />
         <Route path="/hypothesis/:id" element={<LedgerView onSelectHypothesis={openDetail} />} />
       </Routes>
 

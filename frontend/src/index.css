@@ -2497,3 +2497,66 @@ p, .body-text {
   border-color: var(--border-medium);
   color: var(--text-primary);
 }
+
+/* ─── About Link (Header) ─────────────────────────── */
+
+.app-header__about-link {
+  font-family: var(--font-data);
+  font-size: 10px;
+  letter-spacing: 0.08em;
+  color: var(--text-tertiary);
+  text-decoration: none;
+  transition: color 0.15s ease;
+}
+
+.app-header__about-link:hover {
+  color: var(--text-primary);
+}
+
+/* ─── About View ───────────────────────────────────── */
+
+.about-view {
+  max-width: 720px;
+  margin: 0 auto;
+  padding: 48px 0 80px;
+}
+
+.about-view__title {
+  font-family: var(--font-display);
+  font-size: 22px;
+  font-weight: 600;
+  letter-spacing: 0.10em;
+  text-transform: uppercase;
+  color: var(--text-primary);
+  margin: 0 0 40px;
+  padding-bottom: 12px;
+  border-bottom: 2px solid var(--text-primary);
+}
+
+.about-view__list {
+  list-style: none;
+  counter-reset: about-step;
+  padding: 0;
+  margin: 0;
+}
+
+.about-view__list li {
+  counter-increment: about-step;
+  font-family: var(--font-body);
+  font-size: 15px;
+  line-height: 1.65;
+  color: var(--text-primary);
+  margin-bottom: 24px;
+  padding-left: 40px;
+  position: relative;
+}
+
+.about-view__list li::before {
+  content: counter(about-step, decimal-leading-zero);
+  font-family: var(--font-data);
+  font-size: 13px;
+  color: var(--text-tertiary);
+  position: absolute;
+  left: 0;
+  top: 2px;
+}
