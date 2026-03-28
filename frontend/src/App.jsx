@@ -3,7 +3,6 @@ import { useState, useEffect, useCallback } from 'react'
 import Header from './components/Header'
 import NavBar from './components/NavBar'
 import LedgerView from './views/LedgerView'
-import JournalView from './views/JournalView'
 import ObservatoryView from './views/ObservatoryView'
 import PipelineView from './views/PipelineView'
 import BriefingView from './views/BriefingView'
@@ -63,7 +62,6 @@ export default function App() {
 
       <Routes>
         <Route path="/" element={<LedgerView onSelectHypothesis={openDetail} />} />
-        <Route path="/journal" element={<JournalView onSelectHypothesis={openDetail} />} />
         <Route path="/trades" element={<TradesView onSelectHypothesis={openDetail} />} />
         <Route path="/observatory" element={<ObservatoryView />} />
         <Route path="/pipeline" element={<PipelineView />} />

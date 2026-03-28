@@ -11,7 +11,7 @@ The following pipeline is built and working end-to-end:
 - Three-stage conviction scoring: mechanical Stage 1 inputs (support_strength, evidence_quality, convergence, falsifier_clarity) → Stage 2 discounts (soft falsifier, UNTESTABLE, theory-aware overlap) → Stage 3 gates
 - Conviction floor at 5/10
 - Consolidation check preventing redundant hypotheses
-- React frontend: Ledger, Hypothesis Detail, Journal, Observatory, Pipeline, Briefing views
+- React frontend: Ledger, Hypothesis Detail, Trades, Observatory, Pipeline, Briefing views
 - Hermes Editorial design system (Cormorant Garamond / EB Garamond / JetBrains Mono, cream/brick/olive/gold)
 
 **Current output quality:** Conviction range 5-7 with 2-point spread, mechanical scores producing 4.5x wider differentiation than LLM self-evaluation, UNTESTABLE classification working, overlap penalty differentiating redundancy from convergence.
@@ -74,7 +74,9 @@ No `/api/trades/performance` — the frontend computes win rate, avg return, etc
 
 #### Frontend — Trade View (all computation client-side)
 
-New tab in NavBar: **TRADES** (between JOURNAL and OBSERVATORY).
+New tab in NavBar: **TRADES** -- insert between LEDGER and OBSERVATORY. Final nav order: LEDGER | TRADES | OBSERVATORY | PIPELINE | BRIEFING.
+
+> **Design note:** Journal removed from navigation. Its audit trail function is redundant -- Hypothesis Detail shows per-hypothesis lifecycle events, Pipeline Run shows per-run operational logs. No user workflow requires a cross-hypothesis activity feed as a separate view.
 
 On mount: fetch trades via GET `/api/trades`, then call GET `/api/prices` with all OPEN trade tickers.
 

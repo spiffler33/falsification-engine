@@ -2,7 +2,6 @@ import { NavLink, useLocation } from 'react-router-dom'
 
 const tabs = [
   { to: '/', label: 'Ledger', primary: true },
-  { to: '/journal', label: 'Journal' },
   { to: '/trades', label: 'Trades' },
   { to: '/observatory', label: 'Observatory' },
   { to: '/pipeline', label: 'Pipeline' },
