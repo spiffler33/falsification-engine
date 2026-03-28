@@ -101,6 +101,28 @@ export function resolveFromSnapshot(path) {
     return { new: [], killed: [], deteriorated: [], improved: [] }
   }
 
+  // Newsletters
+  if (path === '/api/newsletters') {
+    return (snap.newsletters || []).map(nl => ({
+      ...nl,
+      content: (nl.content || '').split('\n').find(l => l.trim()) || '',
+    }))
+  }
+
+  const nlMatch = path.match(/^\/api\/newsletters\/(.+)$/)
+  if (nlMatch) {
+    return (snap.newsletters || []).find(nl => nl.id === nlMatch[1]) || null
+  }
+
+  // Trades
+  if (path === '/api/trades') {
+    return snap.trades || []
+  }
+
+  if (path === '/api/trades/pending') {
+    return []
+  }
+
   // Inbox
   if (path.startsWith('/api/inbox')) {
     return []

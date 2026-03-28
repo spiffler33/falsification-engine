@@ -516,6 +516,46 @@ def get_snapshot(db: Session = Depends(get_db)):
         for t in theories
     ]
 
+    # Newsletters
+    from backend.db.models import Newsletter, Trade
+    newsletters_raw = db.query(Newsletter).order_by(desc(Newsletter.date)).all()
+    newsletters = []
+    for nl in newsletters_raw:
+        recs = json.loads(nl.trade_recommendations) if nl.trade_recommendations else []
+        newsletters.append({
+            "id": nl.id,
+            "date": nl.date,
+            "run_id": nl.run_id,
+            "content": nl.content,
+            "trade_recommendations": recs,
+            "trade_count": len(recs),
+            "created_at": nl.created_at,
+        })
+
+    # Trades
+    trades_raw = db.query(Trade).order_by(desc(Trade.entry_date)).all()
+    trades = []
+    for t in trades_raw:
+        trades.append({
+            "id": t.id,
+            "hypothesis_id": t.hypothesis_id,
+            "run_id": t.run_id,
+            "newsletter_id": t.newsletter_id,
+            "ticker": t.ticker,
+            "direction": t.direction,
+            "entry_date": t.entry_date,
+            "entry_price": t.entry_price,
+            "shares": t.shares,
+            "conviction_at_entry": t.conviction_at_entry,
+            "exit_date": t.exit_date,
+            "exit_price": t.exit_price,
+            "exit_reason": t.exit_reason,
+            "status": t.status,
+            "hypothesis_short_name": t.hypothesis_short_name,
+            "hypothesis_theory": t.hypothesis_theory,
+            "hypothesis_status_at_entry": t.hypothesis_status_at_entry,
+        })
+
     return {
         "snapshot_timestamp": datetime.now().isoformat(),
         "run": run_data,
@@ -523,6 +563,8 @@ def get_snapshot(db: Session = Depends(get_db)):
         "activation_scores": activation_scores,
         "briefing": briefing_data,
         "theories": theory_summaries,
+        "newsletters": newsletters,
+        "trades": trades,
     }
 
 
