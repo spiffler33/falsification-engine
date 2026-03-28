@@ -94,3 +94,9 @@ Stage 3: FINAL = min(SCORE, horizon_cap, expression_cap)  →  max(FINAL, 5.0)
 
 LLM does: generate hypotheses, attack hypotheses, check falsifiers against data
 Math does: activation scoring, conviction scoring (all dimensions), overlap penalty, UNTESTABLE discount, gates, floor
+
+### Post-Implementation Fixes
+
+**Horizon alignment decay: symmetric → asymmetric (2026-03-28)**
+
+Changed from symmetric hyperbolic `90/days` to asymmetric square root `(90/days)^0.5` for hypotheses exceeding the 90-day ideal window. Rationale: above-90 hypotheses describe mechanisms that are active now — the penalty is for dilution of per-period return expectation, not inability to execute. The gate cap (H < 0.40 → max conviction 4) now fires at ~562 days (~19 months) instead of ~135 days (~4.5 months). Below-30 linear penalty unchanged.

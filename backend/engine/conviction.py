@@ -181,7 +181,7 @@ def compute_horizon_alignment(timeframe: str, today: date | None = None) -> floa
     elif days < IDEAL_MIN_DAYS:
         return days / IDEAL_MIN_DAYS
     else:
-        return IDEAL_MAX_DAYS / days
+        return (IDEAL_MAX_DAYS / days) ** 0.5
 
 
 def compute_expression_efficiency(predicted_assets: list[str]) -> float:
