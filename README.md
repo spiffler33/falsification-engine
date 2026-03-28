@@ -10,7 +10,7 @@ This system takes the opposite approach. It uses LLMs for what they are structur
 
 The result is a five-pass falsification pipeline that produces scored survivors with explicit failure conditions, not recommendations. The human decides what to do.
 
-**Live snapshot:** [falsification-engine on GitHub Pages](https://coddiwomplers.github.io/falsification-engine/) (read-only, static data)
+**Live snapshot:** [falsification-engine on GitHub Pages](https://spiffler33.github.io/falsification-engine/) (read-only, static data)
 
 ---
 
@@ -246,7 +246,7 @@ Research view, newsletter tab. Select hypotheses and briefing sections, arrange 
 
 ## GitHub Pages Deployment
 
-The published site at [coddiwomplers.github.io/falsification-engine](https://coddiwomplers.github.io/falsification-engine/) is a read-only static snapshot. All write actions (pipeline runs, journal entries, trade logging) are stripped in static mode. The snapshot includes recent newsletters, trades, and the full hypothesis ledger as of the last publish.
+The published site at [coddiwomplers.github.io/falsification-engine](https://spiffler33.github.io/falsification-engine/) is a read-only static snapshot. All write actions (pipeline runs, journal entries, trade logging) are stripped in static mode. The snapshot includes recent newsletters, trades, and the full hypothesis ledger as of the last publish.
 
 This serves as a portfolio piece and a way to share the analytical output without requiring anyone to run the full stack.
 
