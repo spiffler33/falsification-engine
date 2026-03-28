@@ -178,7 +178,7 @@ falsification-engine/
 
 ```bash
 # Clone and enter
-git clone https://github.com/coddiwomplers/falsification-engine.git
+git clone https://github.com/spiffler33/falsification-engine.git
 cd falsification-engine
 
 # Python environment
@@ -246,7 +246,7 @@ Research view, newsletter tab. Select hypotheses and briefing sections, arrange 
 
 ## GitHub Pages Deployment
 
-The published site at [coddiwomplers.github.io/falsification-engine](https://spiffler33.github.io/falsification-engine/) is a read-only static snapshot. All write actions (pipeline runs, journal entries, trade logging) are stripped in static mode. The snapshot includes recent newsletters, trades, and the full hypothesis ledger as of the last publish.
+The published site at [spiffler33.github.io/falsification-engine](https://spiffler33.github.io/falsification-engine/) is a read-only static snapshot. All write actions (pipeline runs, journal entries, trade logging) are stripped in static mode. The snapshot includes recent newsletters, trades, and the full hypothesis ledger as of the last publish.
 
 This serves as a portfolio piece and a way to share the analytical output without requiring anyone to run the full stack.
 
