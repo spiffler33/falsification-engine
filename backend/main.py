@@ -40,6 +40,7 @@ from backend.api.journal import router as journal_router  # noqa: E402
 from backend.api.inbox import router as inbox_router  # noqa: E402
 from backend.api.briefing import router as briefing_router  # noqa: E402
 from backend.api.user_state import router as user_state_router  # noqa: E402
+from backend.api.trades import router as trades_router  # noqa: E402
 
 app.include_router(hypotheses_router, prefix="/api")
 app.include_router(pipeline_router, prefix="/api")
@@ -48,6 +49,7 @@ app.include_router(journal_router, prefix="/api")
 app.include_router(inbox_router, prefix="/api")
 app.include_router(briefing_router, prefix="/api")
 app.include_router(user_state_router, prefix="/api")
+app.include_router(trades_router, prefix="/api")
 
 
 @app.get("/api/health")

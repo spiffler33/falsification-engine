@@ -14,6 +14,16 @@ import { api } from '../lib/api'
 export default function HypothesisDetail({ hypothesis: h, onClose }) {
   const [showNoteInput, setShowNoteInput] = useState(false)
   const [noteText, setNoteText] = useState('')
+  const [trades, setTrades] = useState([])
+
+  // Fetch trades linked to this hypothesis
+  useEffect(() => {
+    if (h?.id) {
+      api.get(`/api/trades?hypothesis_id=${h.id}`).then(data => {
+        setTrades(data || [])
+      }).catch(() => {})
+    }
+  }, [h?.id])
 
   // ESC to close
   useEffect(() => {
@@ -232,7 +242,7 @@ export default function HypothesisDetail({ hypothesis: h, onClose }) {
           )}
         </div>
 
-        {/* G. Your Position (conditional) */}
+        {/* G. Your Position (conditional — legacy journal-based) */}
         {h.has_action && h.position && (
           <div className="detail-section">
             <div className="detail-section__title">Your Position</div>
@@ -262,6 +272,43 @@ export default function HypothesisDetail({ hypothesis: h, onClose }) {
                 </span>
               </div>
             </div>
+          </div>
+        )}
+
+        {/* H. Linked Trades */}
+        {trades.length > 0 && (
+          <div className="detail-section">
+            <div className="detail-section__title">Trades</div>
+            {trades.map(t => {
+              const isOpen = t.status === 'OPEN'
+              const pnl = isOpen ? t.unrealized_pnl : t.realized_pnl
+              const pct = isOpen ? t.unrealized_pct : t.realized_pct
+              const pnlClass = (pnl || 0) >= 0 ? 'perf--positive' : 'perf--negative'
+              return (
+                <div key={t.id} className="detail-trade-card">
+                  <div className="detail-trade-card__header">
+                    <span className="detail-trade-card__id">{t.id}</span>
+                    <span className="detail-trade-card__ticker">{t.ticker}</span>
+                    <span className={`detail-trade-card__dir detail-trade-card__dir--${t.direction.toLowerCase()}`}>
+                      {t.direction}
+                    </span>
+                    <span className={`detail-trade-card__status detail-trade-card__status--${t.status.toLowerCase()}`}>
+                      {t.status}
+                    </span>
+                  </div>
+                  <div className="detail-trade-card__meta">
+                    <span>Entry: ${t.entry_price?.toFixed(2)}</span>
+                    {isOpen && t.current_price && <span>Current: ${t.current_price.toFixed(2)}</span>}
+                    {!isOpen && t.exit_price && <span>Exit: ${t.exit_price.toFixed(2)}</span>}
+                    <span className={pnlClass}>
+                      {pnl != null ? `${pnl >= 0 ? '+' : ''}$${pnl.toFixed(2)} (${pct >= 0 ? '+' : ''}${pct?.toFixed(2)}%)` : '---'}
+                    </span>
+                    <span>{t.shares} shares</span>
+                    {t.days_held != null && <span>{t.days_held}d</span>}
+                  </div>
+                </div>
+              )
+            })}
           </div>
         )}
       </div>
