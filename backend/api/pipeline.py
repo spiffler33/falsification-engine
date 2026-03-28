@@ -497,7 +497,8 @@ def get_snapshot(db: Session = Depends(get_db)):
             "timestamp": latest_run.timestamp,
             "status": latest_run.status,
         }
-        hyps = db.query(HypothesisModel).filter(HypothesisModel.run_id == latest_run.id).all()
+        # Include ALL hypotheses (across all runs), matching the local ledger view
+        hyps = db.query(HypothesisModel).all()
         hypotheses = [_model_to_dict(h, db) for h in hyps]
         activation_scores = json.loads(latest_run.activation_scores) if latest_run.activation_scores else []
 

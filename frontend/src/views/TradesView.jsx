@@ -171,32 +171,34 @@ export default function TradesView({ onSelectHypothesis }) {
           No open trades. Open a trade when you act on a hypothesis.
         </div>
       ) : (
-        <table className="trades-table">
-          <thead>
-            <tr>
-              <th>Ticker</th>
-              <th>Dir</th>
-              <th className="trades-table__num">Entry</th>
-              <th className="trades-table__num">Current</th>
-              <th className="trades-table__num">P&L</th>
-              <th className="trades-table__num">%</th>
-              <th className="trades-table__num">Days</th>
-              <th className="trades-table__num">Conv</th>
-              <th>Hyp</th>
-              <th></th>
-            </tr>
-          </thead>
-          <tbody>
-            {openTrades.map(t => (
-              <TradeRow
-                key={t.id}
-                trade={t}
-                onClose={() => setClosingTrade(t)}
-                onHypothesisClick={handleHypothesisClick}
-              />
-            ))}
-          </tbody>
-        </table>
+        <div className="trades-table-wrap">
+          <table className="trades-table">
+            <thead>
+              <tr>
+                <th>Ticker</th>
+                <th>Dir</th>
+                <th className="trades-table__num">Entry</th>
+                <th className="trades-table__num">Current</th>
+                <th className="trades-table__num">P&L</th>
+                <th className="trades-table__num">%</th>
+                <th className="trades-table__num">Days</th>
+                <th className="trades-table__num">Conv</th>
+                <th>Hyp</th>
+                <th></th>
+              </tr>
+            </thead>
+            <tbody>
+              {openTrades.map(t => (
+                <TradeRow
+                  key={t.id}
+                  trade={t}
+                  onClose={() => setClosingTrade(t)}
+                  onHypothesisClick={handleHypothesisClick}
+                />
+              ))}
+            </tbody>
+          </table>
+        </div>
       )}
 
       {/* Closed Trades */}
@@ -205,26 +207,28 @@ export default function TradesView({ onSelectHypothesis }) {
           <div className="trades-view__section-header">
             <h3>Closed Trades</h3>
           </div>
-          <table className="trades-table">
-            <thead>
-              <tr>
-                <th>Ticker</th>
-                <th>Dir</th>
-                <th className="trades-table__num">Entry</th>
-                <th className="trades-table__num">Exit</th>
-                <th className="trades-table__num">P&L</th>
-                <th className="trades-table__num">%</th>
-                <th className="trades-table__num">Days</th>
-                <th className="trades-table__num">Conv</th>
-                <th>Reason</th>
-              </tr>
-            </thead>
-            <tbody>
-              {closedTrades.map(t => (
-                <ClosedTradeRow key={t.id} trade={t} />
-              ))}
-            </tbody>
-          </table>
+          <div className="trades-table-wrap">
+            <table className="trades-table">
+              <thead>
+                <tr>
+                  <th>Ticker</th>
+                  <th>Dir</th>
+                  <th className="trades-table__num">Entry</th>
+                  <th className="trades-table__num">Exit</th>
+                  <th className="trades-table__num">P&L</th>
+                  <th className="trades-table__num">%</th>
+                  <th className="trades-table__num">Days</th>
+                  <th className="trades-table__num">Conv</th>
+                  <th>Reason</th>
+                </tr>
+              </thead>
+              <tbody>
+                {closedTrades.map(t => (
+                  <ClosedTradeRow key={t.id} trade={t} />
+                ))}
+              </tbody>
+            </table>
+          </div>
         </>
       )}
 

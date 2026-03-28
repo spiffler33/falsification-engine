@@ -176,6 +176,205 @@ p, .body-text {
   .app-container {
     padding: 0 var(--padding-mobile);
   }
+
+  /* ── Header mobile ── */
+  .app-header {
+    padding: 16px 0 10px;
+  }
+
+  .app-header__row {
+    flex-wrap: wrap;
+    gap: 8px;
+  }
+
+  .app-header__title {
+    font-size: 17px;
+  }
+
+  .app-header__actions {
+    gap: 6px;
+  }
+
+  /* ── Nav mobile ── */
+  .nav-bar {
+    overflow-x: auto;
+    -webkit-overflow-scrolling: touch;
+    margin-bottom: 16px;
+  }
+
+  .nav-bar__tab {
+    padding: 10px 12px;
+    font-size: 11px;
+    white-space: nowrap;
+  }
+
+  /* ── Controls bar mobile ── */
+  .controls-bar {
+    flex-wrap: wrap;
+    gap: 8px;
+    padding: 8px 0;
+    margin-bottom: 12px;
+  }
+
+  .controls-bar__left,
+  .controls-bar__right {
+    gap: 8px;
+  }
+
+  /* ── Modal mobile ── */
+  .modal-backdrop {
+    padding: 16px 10px;
+  }
+
+  .modal-panel {
+    padding: 20px 16px;
+  }
+
+  .detail-name {
+    font-size: 18px;
+  }
+
+  .detail-meta {
+    gap: 6px;
+  }
+
+  /* ── Pipeline mobile ── */
+  .pipeline-step__header {
+    padding: 10px 12px;
+    gap: 10px;
+  }
+
+  .pipeline-step__actions {
+    padding: 0 12px 10px;
+  }
+
+  .prompt-preview {
+    padding: 12px 14px;
+  }
+
+  .prompt-preview__text {
+    max-height: 260px;
+    font-size: 10px;
+  }
+
+  .import-panel {
+    padding: 12px 14px;
+  }
+
+  .import-panel__textarea {
+    min-height: 120px;
+    font-size: 10px;
+  }
+
+  /* ── Trades table horizontal scroll ── */
+  .trades-table-wrap {
+    overflow-x: auto;
+    -webkit-overflow-scrolling: touch;
+  }
+
+  .trades-table {
+    min-width: 600px;
+  }
+
+  .trades-view {
+    padding: var(--padding-mobile);
+  }
+
+  /* ── About view mobile ── */
+  .about-view {
+    padding: 24px 0 48px;
+  }
+
+  .about-view__title {
+    font-size: 18px;
+    margin-bottom: 20px;
+  }
+
+  .about-view__premise {
+    padding-left: 16px;
+    margin-bottom: 24px;
+    font-size: 14px;
+  }
+
+  .about-view__list li {
+    padding-left: 28px;
+    font-size: 14px;
+    margin-bottom: 14px;
+  }
+
+  .about-view__list li::before {
+    font-size: 11px;
+  }
+
+  .about-view__section {
+    margin-bottom: 24px;
+  }
+
+  /* ── Briefing mobile ── */
+  .briefing-panel {
+    padding: 12px;
+  }
+
+  .briefing-view__section {
+    margin-bottom: 16px;
+  }
+
+  /* ── Journal mobile ── */
+  .journal-entry {
+    padding: 12px 14px;
+  }
+
+  .journal-entry__meta {
+    gap: 8px;
+  }
+
+  .journal-form {
+    max-width: 100%;
+  }
+
+  /* ── Delta banner mobile ── */
+  .delta-banner {
+    padding: 12px 14px;
+  }
+
+  /* ── Newsletter prompt mobile ── */
+  .newsletter-prompt-panel {
+    max-width: 100%;
+  }
+
+  .newsletter-prompt__content {
+    max-height: 240px;
+    font-size: 10px;
+  }
+
+  /* ── Inbox mobile ── */
+  .research-inbox__input-row {
+    flex-direction: column;
+  }
+
+  .research-inbox__add {
+    align-self: flex-end;
+  }
+
+  /* ── Audit mobile ── */
+  .audit-stage__header {
+    padding: 10px 12px;
+    font-size: 11px;
+  }
+
+  .audit-stage__content {
+    padding: 10px 12px 14px;
+  }
+
+  /* ── Trade form mobile ── */
+  .modal-panel--form {
+    max-width: 100%;
+  }
+
+  /* ── Perf grid mobile ── */
+  .perf-grid {
+    gap: 16px;
+  }
 }
 
 

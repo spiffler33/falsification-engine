@@ -40,10 +40,15 @@ echo "[2/4] Snapshot written to $SNAPSHOT_FILE"
 
 # 3. Inject the snapshot script tag into index.html for the build
 INDEX_HTML="$FRONTEND_DIR/index.html"
+CACHE_BUST=$(date +%s)
 if ! grep -q 'snapshot.js' "$INDEX_HTML"; then
-  # Add before closing </head>
-  sed -i.bak 's|</head>|<script src="/snapshot.js"></script></head>|' "$INDEX_HTML"
+  # Add before closing </head> — cache-bust query param forces CDN refresh
+  sed -i.bak "s|</head>|<script src=\"/snapshot.js?v=${CACHE_BUST}\"></script></head>|" "$INDEX_HTML"
   echo "  Injected snapshot.js script tag into index.html"
+else
+  # Update the cache-bust param on existing tag
+  sed -i.bak "s|snapshot.js[^\"]*|snapshot.js?v=${CACHE_BUST}|" "$INDEX_HTML"
+  echo "  Updated snapshot.js cache-bust param"
 fi
 
 # 4. Build the frontend

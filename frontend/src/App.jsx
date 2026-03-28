@@ -58,7 +58,13 @@ export default function App() {
       {isStaticMode() && (
         <div className="static-banner">
           <span className="static-banner__text">
-            Read-only snapshot -- published {getSnapshot()?.snapshot_timestamp?.split('T')[0] || ''}
+            Read-only snapshot -- published {(() => {
+              const ts = getSnapshot()?.snapshot_timestamp
+              if (!ts) return ''
+              const d = new Date(ts)
+              return d.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })
+                + ' at ' + d.toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit', hour12: true })
+            })()}
           </span>
         </div>
       )}
