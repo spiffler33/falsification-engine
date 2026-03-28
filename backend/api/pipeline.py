@@ -507,7 +507,11 @@ def get_snapshot(db: Session = Depends(get_db)):
     # Theories (just names and IDs, not full markdown)
     theories = theory_parser.load_all_theories()
     theory_summaries = [
-        {"theory_id": t.theory_id, "name": t.name, "domain": t.domain, "is_two_phase": t.is_two_phase}
+        {
+            "theory_id": t.theory_id,
+            "name": t.title,
+            "is_two_phase": t.is_two_phase,
+        }
         for t in theories
     ]
 

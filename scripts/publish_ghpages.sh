@@ -49,7 +49,7 @@ fi
 # 4. Build the frontend
 echo "[3/4] Building frontend ..."
 cd "$FRONTEND_DIR"
-npm run build
+npx vite build
 
 # Get the repo name for base path (GitHub Pages serves at /repo-name/)
 REPO_NAME=$(cd "$PROJECT_ROOT" && basename "$(git remote get-url origin 2>/dev/null | sed 's/\.git$//')" 2>/dev/null || echo "falsification-engine")
@@ -67,25 +67,28 @@ cp "$FRONTEND_DIR/dist/index.html" "$FRONTEND_DIR/dist/404.html"
 echo "[4/4] Deploying to gh-pages branch ..."
 cd "$PROJECT_ROOT"
 
-# Use git subtree or manual push
 DEPLOY_DIR="$FRONTEND_DIR/dist"
 TIMESTAMP=$(date +"%Y-%m-%d %H:%M")
+REMOTE_URL=$(git remote get-url origin)
 
-# Create a temporary orphan branch, copy dist contents, push
-TEMP_BRANCH="ghpages-deploy-$(date +%s)"
-git checkout --orphan "$TEMP_BRANCH"
-git rm -rf . > /dev/null 2>&1 || true
+# Use a temporary directory to avoid polluting the working tree.
+# The orphan-branch-in-working-tree approach leaks node_modules, __pycache__,
+# .env, and other untracked files because the orphan has no .gitignore.
+TMPDIR=$(mktemp -d)
+trap "rm -rf $TMPDIR" EXIT
 
-cp -r "$DEPLOY_DIR"/* .
-cp "$DEPLOY_DIR/.nojekyll" . 2>/dev/null || true
+cp -r "$DEPLOY_DIR"/* "$TMPDIR/"
+cp "$DEPLOY_DIR/.nojekyll" "$TMPDIR/" 2>/dev/null || true
 
+cd "$TMPDIR"
+git init
+git checkout -b gh-pages
 git add -A
 git commit -m "Publish snapshot: $TIMESTAMP"
-git push origin "$TEMP_BRANCH:gh-pages" --force
+git remote add origin "$REMOTE_URL"
+git push origin gh-pages --force
 
-# Clean up: go back to original branch
-git checkout master
-git branch -D "$TEMP_BRANCH"
+cd "$PROJECT_ROOT"
 
 # Remove the snapshot injection from index.html
 cd "$FRONTEND_DIR"
@@ -96,6 +99,8 @@ rm -f "$SNAPSHOT_FILE"
 
 echo ""
 echo "=== Published successfully ==="
+REPO_NAME=$(basename "$REMOTE_URL" .git)
+OWNER=$(echo "$REMOTE_URL" | sed 's|.*github.com[:/]||;s|/.*||')
 echo "Your site will be available at:"
-echo "  https://$(git -C "$PROJECT_ROOT" remote get-url origin | sed 's|.*github.com[:/]||;s|\.git$||' | tr '/' '\n' | head -1).github.io/$REPO_NAME/"
+echo "  https://$OWNER.github.io/$REPO_NAME/"
 echo ""
