@@ -30,23 +30,27 @@ The design consequence: do not ask the model for the answer. Use the model to de
 
 ---
 
-## The Five-Pass Pipeline
+## The Pipeline
 
 ```
-Pass 1           Pass 2          Pass 3             Pass 4              Pass 5
-ACTIVATION  -->  GENERATION  --> ELIMINATION  -->   CONVICTION    -->   HUMAN
-(mechanical)     (LLM)          (LLM, adversarial)  (mechanical)        DECISION
+Pass 1           Pass 1.5        Pass 2          Pass 3             Pass 4              Pass 5
+ACTIVATION  -->  REGIME     -->  GENERATION  --> ELIMINATION  -->   CONVICTION    -->   HUMAN
+(mechanical)     ANNOTATION      (LLM)          (LLM, adversarial)  (mechanical)        DECISION
+                 (mechanical)
 
-Python math      Claude Opus     Separate prompt     Three-stage         Scored survivors
-checks theory    generates       whose only job      mathematical        presented in the
-indicators       2-4 hypotheses  is to attack        pipeline            Ledger. The human
-against data     per active      each hypothesis.    Raw -> Discounts    decides.
-briefing.        theory.         SURVIVED / WOUNDED  -> Gates.
-No LLM.                         / KILLED.           No LLM.
-                                                    Output: 0-10.
+Python math      Compute regime  Claude Opus     Separate prompt     Three-stage         Scored survivors
+checks theory    flags from      generates       whose only job      mathematical        presented in the
+indicators       activation      2-4 hypotheses  is to attack        pipeline            Ledger. The human
+against data     results.        per active      each hypothesis.    Raw -> Discounts    decides.
+briefing.        Annotate        theory, each    SURVIVED / WOUNDED  -> Gates.
+No LLM.          affected        tagged with a   / KILLED.           No LLM.
+                 theories.       resolution                          Output: 0-10.
+                                 channel.
 ```
 
 The separation is the architecture. The generator never ranks hypotheses. The evaluator never scores conviction. The conviction pipeline never calls an LLM. Each pass does one thing.
+
+Pass 1.5 computes regime flags from activation results. When a flag fires, it annotates affected theories with channel context for the generator and feeds a regime alignment discount into conviction scoring.
 
 LLM passes are human-in-the-loop: the system builds the prompt, you copy it to Claude, paste the response back. This is deliberate -- it keeps the human in the reasoning chain, not just the decision chain.
 
@@ -83,16 +87,18 @@ RAW = Support_Strength(0.30) + Evidence_Quality(0.30) + Convergence(0.25) + Fals
 
 Four dimensions scored 0.0-1.0 and weighted. Support strength measures current evidence actively supporting predictions. Evidence quality grades source directness and recency (market data > macro data > proxies > narrative). Convergence rewards independent theories predicting the same outcome, discounted for shared upstream dependencies. Falsifier clarity rewards specific, testable failure conditions.
 
-**Stage 2 -- Discounts** (multiplicative penalties)
+**Stage 2 -- Discounts**
 
 ```
-D_falsifier = max(0.05, 1 - sum(severity_weight_i))     # minor=0.10, medium=0.25, major=0.45
-D_overlap   = 1 / (1 + overlap_count * 0.25)             # penalizes crowded instruments
+D_falsifier  = product(1 - severity_weight_i)            # minor=0.10, medium=0.25, major=0.45
+D_untestable = product(1 - untestable_weight_i)           # half-severity for unfalsifiable conditions
+D_regime     = min(alignment_multiplier per active flag)   # mismatch=0.75, aligned/neutral=1.00
+Overlap_adj  = (same_theory * -0.50) + min(diff_theory * 0.10, 0.20)
 
-SCORE = RAW * D_falsifier * D_overlap * 10
+SCORE = (RAW * D_falsifier * D_untestable * D_regime) + Overlap_adj
 ```
 
-Triggered soft falsifiers reduce conviction by their pre-registered severity. Hypotheses sharing instruments with other survivors are penalized for concentration.
+Triggered soft falsifiers compound multiplicatively by pre-registered severity. UNTESTABLE falsifiers (can't be checked against current data) get reduced-weight penalties. Regime alignment penalizes hypotheses whose resolution channel conflicts with active regime flags. Overlap is additive: same-theory overlap penalizes redundancy, cross-theory convergence on the same instrument gets a small bonus.
 
 **Stage 3 -- Gates** (hard caps on actionability)
 
@@ -106,11 +112,21 @@ Output: 0-10 integer. This is a conviction signal, not a recommendation.
 
 ---
 
+## Resolution Channels
+
+Each hypothesis is tagged with exactly one resolution channel -- the primary mechanism through which the predicted outcome resolves. Six channels: **nominal price decline**, **inflationary grind**, **real asset outperformance**, **sector rotation**, **broad credit contraction**, and **sector credit stress**.
+
+The generator assigns the tag in Pass 2. The evaluator verifies it in Pass 3 and can correct misclassifications (e.g., a 30% nominal decline tagged as "inflationary grind"). Corrections are preserved in the audit trail.
+
+When a regime flag is active, the channel tag determines whether the hypothesis is swimming with or against the current regime. A "nominal price decline" hypothesis during fiscal dominance gets a 0.75x regime discount in conviction scoring -- the fiscal liquidity backdrop works against sharp nominal repricing. The hypothesis still survives; it just needs stronger evidence to score above the conviction floor.
+
+---
+
 ## Frontend Views
 
 The interface is organized around hypotheses, not theories or agents.
 
-- **Observatory** -- Theory module cards showing activation state (Active / Adjacent / Inactive), the full hypothesis ledger, and the current data briefing. The primary analytical surface.
+- **Observatory** -- Theory module cards showing activation state (Active / Adjacent / Inactive) with regime flag annotations when active, the full hypothesis ledger with resolution channel tags, and the current data briefing. The primary analytical surface.
 - **Research** -- Newsletter workflow for assembling weekly research notes from live hypotheses and briefing data. Research inbox for capturing observations, links, and notes tagged to theories for inclusion in the next pipeline run.
 - **Pipeline** -- The five-step run workflow. Steps 1-2 (data + activation) and Step 5 (conviction scoring) are automated. Steps 3-4 (generation + elimination) are copy-paste through Claude. Audit mode provides read-only traces of completed runs.
 - **Trades** -- Trade tracker linking positions to hypotheses. Computes live P&L via Yahoo Finance, tracks performance by conviction tier, and maintains a full trade journal.
@@ -127,7 +143,7 @@ Design system: Hermes Editorial. Warm cream backgrounds, dark typography, no dec
 |-------|-----------|
 | Backend | FastAPI + SQLite (SQLAlchemy ORM) |
 | Frontend | React 18 + Vite + vanilla CSS |
-| Data | FRED API (macro) + Yahoo Finance via yfinance (markets) |
+| Data | FRED API (macro) + Yahoo Finance (markets) |
 | LLM | Claude Opus via copy-paste (no API dependency) |
 | Design | Hermes Editorial -- Cormorant Garamond, EB Garamond, JetBrains Mono |
 | Deployment | GitHub Pages (read-only static snapshot) |
@@ -148,6 +164,8 @@ falsification-engine/
       prompt_builder.py      # Build generation + elimination prompts
       output_parser.py       # Parse LLM JSON output into hypothesis objects
       conviction.py          # Pass 4: three-stage conviction scoring
+      regime_config.py       # Regime flags, resolution channels, alignment multipliers
+      regime.py              # Pass 1.5: regime flag computation + channel-regime scoring
       data_agent.py          # FRED + Yahoo Finance data fetching
     db/                      # SQLite models, migrations, seed data
     schemas/                 # Pydantic models for all domain objects

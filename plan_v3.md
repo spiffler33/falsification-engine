@@ -434,7 +434,7 @@ REGIME_ALIGNMENT_MULTIPLIERS = {    # Provisional — recalibrate after 5+ runs
 
 ## Build Order
 
-**STATUS: v3 COMPLETE. All 8 priorities done. 20 tests passing.**
+**STATUS: v3 COMPLETE. All 8 priorities done. 20 tests passing. GitHub Pages should be republished after the next pipeline run (first run with channel tags + potential regime flags).**
 
 | Priority | Component | Description | Status |
 |----------|-----------|-------------|--------|
