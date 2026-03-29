@@ -16,6 +16,7 @@ class Run(Base):
     elimination_output = Column(Text)  # raw JSON from Claude
     activation_scores = Column(Text)  # JSON map of theory_id -> tier
     regime_flags_active = Column(Text)  # JSON array of active flag_ids at run time
+    sector_appendices_loaded = Column(Text)  # JSON array of sector_ids injected into Pass 3
 
 
 class Hypothesis(Base):
@@ -37,6 +38,7 @@ class Hypothesis(Base):
     timeframe = Column(Text)
     resolution_channel = Column(Text)  # One of 6 channel keys
     resolution_channel_original = Column(Text)  # If evaluator corrected the tag
+    sector_appendices_applied = Column(Text)  # JSON array of sector_ids checked for this hypothesis
     elimination_notes = Column(Text)
     generated_date = Column(Text, nullable=False)
     created_at = Column(Text, server_default="(datetime('now'))")
@@ -140,6 +142,22 @@ class PendingTradeAction(Base):
     executed_at = Column(Text)
     executed_price = Column(Float)
 
+    created_at = Column(Text, server_default="(datetime('now'))")
+
+
+class SectorFalsifierAudit(Base):
+    __tablename__ = "sector_falsifier_audit"
+
+    id = Column(Text, primary_key=True)
+    hypothesis_id = Column(Text, ForeignKey("hypotheses.id"), nullable=False)
+    sector_id = Column(Text, nullable=False)
+    falsifier_id = Column(Text, nullable=False)
+    metric_value_found = Column(Text)
+    triggered = Column(Text, nullable=False)  # YES | NO
+    relevant = Column(Text, nullable=False)  # YES | NO | N/A
+    reasoning = Column(Text)
+    severity_applied = Column(Text)  # minor | medium | major | NONE
+    run_id = Column(Text, ForeignKey("runs.id"), nullable=False)
     created_at = Column(Text, server_default="(datetime('now'))")
 
 

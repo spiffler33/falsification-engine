@@ -33,24 +33,29 @@ The design consequence: do not ask the model for the answer. Use the model to de
 ## The Pipeline
 
 ```
-Pass 1           Pass 1.5        Pass 2          Pass 3             Pass 4              Pass 5
-ACTIVATION  -->  REGIME     -->  GENERATION  --> ELIMINATION  -->   CONVICTION    -->   HUMAN
-(mechanical)     ANNOTATION      (LLM)          (LLM, adversarial)  (mechanical)        DECISION
-                 (mechanical)
+Pass 1           Pass 1.5        Pass 2          Pass 3                   Pass 4              Pass 5
+ACTIVATION  -->  REGIME     -->  GENERATION  --> ELIMINATION         -->  CONVICTION    -->   HUMAN
+(mechanical)     ANNOTATION      (LLM)          (LLM, adversarial)       (mechanical)        DECISION
+                 (mechanical)                    + sector falsifiers
 
-Python math      Compute regime  Claude Opus     Separate prompt     Three-stage         Scored survivors
-checks theory    flags from      generates       whose only job      mathematical        presented in the
-indicators       activation      2-4 hypotheses  is to attack        pipeline            Ledger. The human
-against data     results.        per active      each hypothesis.    Raw -> Discounts    decides.
-briefing.        Annotate        theory, each    SURVIVED / WOUNDED  -> Gates.
-No LLM.          affected        tagged with a   / KILLED.           No LLM.
-                 theories.       resolution                          Output: 0-10.
-                                 channel.
+Python math      Compute regime  Claude Opus     Separate prompt          Three-stage         Scored survivors
+checks theory    flags from      generates       whose only job           mathematical        presented in the
+indicators       activation      2-4 hypotheses  is to attack             pipeline            Ledger. The human
+against data     results.        per active      each hypothesis.         Raw -> Discounts    decides.
+briefing.        Annotate        theory, each    Sector appendices        -> Gates.
+No LLM.          affected        tagged with a   injected when            No LLM.
+                 theories.       resolution      hypothesis tickers       Output: 0-10.
+                                 channel.        match a sector.
+                                                 SURVIVED / WOUNDED
+                                                 / KILLED + sector
+                                                 falsifier audit.
 ```
 
 The separation is the architecture. The generator never ranks hypotheses. The evaluator never scores conviction. The conviction pipeline never calls an LLM. Each pass does one thing.
 
 Pass 1.5 computes regime flags from activation results. When a flag fires, it annotates affected theories with channel context for the generator and feeds a regime alignment discount into conviction scoring.
+
+Pass 3 conditionally injects sector falsifier appendices into the elimination prompt. When a hypothesis mentions a sector ETF (e.g., QQQ, XLE, KRE), the corresponding sector appendix loads with mechanical falsifiers and qualitative attack vectors. The evaluator audits each falsifier -- reporting whether it is triggered and whether it is relevant to the specific hypothesis's load-bearing mechanism. Only triggered AND relevant falsifiers produce conviction discounts.
 
 LLM passes are human-in-the-loop: the system builds the prompt, you copy it to Claude, paste the response back. This is deliberate -- it keeps the human in the reasoning chain, not just the decision chain.
 
@@ -91,6 +96,7 @@ Four dimensions scored 0.0-1.0 and weighted. Support strength measures current e
 
 ```
 D_falsifier  = product(1 - severity_weight_i)            # minor=0.10, medium=0.25, major=0.45
+               (compounds theory-level + sector-level)    # sector: only if triggered AND relevant
 D_untestable = product(1 - untestable_weight_i)           # half-severity for unfalsifiable conditions
 D_regime     = min(alignment_multiplier per active flag)   # mismatch=0.75, aligned/neutral=1.00
 Overlap_adj  = (same_theory * -0.50) + min(diff_theory * 0.10, 0.20)
@@ -98,7 +104,7 @@ Overlap_adj  = (same_theory * -0.50) + min(diff_theory * 0.10, 0.20)
 SCORE = (RAW * D_falsifier * D_untestable * D_regime) + Overlap_adj
 ```
 
-Triggered soft falsifiers compound multiplicatively by pre-registered severity. UNTESTABLE falsifiers (can't be checked against current data) get reduced-weight penalties. Regime alignment penalizes hypotheses whose resolution channel conflicts with active regime flags. Overlap is additive: same-theory overlap penalizes redundancy, cross-theory convergence on the same instrument gets a small bonus.
+Triggered soft falsifiers compound multiplicatively by pre-registered severity. This includes both theory-level falsifiers (from the theory modules) and sector-level falsifiers (from sector appendices). Sector falsifiers use a two-gate check: the evaluator determines if a falsifier is triggered (threshold breached) AND relevant (attacks the hypothesis's load-bearing mechanism). A triggered-but-not-relevant falsifier produces no discount. UNTESTABLE falsifiers (can't be checked against current data) get reduced-weight penalties. Regime alignment penalizes hypotheses whose resolution channel conflicts with active regime flags. Overlap is additive: same-theory overlap penalizes redundancy, cross-theory convergence on the same instrument gets a small bonus.
 
 **Stage 3 -- Gates** (hard caps on actionability)
 
@@ -119,6 +125,24 @@ Each hypothesis is tagged with exactly one resolution channel -- the primary mec
 The generator assigns the tag in Pass 2. The evaluator verifies it in Pass 3 and can correct misclassifications (e.g., a 30% nominal decline tagged as "inflationary grind"). Corrections are preserved in the audit trail.
 
 When a regime flag is active, the channel tag determines whether the hypothesis is swimming with or against the current regime. A "nominal price decline" hypothesis during fiscal dominance gets a 0.75x regime discount in conviction scoring -- the fiscal liquidity backdrop works against sharp nominal repricing. The hypothesis still survives; it just needs stronger evidence to score above the conviction floor.
+
+---
+
+## Sector Falsifier Appendices
+
+Theory-level falsifiers attack the economic theory. Sector appendices attack the trade expression -- the specific ETFs and sector mechanisms a hypothesis depends on. They enter the pipeline at Pass 3 only, as evaluator weapons. They do not shape what gets generated; they shape what survives.
+
+Three sectors are currently covered:
+
+| Sector | Ticker Triggers | Falsifiers | Example |
+|--------|----------------|------------|---------|
+| Technology / AI Concentration | QQQ, SMH, XLK, SOXX | 5 mechanical + 3 attack vectors | Semiconductor inventory overshoot, Mag 7 earnings re-acceleration, capex/revenue mismatch |
+| Energy | XLE, XOP, OIH, USO, DBC | 5 mechanical + 3 attack vectors | Crude inventory builds, rig count surge, crack spread collapse |
+| Financials | XLF, KRE, KBE | 5 mechanical + 3 attack vectors | CRE delinquency, NIM compression, deposit outflows |
+
+Each mechanical falsifier has a pre-registered severity (minor/medium/major) and a numeric threshold. The evaluator looks up the current data, determines if the threshold is breached, and -- critically -- determines if the triggered condition is relevant to the specific hypothesis's causal mechanism. A semiconductor inventory overshoot is triggered but not relevant to a hypothesis predicting "QQQ declines because fiscal liquidity is withdrawn." The two-gate check (triggered AND relevant) prevents false penalization.
+
+**Adding new sectors or ETFs is straightforward.** Each sector appendix is a self-contained Python dictionary in `backend/engine/sector_appendices.py` following a fixed schema: ticker triggers, mechanical falsifiers with thresholds and severity, and evaluator attack vectors. To add a new sector (e.g., healthcare, real estate), create a new appendix dict, add it to the `SECTOR_APPENDICES` registry list, and it will automatically load into Pass 3 when hypotheses mention matching tickers. No changes to the scoring pipeline, prompt builder, or frontend are required -- the system discovers and injects appendices dynamically.
 
 ---
 
@@ -166,6 +190,7 @@ falsification-engine/
       conviction.py          # Pass 4: three-stage conviction scoring
       regime_config.py       # Regime flags, resolution channels, alignment multipliers
       regime.py              # Pass 1.5: regime flag computation + channel-regime scoring
+      sector_appendices.py   # Sector falsifier appendix registry (tech, energy, financials)
       data_agent.py          # FRED + Yahoo Finance data fetching
     db/                      # SQLite models, migrations, seed data
     schemas/                 # Pydantic models for all domain objects

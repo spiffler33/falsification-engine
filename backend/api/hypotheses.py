@@ -13,9 +13,30 @@ from sqlalchemy.orm import Session
 
 from backend.db.database import get_db
 from backend.db.models import Hypothesis as HypothesisModel
-from backend.db.models import JournalEntry, InboxItem, Run
+from backend.db.models import JournalEntry, InboxItem, Run, SectorFalsifierAudit
 
 router = APIRouter(tags=["hypotheses"])
+
+SECTOR_DISPLAY_NAMES = {
+    "tech_ai": "Technology / AI Concentration",
+    "energy": "Energy",
+    "financials": "Financials",
+}
+
+
+def _build_falsifier_condition_map() -> dict[str, str]:
+    """Build falsifier_id -> condition text lookup from sector appendix dicts."""
+    from backend.engine.sector_appendices import (
+        TECH_AI_APPENDIX, ENERGY_APPENDIX, FINANCIALS_APPENDIX,
+    )
+    mapping: dict[str, str] = {}
+    for appendix in (TECH_AI_APPENDIX, ENERGY_APPENDIX, FINANCIALS_APPENDIX):
+        for mf in appendix.get("mechanical_falsifiers", []):
+            mapping[mf["falsifier_id"]] = mf["condition"]
+    return mapping
+
+
+_FALSIFIER_CONDITIONS: dict[str, str] = _build_falsifier_condition_map()
 
 
 def _model_to_dict(h: HypothesisModel, db: Session) -> dict:
@@ -99,6 +120,26 @@ def _model_to_dict(h: HypothesisModel, db: Session) -> dict:
         "resolution_channel": h.resolution_channel or "",
         "resolution_channel_original": h.resolution_channel_original or "",
         "elimination_notes": h.elimination_notes or "",
+        "sector_appendices_applied": [
+            {"sector_id": sid, "display_name": SECTOR_DISPLAY_NAMES.get(sid, sid)}
+            for sid in (json.loads(h.sector_appendices_applied) if h.sector_appendices_applied else [])
+        ],
+        "sector_falsifier_audit": [
+            {
+                "id": a.id,
+                "sector_id": a.sector_id,
+                "falsifier_id": a.falsifier_id,
+                "condition": _FALSIFIER_CONDITIONS.get(a.falsifier_id, a.falsifier_id),
+                "metric_value_found": a.metric_value_found or "",
+                "triggered": a.triggered,
+                "relevant": a.relevant,
+                "reasoning": a.reasoning or "",
+                "severity_applied": a.severity_applied or "NONE",
+            }
+            for a in db.query(SectorFalsifierAudit)
+            .filter(SectorFalsifierAudit.hypothesis_id == h.id)
+            .all()
+        ],
         "age": age,
         "delta_type": delta_type,
         "has_action": has_action,

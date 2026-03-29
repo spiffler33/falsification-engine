@@ -49,12 +49,17 @@ export default function HypothesisDetail({ hypothesis: h, onClose }) {
     }).catch(() => {})
   }
 
+  const [sectorAuditOpen, setSectorAuditOpen] = useState(false)
+
   if (!h) return null
 
   const cm = h.conviction_math || {}
   const s1 = cm.stage1 || {}
   const s2 = cm.stage2 || {}
   const s3 = cm.stage3 || {}
+
+  const hasSectorAudit =
+    h.sector_appendices_applied && h.sector_appendices_applied.length > 0
 
   return (
     <div className="modal-backdrop" onClick={handleBackdropClick}>
@@ -189,6 +194,62 @@ export default function HypothesisDetail({ hypothesis: h, onClose }) {
             </ul>
           )}
         </div>
+
+        {/* D2. Sector Falsifier Audit (collapsible, conditional) */}
+        {hasSectorAudit && (
+          <div className="detail-section">
+            <button
+              className="sector-audit__header"
+              onClick={() => setSectorAuditOpen(o => !o)}
+            >
+              <span className="sector-audit__title">
+                Sector Falsifier Audit
+                <span className="sector-audit__sectors">
+                  {h.sector_appendices_applied.map(s => s.display_name || s.sector_id || s).join(', ')}
+                </span>
+              </span>
+              <span className="sector-audit__toggle">
+                {sectorAuditOpen ? '\u2212' : '+'}
+              </span>
+            </button>
+
+            {sectorAuditOpen && (
+              <div className="sector-audit__content">
+                {(h.sector_falsifier_audit || []).map((entry, i) => (
+                  <div
+                    key={entry.id || i}
+                    className={`sector-audit__row ${sectorAuditRowClass(entry)}`}
+                  >
+                    <div className="sector-audit__row-header">
+                      <span className={`sector-audit__dot sector-audit__dot--${sectorAuditRowClass(entry)}`} />
+                      <span className="sector-audit__condition">{entry.condition}</span>
+                      <span className="sector-audit__badges">
+                        <span className={`sector-audit__badge sector-audit__badge--triggered-${entry.triggered?.toLowerCase()}`}>
+                          {entry.triggered}
+                        </span>
+                        <span className={`sector-audit__badge sector-audit__badge--relevant-${(entry.relevant || 'na').toLowerCase().replace('/', '')}`}>
+                          {entry.relevant}
+                        </span>
+                        {entry.triggered === 'YES' && entry.relevant === 'YES' && (
+                          <span className={`falsifier-severity falsifier-severity--${entry.severity_applied}`}>
+                            {entry.severity_applied}
+                          </span>
+                        )}
+                      </span>
+                    </div>
+                    <div className="sector-audit__row-detail">
+                      <span className="sector-audit__metric-label">Metric value: </span>
+                      <span className="sector-audit__metric-value">{entry.metric_value_found || '---'}</span>
+                    </div>
+                    {entry.reasoning && (
+                      <div className="sector-audit__reasoning">{entry.reasoning}</div>
+                    )}
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
+        )}
 
         {/* E. Elimination Audit */}
         <div className="detail-section">
@@ -336,6 +397,12 @@ function StageRow({ label, value, negative, isNull }) {
       <span className={cls}>{value}</span>
     </div>
   )
+}
+
+function sectorAuditRowClass(entry) {
+  if (entry.triggered !== 'YES') return 'clear'
+  if (entry.relevant === 'YES') return 'threat'
+  return 'present'
 }
 
 function fmtScore(val) {

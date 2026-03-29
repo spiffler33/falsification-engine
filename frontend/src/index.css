@@ -1196,6 +1196,199 @@ p, .body-text {
   min-width: 80px;
 }
 
+/* Sector Falsifier Audit — collapsible section in hypothesis detail */
+.sector-audit__header {
+  width: 100%;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 0;
+  background: none;
+  border: none;
+  cursor: pointer;
+  text-align: left;
+}
+
+.sector-audit__header:hover .sector-audit__title {
+  color: var(--text-primary);
+}
+
+.sector-audit__title {
+  font-family: var(--font-display);
+  font-size: 12px;
+  font-weight: 600;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  font-variant: small-caps;
+  color: var(--text-tertiary);
+  display: flex;
+  align-items: baseline;
+  gap: 10px;
+}
+
+.sector-audit__sectors {
+  font-family: var(--font-data);
+  font-size: 9px;
+  font-weight: 400;
+  letter-spacing: 0.02em;
+  text-transform: none;
+  font-variant: normal;
+  color: var(--text-tertiary);
+}
+
+.sector-audit__toggle {
+  font-family: var(--font-data);
+  font-size: 14px;
+  color: var(--text-tertiary);
+  flex-shrink: 0;
+}
+
+.sector-audit__content {
+  margin-top: 12px;
+  border-top: 1px solid var(--border-light);
+  padding-top: 8px;
+}
+
+.sector-audit__row {
+  padding: 10px 0;
+  border-bottom: 1px solid var(--border-light);
+}
+
+.sector-audit__row:last-child {
+  border-bottom: none;
+}
+
+/* Row color-coding via left border */
+.sector-audit__row.clear {
+  border-left: 3px solid var(--accent-positive);
+  padding-left: 12px;
+}
+
+.sector-audit__row.present {
+  border-left: 3px solid var(--accent-gold);
+  padding-left: 12px;
+}
+
+.sector-audit__row.threat {
+  border-left: 3px solid var(--accent-negative);
+  padding-left: 12px;
+}
+
+.sector-audit__row-header {
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.sector-audit__dot {
+  width: 8px;
+  height: 8px;
+  flex-shrink: 0;
+  margin-top: 5px;
+}
+
+.sector-audit__dot--clear {
+  background: var(--accent-positive);
+}
+
+.sector-audit__dot--present {
+  background: var(--accent-gold);
+}
+
+.sector-audit__dot--threat {
+  background: var(--accent-negative);
+}
+
+.sector-audit__condition {
+  font-family: var(--font-body);
+  font-size: 13px;
+  color: var(--text-primary);
+  flex: 1;
+  min-width: 200px;
+}
+
+.sector-audit__badges {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  flex-shrink: 0;
+}
+
+.sector-audit__badge {
+  font-family: var(--font-data);
+  font-size: 9px;
+  font-weight: 600;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  padding: 1px 6px;
+  border: 1px solid;
+}
+
+.sector-audit__badge--triggered-no {
+  color: var(--accent-positive);
+  border-color: #36531433;
+}
+
+.sector-audit__badge--triggered-yes {
+  color: var(--accent-gold);
+  border-color: #A1620733;
+}
+
+.sector-audit__badge--relevant-no {
+  color: var(--accent-positive);
+  border-color: #36531433;
+}
+
+.sector-audit__badge--relevant-yes {
+  color: var(--accent-negative);
+  border-color: #7F1D1D33;
+}
+
+.sector-audit__badge--relevant-na {
+  color: var(--text-tertiary);
+  border-color: var(--border-light);
+}
+
+.sector-audit__row-detail {
+  margin-top: 4px;
+  padding-left: 16px;
+}
+
+.sector-audit__metric-label {
+  font-family: var(--font-body);
+  font-size: 11px;
+  color: var(--text-tertiary);
+}
+
+.sector-audit__metric-value {
+  font-family: var(--font-data);
+  font-size: 11px;
+  color: var(--text-secondary);
+}
+
+.sector-audit__reasoning {
+  margin-top: 4px;
+  padding-left: 16px;
+  font-family: var(--font-body);
+  font-size: 12px;
+  font-style: italic;
+  line-height: 1.5;
+  color: var(--text-secondary);
+  max-width: 620px;
+}
+
+/* Night mode overrides for sector audit */
+[data-theme="night"] .sector-audit__badge--triggered-yes {
+  color: #D4A036;
+  border-color: #D4A03633;
+}
+
+[data-theme="night"] .sector-audit__badge--relevant-yes {
+  color: #E57373;
+  border-color: #E5737333;
+}
+
 /* Elimination audit */
 .elimination-text {
   font-family: var(--font-body);

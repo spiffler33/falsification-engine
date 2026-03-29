@@ -15,10 +15,11 @@ from sqlalchemy.orm import Session
 
 from backend.db.database import get_db
 from backend.db.models import Hypothesis as HypothesisModel
-from backend.db.models import InboxItem, Run
+from backend.db.models import InboxItem, Run, SectorFalsifierAudit
 from backend.engine import activation, conviction, regime, theory_parser
-from backend.engine.output_parser import ParseError, parse_elimination_output, parse_generation_output
+from backend.engine.output_parser import ParseError, parse_elimination_output, parse_generation_output, parse_sector_falsifier_audits
 from backend.engine.prompt_builder import build_elimination_prompt, build_generation_prompt
+from backend.engine.sector_appendices import select_sector_appendices
 from backend.schemas.briefing import BriefingPacket
 from backend.schemas.scoring import ConvictionInput
 
@@ -272,15 +273,24 @@ def get_elimination_prompt(db: Session = Depends(get_db)):
     # Check if any hypothesis has a channel tag
     has_channel_tags = any(h.resolution_channel for h in hyps)
 
+    # Select sector appendices based on hypothesis tickers (v4)
+    selected_appendices = select_sector_appendices(hypothesis_dicts)
+    sector_ids = [a["sector_id"] for a in selected_appendices]
+
+    # Persist selected sector_ids on the run
+    latest_run.sector_appendices_loaded = json.dumps(sector_ids) if sector_ids else None
+    db.commit()
+
     prompt = build_elimination_prompt(
         hypotheses=hypothesis_dicts,
         theories=theories,
         activation_results=activation_results,
         briefing=briefing_data,
         has_channel_tags=has_channel_tags,
+        sector_appendices=selected_appendices,
     )
 
-    return {"prompt": prompt, "run_id": latest_run.id}
+    return {"prompt": prompt, "run_id": latest_run.id, "sector_appendices_loaded": sector_ids}
 
 
 # --- Import endpoints ---
@@ -378,6 +388,31 @@ def import_elimination(payload: dict = Body(...), db: Session = Depends(get_db))
 
     # Parse elimination JSON for per-hypothesis elimination results
     data = _extract_json_for_lookup(raw_json)
+
+    # Parse sector falsifier audit entries from evaluator output (v4)
+    sector_audit_entries = parse_sector_falsifier_audits(raw=raw_json, elimination_items=data)
+    # Build per-hypothesis lookup: hypothesis_id -> list of audit entries
+    sector_audit_by_hypothesis: dict[str, list[dict]] = {}
+    for entry in sector_audit_entries:
+        hid = entry.get("hypothesis_id", "")
+        if hid:
+            sector_audit_by_hypothesis.setdefault(hid, []).append(entry)
+
+    # Persist sector audit records to dedicated table (v4)
+    for entry in sector_audit_entries:
+        audit_row = SectorFalsifierAudit(
+            id=f"SA-{uuid.uuid4().hex[:12]}",
+            hypothesis_id=entry.get("hypothesis_id", ""),
+            sector_id=entry.get("sector_id", ""),
+            falsifier_id=entry.get("falsifier_id", ""),
+            metric_value_found=entry.get("metric_value_found", ""),
+            triggered=entry.get("triggered", "NO"),
+            relevant=entry.get("relevant", "N/A"),
+            reasoning=entry.get("reasoning", ""),
+            severity_applied=entry.get("severity_applied", "NONE"),
+            run_id=latest_run.id,
+        )
+        db.add(audit_row)
 
     # Update hypotheses in database and run conviction scoring
     scored_results = []
@@ -484,6 +519,7 @@ def import_elimination(payload: dict = Body(...), db: Session = Depends(get_db))
                 diff_theory_overlap=diff_theory,
                 resolution_channel=h.resolution_channel or "",
                 active_regime_flags=active_regime_flags,
+                sector_falsifier_audit=sector_audit_by_hypothesis.get(h.id, []),
                 horizon_alignment=mech_horizon,
                 expression_efficiency=mech_expression,
             )
@@ -507,6 +543,11 @@ def import_elimination(payload: dict = Body(...), db: Session = Depends(get_db))
                 h.elimination_notes = (
                     (h.elimination_notes or "") + f"\n[MECHANICAL] {result.stage3.kill_reason}"
                 ).strip()
+
+            # Record which sector appendices were applied to this hypothesis (v4)
+            h_sector_ids = list({e["sector_id"] for e in sector_audit_by_hypothesis.get(h.id, [])})
+            if h_sector_ids:
+                h.sector_appendices_applied = json.dumps(sorted(h_sector_ids))
         else:
             h.conviction = 0.0
             h.conviction_math = None
@@ -559,6 +600,7 @@ def get_snapshot(db: Session = Depends(get_db)):
             "id": latest_run.id,
             "timestamp": latest_run.timestamp,
             "status": latest_run.status,
+            "sector_appendices_loaded": json.loads(latest_run.sector_appendices_loaded) if latest_run.sector_appendices_loaded else [],
         }
         # Include ALL hypotheses (across all runs), matching the local ledger view
         hyps = db.query(HypothesisModel).all()

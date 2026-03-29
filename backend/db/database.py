@@ -55,7 +55,10 @@ def _migrate(eng):
         cursor = raw.cursor()
 
         def _add_column(table, column, col_type, extra=""):
-            cols = [r[1] for r in cursor.execute(f"PRAGMA table_info({table})").fetchall()]
+            rows = cursor.execute(f"PRAGMA table_info({table})").fetchall()
+            if not rows:
+                return  # table doesn't exist yet; create_all will handle it
+            cols = [r[1] for r in rows]
             if column not in cols:
                 stmt = f"ALTER TABLE {table} ADD COLUMN {column} {col_type}"
                 if extra:
@@ -71,6 +74,27 @@ def _migrate(eng):
         # Migration 3: resolution channel fields on hypotheses (v3)
         _add_column("hypotheses", "resolution_channel", "TEXT")
         _add_column("hypotheses", "resolution_channel_original", "TEXT")
+
+        # Migration 4: sector appendix persistence (v4)
+        _add_column("hypotheses", "sector_appendices_applied", "TEXT")
+        _add_column("runs", "sector_appendices_loaded", "TEXT")
+
+        # Migration 4b: sector_falsifier_audit table
+        cursor.execute("""
+            CREATE TABLE IF NOT EXISTS sector_falsifier_audit (
+                id TEXT PRIMARY KEY,
+                hypothesis_id TEXT NOT NULL REFERENCES hypotheses(id),
+                sector_id TEXT NOT NULL,
+                falsifier_id TEXT NOT NULL,
+                metric_value_found TEXT,
+                triggered TEXT NOT NULL,
+                relevant TEXT NOT NULL,
+                reasoning TEXT,
+                severity_applied TEXT,
+                run_id TEXT NOT NULL REFERENCES runs(id),
+                created_at TEXT DEFAULT (datetime('now'))
+            )
+        """)
 
         raw.commit()
     except Exception:

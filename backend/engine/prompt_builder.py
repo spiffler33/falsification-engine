@@ -144,11 +144,15 @@ def build_elimination_prompt(
     activation_results: list[ActivationResult],
     briefing: dict[str, Any],
     has_channel_tags: bool = False,
+    sector_appendices: list[dict[str, Any]] | None = None,
 ) -> str:
     """Build the elimination prompt for Pass 3.
 
     Includes the generated hypotheses, theory modules they invoke,
-    and the current briefing packet.
+    and the current briefing packet.  When *sector_appendices* is a
+    non-empty list the sector falsifier section and structured audit
+    output format are appended; when empty or None they are omitted
+    entirely — the prompt is unchanged from v3.
     """
     theory_map = {t.theory_id: t for t in theories}
 
@@ -197,9 +201,16 @@ def build_elimination_prompt(
         parts.append("\n\n## CHANNEL VERIFICATION\n")
         parts.append(_channel_verification_instructions())
 
+    # --- Sector falsifier appendices (v4 — conditional on ticker match) ---
+    if sector_appendices:
+        parts.append("\n\n" + _format_sector_appendices_section(sector_appendices))
+
     # --- Output schema ---
     parts.append("\n\n## OUTPUT FORMAT\n")
-    parts.append(_elimination_output_schema(has_channel_tags=has_channel_tags))
+    parts.append(_elimination_output_schema(
+        has_channel_tags=has_channel_tags,
+        has_sector_appendices=bool(sector_appendices),
+    ))
 
     return "\n".join(parts)
 
@@ -312,7 +323,10 @@ RULES:
 - Every hypothesis gets the full audit. No exceptions."""
 
 
-def _elimination_output_schema(has_channel_tags: bool = False) -> str:
+def _elimination_output_schema(
+    has_channel_tags: bool = False,
+    has_sector_appendices: bool = False,
+) -> str:
     channel_block = ""
     if has_channel_tags:
         channel_block = (
@@ -321,6 +335,29 @@ def _elimination_output_schema(has_channel_tags: bool = False) -> str:
             '      "correct_channel": "same as assigned, or corrected channel if misclassified",\n'
             '      "correction_reason": "null if no correction, otherwise explanation"\n'
             '    },\n'
+        )
+
+    sector_block = ""
+    if has_sector_appendices:
+        sector_block = (
+            '    "sector_falsifier_audit": [\n'
+            '      {\n'
+            '        "sector_id": "the sector_id from the appendix",\n'
+            '        "falsifier_id": "e.g. tech_sf_01",\n'
+            '        "metric_value_found": "the current value you looked up",\n'
+            '        "triggered": "YES | NO",\n'
+            '        "relevant": "YES | NO | N/A",\n'
+            '        "reasoning": "1-2 sentences on why this does or does not attack the load-bearing mechanism",\n'
+            '        "severity_applied": "minor | medium | major | NONE"\n'
+            '      }\n'
+            '    ],\n'
+            '    "attack_vector_findings": [\n'
+            '      {\n'
+            '        "vector_id": "e.g. tech_av_01",\n'
+            '        "finding": "summary of what was found, 1-2 sentences",\n'
+            '        "impact": "how this affects the SURVIVED/WOUNDED/KILLED determination"\n'
+            '      }\n'
+            '    ],\n'
         )
 
     return (
@@ -344,6 +381,7 @@ def _elimination_output_schema(has_channel_tags: bool = False) -> str:
         '      "close_to_triggering": ["list approaching threshold"],\n'
         '      "details": "Explanation"\n'
         '    },\n'
+        + sector_block +
         '    "cross_theory_attack": {\n'
         '      "contradictions_found": false,\n'
         '      "details": "Explanation of any contradicting mechanisms"\n'
@@ -373,6 +411,110 @@ def _elimination_output_schema(has_channel_tags: bool = False) -> str:
         "For KILLED hypotheses, conviction_inputs should all be 0.0.\n"
         "For WOUNDED hypotheses, reduce the relevant conviction_input dimensions to reflect the wounds."
     )
+
+
+def _format_sector_appendices_section(appendices: list[dict]) -> str:
+    """Format sector appendices into the prompt injection block for Pass 3.
+
+    This produces the full ``--- SECTOR FALSIFIER APPENDICES ---`` section
+    exactly as specified in plan_v4.md Component 2, followed by the
+    structured output template from Component 3.
+
+    The block is built *only* when appendices is non-empty; the caller
+    gates on that condition so this function always receives >= 1 appendix.
+    """
+    lines: list[str] = []
+
+    # --- Header and instructions ---
+    lines.append("--- SECTOR FALSIFIER APPENDICES ---")
+    lines.append("")
+    lines.append(
+        "The following sector-specific falsifiers are available for hypotheses\n"
+        "that involve the listed ETFs. For each hypothesis that touches a sector,\n"
+        "you MUST:"
+    )
+    lines.append("")
+    lines.append("1. Look up the current value of each mechanical falsifier's metric")
+    lines.append("2. Determine if the threshold is breached (TRIGGERED or NOT TRIGGERED)")
+    lines.append(
+        "3. If TRIGGERED: determine if the falsifier is RELEVANT to this specific\n"
+        "   hypothesis -- does it attack the hypothesis's load-bearing mechanism?"
+    )
+    lines.append("4. State your reasoning for the relevance determination")
+    lines.append("5. Report the result in the structured format specified below")
+    lines.append("")
+    lines.append(
+        "You must also investigate the evaluator attack vectors and incorporate\n"
+        "your findings into your qualitative assessment of the hypothesis."
+    )
+
+    # --- Per-appendix content ---
+    for appendix in appendices:
+        lines.append("")
+        lines.append(f"SECTOR: {appendix['display_name']}")
+        lines.append(f"Applies to hypotheses involving: {', '.join(appendix['ticker_triggers'])}")
+        lines.append("")
+        lines.append("MECHANICAL FALSIFIERS:")
+        for f in appendix["mechanical_falsifiers"]:
+            lines.append(f"  [{f['falsifier_id']}] {f['condition']}")
+            lines.append(f"  Metric: {f['metric']}")
+            lines.append(f"  Threshold: {f['threshold']} ({f['direction']})")
+            lines.append(f"  Severity if triggered AND relevant: {f['severity']}")
+            lines.append(f"  Data source: {f['data_source']}")
+            lines.append("")
+        lines.append("EVALUATOR ATTACK VECTORS:")
+        for v in appendix["evaluator_attack_vectors"]:
+            lines.append(f"  [{v['vector_id']}] {v['question']}")
+            lines.append(f"  Search for: {v['what_to_search']}")
+            lines.append(f"  Kill condition: {v['kill_condition']}")
+            lines.append("")
+
+    # --- Structured output template (Component 3) ---
+    lines.append("")
+    lines.append("SECTOR FALSIFIER AUDIT OUTPUT FORMAT:")
+    lines.append("")
+    lines.append(
+        "For each hypothesis that touches a sector with an active appendix,\n"
+        "include the following structured audit in your response:"
+    )
+    lines.append("")
+    lines.append("```")
+    lines.append("SECTOR FALSIFIER AUDIT: {hypothesis_id}")
+    lines.append("Sector: {sector_id}")
+    lines.append("")
+    lines.append("  [{falsifier_id}]")
+    lines.append("  Metric value found: {current value from web search}")
+    lines.append("  Triggered: YES | NO")
+    lines.append("  Relevant to this hypothesis: YES | NO | N/A (if not triggered)")
+    lines.append("  Reasoning: {1-2 sentences explaining WHY this falsifier does or does")
+    lines.append("              not attack the hypothesis's load-bearing mechanism}")
+    lines.append("  Severity applied: {severity} | NONE")
+    lines.append("")
+    lines.append("ATTACK VECTOR FINDINGS: {hypothesis_id}")
+    lines.append("  [{vector_id}] {summary of what was found, 1-2 sentences}")
+    lines.append("  Impact on hypothesis: {how this finding affects the SURVIVED/WOUNDED/KILLED determination}")
+    lines.append("```")
+    lines.append("")
+    lines.append("DEFINITION OF RELEVANCE:")
+    lines.append(
+        "A triggered sector falsifier is RELEVANT to a hypothesis if and only if\n"
+        "the falsifier is adverse to the hypothesis's load-bearing mechanism --\n"
+        "meaning the condition identified by the falsifier, if true, would weaken,\n"
+        "undermine, or contradict the specific causal pathway that the hypothesis\n"
+        "depends on for its predicted outcome."
+    )
+    lines.append("")
+    lines.append(
+        "The test is directional and specific: ask \"If this falsifier condition\n"
+        "is true, does it attack the mechanism THIS hypothesis needs to work?\"\n"
+        "A triggered falsifier that is bad for the sector but does not attack the\n"
+        "specific hypothesis mechanism is NOT relevant."
+    )
+
+    lines.append("")
+    lines.append("--- END SECTOR APPENDICES ---")
+
+    return "\n".join(lines)
 
 
 def _extract_falsifier_section(theory: TheoryModule) -> str:

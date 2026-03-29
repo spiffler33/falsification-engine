@@ -281,10 +281,28 @@ def _stage2_discounts(inp: ConvictionInput, raw_score: float) -> Stage2Discounts
     convergence bonus (+0.10 each, capped at +0.20).
     """
     # Soft falsifier health discount — multiplicative compounding
+    # Phase 1: Theory-level soft falsifiers (unchanged from v2)
     d_f = 1.0
     for f in inp.triggered_soft_falsifiers:
         weight = SEVERITY_WEIGHTS.get(f.get("severity", "minor"), 0.10)
         d_f *= (1.0 - weight)
+
+    # Phase 2: Sector-level falsifier discounts (v4)
+    # Two-gate check: triggered == "YES" AND relevant == "YES"
+    # A triggered-but-not-relevant falsifier produces NO discount.
+    sector_d_f = 1.0
+    sector_applied = []
+    for entry in inp.sector_falsifier_audit:
+        if (
+            str(entry.get("triggered", "")).upper() == "YES"
+            and str(entry.get("relevant", "")).upper() == "YES"
+        ):
+            sev = entry.get("severity_applied", "minor")
+            weight = SEVERITY_WEIGHTS.get(sev, 0.10)
+            d_f *= (1.0 - weight)
+            sector_d_f *= (1.0 - weight)
+            sector_applied.append(entry)
+
     d_f = max(0.05, d_f)
 
     # UNTESTABLE discount — reduced penalty for epistemic uncertainty
@@ -305,6 +323,8 @@ def _stage2_discounts(inp: ConvictionInput, raw_score: float) -> Stage2Discounts
     return Stage2Discounts(
         soft_falsifier_discount=d_f,
         triggered_soft_falsifiers=inp.triggered_soft_falsifiers,
+        sector_falsifier_discount=sector_d_f,
+        sector_falsifier_entries=sector_applied,
         untestable_discount=d_u,
         untestable_soft_falsifiers=inp.untestable_soft_falsifiers,
         regime_discount=d_r,
