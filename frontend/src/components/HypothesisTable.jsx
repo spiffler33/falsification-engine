@@ -6,15 +6,26 @@ import FalsifierCompact from '../shared/FalsifierCompact'
 import ActionMarker from '../shared/ActionMarker'
 import { fmtAge } from '../lib/format'
 
+const CHANNEL_LABELS = {
+  nominal_price_decline: 'NOM. DECLINE',
+  inflationary_grind: 'INFL. GRIND',
+  real_asset_outperformance: 'REAL ASSETS',
+  sector_rotation: 'ROTATION',
+  broad_credit_contraction: 'CREDIT CONTR.',
+  sector_credit_stress: 'SECTOR STRESS',
+}
+
 /**
  * HypothesisTable — the primary data table in the Ledger.
- * Columns: Status, Hypothesis, Theory, Conv., Fals., Assets, Age, Markers.
+ * Columns: Status, Hypothesis, Theory, Channel, Conv., Fals., Assets, Age, Markers.
  * Row click -> opens hypothesis detail.
  */
 export default function HypothesisTable({ hypotheses, onSelect }) {
   if (!hypotheses || hypotheses.length === 0) {
     return <div className="empty-state">No hypotheses to display.</div>
   }
+
+  const anyChannel = hypotheses.some(h => h.resolution_channel)
 
   return (
     <table className="hypothesis-table">
@@ -23,6 +34,7 @@ export default function HypothesisTable({ hypotheses, onSelect }) {
           <th className="col-status">Status</th>
           <th className="col-hypothesis">Hypothesis</th>
           <th className="col-theory">Theory</th>
+          {anyChannel && <th className="col-channel">Channel</th>}
           <th className="col-conviction">Conv.</th>
           <th className="col-falsifiers">Fals.</th>
           <th className="col-assets">Assets</th>
@@ -46,6 +58,14 @@ export default function HypothesisTable({ hypotheses, onSelect }) {
             <td className="col-theory">
               <TheoryTag theoryId={h.source_theory} label={h.source_theory_label} />
             </td>
+            {anyChannel && (
+              <td className="col-channel">
+                <ChannelTag
+                  channel={h.resolution_channel}
+                  originalChannel={h.resolution_channel_original}
+                />
+              </td>
+            )}
             <td className="col-conviction">
               <ConvictionDisplay
                 conviction={h.conviction}
@@ -79,6 +99,22 @@ export default function HypothesisTable({ hypotheses, onSelect }) {
         ))}
       </tbody>
     </table>
+  )
+}
+
+function ChannelTag({ channel, originalChannel }) {
+  if (!channel) return null
+  const label = CHANNEL_LABELS[channel] || channel.replace(/_/g, ' ').toUpperCase()
+  const corrected = originalChannel && originalChannel !== channel
+  return (
+    <span className={`channel-tag${corrected ? ' channel-tag--corrected' : ''}`} title={
+      corrected
+        ? `Corrected from: ${CHANNEL_LABELS[originalChannel] || originalChannel}`
+        : channel.replace(/_/g, ' ')
+    }>
+      {label}
+      {corrected && <span className="channel-tag__marker">*</span>}
+    </span>
   )
 }
 

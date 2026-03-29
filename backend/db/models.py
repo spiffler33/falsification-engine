@@ -15,6 +15,7 @@ class Run(Base):
     generation_output = Column(Text)  # raw JSON from Claude
     elimination_output = Column(Text)  # raw JSON from Claude
     activation_scores = Column(Text)  # JSON map of theory_id -> tier
+    regime_flags_active = Column(Text)  # JSON array of active flag_ids at run time
 
 
 class Hypothesis(Base):
@@ -34,6 +35,8 @@ class Hypothesis(Base):
     predicted_assets = Column(Text)  # JSON array of tickers
     asset_direction = Column(Text)  # JSON map ticker -> direction
     timeframe = Column(Text)
+    resolution_channel = Column(Text)  # One of 6 channel keys
+    resolution_channel_original = Column(Text)  # If evaluator corrected the tag
     elimination_notes = Column(Text)
     generated_date = Column(Text, nullable=False)
     created_at = Column(Text, server_default="(datetime('now'))")

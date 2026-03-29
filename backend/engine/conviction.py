@@ -4,7 +4,7 @@
 #
 # Pure math. No LLM. No narrative.
 # Stage 1: Raw conviction from epistemic quality (weighted sum)
-# Stage 2: Multiplicative discounts (soft falsifier health + overlap penalty)
+# Stage 2: Multiplicative discounts (soft falsifier health + overlap penalty + regime alignment)
 # Stage 3: Hard caps (horizon alignment + expression efficiency gates)
 from __future__ import annotations
 
@@ -13,6 +13,7 @@ import re
 from datetime import date, timedelta
 from typing import Any, Optional
 
+from backend.engine.regime import compute_regime_discount
 from backend.schemas.scoring import (
     ConvictionInput,
     ConvictionMath,
@@ -293,16 +294,20 @@ def _stage2_discounts(inp: ConvictionInput, raw_score: float) -> Stage2Discounts
         d_u *= (1.0 - weight)
     d_u = max(0.05, d_u)
 
+    # Regime alignment discount (D_r)
+    d_r = compute_regime_discount(inp.resolution_channel, inp.active_regime_flags)
+
     # Theory-aware overlap adjustment (additive)
     overlap_adj = (inp.same_theory_overlap * -0.50) + min(inp.diff_theory_overlap * 0.10, 0.20)
 
-    adjusted = max(0.0, (raw_score * d_f * d_u) + overlap_adj)
+    adjusted = max(0.0, (raw_score * d_f * d_u * d_r) + overlap_adj)
 
     return Stage2Discounts(
         soft_falsifier_discount=d_f,
         triggered_soft_falsifiers=inp.triggered_soft_falsifiers,
         untestable_discount=d_u,
         untestable_soft_falsifiers=inp.untestable_soft_falsifiers,
+        regime_discount=d_r,
         overlap_same_theory=inp.same_theory_overlap,
         overlap_diff_theory=inp.diff_theory_overlap,
         overlap_adjustment=overlap_adj,

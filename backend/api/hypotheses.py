@@ -96,6 +96,8 @@ def _model_to_dict(h: HypothesisModel, db: Session) -> dict:
         "predicted_assets": assets,
         "asset_direction": directions,
         "timeframe": h.timeframe or "",
+        "resolution_channel": h.resolution_channel or "",
+        "resolution_channel_original": h.resolution_channel_original or "",
         "elimination_notes": h.elimination_notes or "",
         "age": age,
         "delta_type": delta_type,

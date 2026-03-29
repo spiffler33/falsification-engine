@@ -1,14 +1,21 @@
 /**
  * TheoryCard — displays a single theory module with activation state.
  * Activation bar colored by tier, phase label for two-phase theories.
+ * Regime flag annotations when a flag affects this theory.
  * Clickable — opens TheoryDetail overlay.
  */
+
+const FLAG_LABELS = {
+  fiscal_dominance_active: 'FISCAL DOMINANCE',
+}
+
 export default function TheoryCard({ theory, onClick }) {
   const score = theory.activation_score ?? 0
   const pct = Math.round(score * 100)
   const tier = theory.tier || (score >= 0.60 ? 'active' : score >= 0.30 ? 'adjacent' : 'inactive')
   const tierLabel = tier.toUpperCase()
   const phase = theory.active_phase || null
+  const regimeFlags = theory.regime_flags || []
 
   const tierClass = `theory-card--${tier}`
   const barClass = `theory-card__bar-fill--${tier}`
@@ -30,6 +37,15 @@ export default function TheoryCard({ theory, onClick }) {
         <span className="theory-card__score">{pct}%</span>
         {phase && <span className="theory-card__phase">{phase}</span>}
       </div>
+      {regimeFlags.length > 0 && (
+        <div className="theory-card__regime">
+          {regimeFlags.map(fid => (
+            <span key={fid} className="theory-card__regime-flag">
+              {FLAG_LABELS[fid] || fid.replace(/_/g, ' ').toUpperCase()}
+            </span>
+          ))}
+        </div>
+      )}
     </div>
   )
 }

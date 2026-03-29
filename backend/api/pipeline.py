@@ -16,13 +16,25 @@ from sqlalchemy.orm import Session
 from backend.db.database import get_db
 from backend.db.models import Hypothesis as HypothesisModel
 from backend.db.models import InboxItem, Run
-from backend.engine import activation, conviction, theory_parser
+from backend.engine import activation, conviction, regime, theory_parser
 from backend.engine.output_parser import ParseError, parse_elimination_output, parse_generation_output
 from backend.engine.prompt_builder import build_elimination_prompt, build_generation_prompt
 from backend.schemas.briefing import BriefingPacket
 from backend.schemas.scoring import ConvictionInput
 
 router = APIRouter(tags=["pipeline"])
+
+
+def _activation_status_dict(activation_results) -> dict[str, str]:
+    """Convert list[ActivationResult] to {theory_id: tier_value} for regime flag computation."""
+    status = {}
+    for ar in activation_results:
+        # ActivationResult has effective_tier (two-phase) or tier (single-phase)
+        ar_dict = ar.model_dump() if hasattr(ar, "model_dump") else ar
+        tier = ar_dict.get("effective_tier") or ar_dict.get("tier")
+        if tier:
+            status[ar_dict["theory_id"]] = tier if isinstance(tier, str) else tier.value
+    return status
 
 
 def _load_briefing() -> dict[str, Any]:
@@ -156,11 +168,14 @@ def get_run_detail(run_id: str, db: Session = Depends(get_db)):
     from backend.api.hypotheses import _model_to_dict
     hypothesis_dicts = [_model_to_dict(h, db) for h in hyps]
 
+    regime_flags = json.loads(run.regime_flags_active) if run.regime_flags_active else []
+
     return {
         "id": run.id,
         "timestamp": run.timestamp,
         "status": run.status,
         "activation_scores": activation_scores,
+        "regime_flags_active": regime_flags,
         "generation_output": generation_output,
         "elimination_output": elimination_output,
         "hypotheses": hypothesis_dicts,
@@ -198,17 +213,26 @@ def get_generation_prompt(db: Session = Depends(get_db)):
         for item in inbox_rows
     ]
 
+    # Pass 1.5: Compute regime flags from activation results
+    active_flags = regime.compute_regime_flags(_activation_status_dict(activation_results))
+
     # Ensure a run exists for this pipeline execution
     run = _get_or_create_active_run(db, activation_results)
+
+    # Store active regime flag IDs on the run
+    flag_ids = [f["flag_id"] for f in active_flags]
+    run.regime_flags_active = json.dumps(flag_ids)
+    db.commit()
 
     prompt = build_generation_prompt(
         theories=theories,
         activation_results=activation_results,
         briefing=briefing_data,
         inbox_items=inbox_items,
+        active_regime_flags=active_flags,
     )
 
-    return {"prompt": prompt, "run_id": run.id}
+    return {"prompt": prompt, "run_id": run.id, "regime_flags_active": flag_ids}
 
 
 @router.get("/pipeline/prompt/elimination")
@@ -240,15 +264,20 @@ def get_elimination_prompt(db: Session = Depends(get_db)):
             "hard_falsifiers": json.loads(h.hard_falsifiers) if h.hard_falsifiers else [],
             "soft_falsifiers": json.loads(h.soft_falsifiers) if h.soft_falsifiers else [],
             "timeframe": h.timeframe,
+            "resolution_channel": h.resolution_channel or "",
         }
         for h in hyps
     ]
+
+    # Check if any hypothesis has a channel tag
+    has_channel_tags = any(h.resolution_channel for h in hyps)
 
     prompt = build_elimination_prompt(
         hypotheses=hypothesis_dicts,
         theories=theories,
         activation_results=activation_results,
         briefing=briefing_data,
+        has_channel_tags=has_channel_tags,
     )
 
     return {"prompt": prompt, "run_id": latest_run.id}
@@ -331,6 +360,22 @@ def import_elimination(payload: dict = Body(...), db: Session = Depends(get_db))
     activation_data = json.loads(latest_run.activation_scores) if latest_run.activation_scores else []
     briefing_raw = _load_briefing()
 
+    # Load active regime flags for conviction scoring (D_r discount)
+    active_regime_flags = []
+    if latest_run.regime_flags_active:
+        flag_ids = json.loads(latest_run.regime_flags_active)
+        if flag_ids:
+            # Reconstruct full flag objects from config
+            from backend.engine.regime_config import REGIME_FLAGS
+            for flag in REGIME_FLAGS["flags"]:
+                if flag["flag_id"] in flag_ids:
+                    active_regime_flags.append({
+                        "flag_id": flag["flag_id"],
+                        "affects": flag["affects"],
+                        "channel_context": flag["channel_context"],
+                        "channel_alignment": flag["channel_alignment"],
+                    })
+
     # Parse elimination JSON for per-hypothesis elimination results
     data = _extract_json_for_lookup(raw_json)
 
@@ -358,6 +403,21 @@ def import_elimination(payload: dict = Body(...), db: Session = Depends(get_db))
         h.status = h_data["status"]
         h.elimination_notes = h_data.get("elimination_notes", "")
         h.soft_falsifiers = h_data.get("soft_falsifiers", h.soft_falsifiers)
+
+        # Handle channel correction from evaluator
+        elim_for_channel = None
+        for er in data:
+            er_id = er.get("hypothesis_id", er.get("id", ""))
+            if er_id == h.id:
+                elim_for_channel = er
+                break
+        if elim_for_channel:
+            cv = elim_for_channel.get("channel_verification", {})
+            corrected = cv.get("correct_channel", "")
+            assigned = cv.get("assigned_channel", "")
+            if corrected and corrected != assigned:
+                h.resolution_channel_original = h.resolution_channel or assigned
+                h.resolution_channel = corrected
 
         # Run conviction scoring for non-KILLED hypotheses
         if h.status != "KILLED":
@@ -422,6 +482,8 @@ def import_elimination(payload: dict = Body(...), db: Session = Depends(get_db))
                 untestable_soft_falsifiers=untestable_sf,
                 same_theory_overlap=same_theory,
                 diff_theory_overlap=diff_theory,
+                resolution_channel=h.resolution_channel or "",
+                active_regime_flags=active_regime_flags,
                 horizon_alignment=mech_horizon,
                 expression_efficiency=mech_expression,
             )
@@ -490,6 +552,7 @@ def get_snapshot(db: Session = Depends(get_db)):
     run_data = None
     hypotheses = []
     activation_scores = []
+    regime_flags_active = []
 
     if latest_run:
         run_data = {
@@ -501,17 +564,27 @@ def get_snapshot(db: Session = Depends(get_db)):
         hyps = db.query(HypothesisModel).all()
         hypotheses = [_model_to_dict(h, db) for h in hyps]
         activation_scores = json.loads(latest_run.activation_scores) if latest_run.activation_scores else []
+        regime_flags_active = json.loads(latest_run.regime_flags_active) if latest_run.regime_flags_active else []
 
     # Briefing
     briefing_data = _load_briefing()
 
     # Theories (just names and IDs, not full markdown)
+    # Annotate with regime flags that affect each theory
+    from backend.engine.regime_config import REGIME_FLAGS as _RF
+    regime_affects: dict[str, list[str]] = {}
+    for flag in _RF["flags"]:
+        if flag["flag_id"] in regime_flags_active:
+            for mod_id in flag["affects"]:
+                regime_affects.setdefault(mod_id, []).append(flag["flag_id"])
+
     theories = theory_parser.load_all_theories()
     theory_summaries = [
         {
             "theory_id": t.theory_id,
             "name": t.title,
             "is_two_phase": t.is_two_phase,
+            "regime_flags": regime_affects.get(t.theory_id, []),
         }
         for t in theories
     ]
@@ -561,6 +634,7 @@ def get_snapshot(db: Session = Depends(get_db)):
         "run": run_data,
         "hypotheses": hypotheses,
         "activation_scores": activation_scores,
+        "regime_flags_active": regime_flags_active,
         "briefing": briefing_data,
         "theories": theory_summaries,
         "newsletters": newsletters,

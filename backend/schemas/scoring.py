@@ -21,10 +21,11 @@ class Stage2Discounts(BaseModel):
     triggered_soft_falsifiers: List[Dict] = []  # [{severity: ...}] inputs that produced D_f
     untestable_discount: float = 0.0      # the D_u multiplier for UNTESTABLE falsifiers
     untestable_soft_falsifiers: List[Dict] = []  # [{severity: ...}] inputs that produced D_u
+    regime_discount: float = 1.0          # the D_r multiplier from channel-regime alignment
     overlap_same_theory: int = 0          # same-theory overlap count input
     overlap_diff_theory: int = 0          # cross-theory overlap count input
     overlap_adjustment: float = 0.0       # additive: same-theory penalty + cross-theory bonus
-    adjusted: float = 0.0                 # (raw * D_f * D_u) + overlap_adjustment
+    adjusted: float = 0.0                 # (raw * D_f * D_u * D_r) + overlap_adjustment
 
 
 class Stage3Gates(BaseModel):
@@ -66,6 +67,8 @@ class ConvictionInput(BaseModel):
     untestable_soft_falsifiers: List[Dict] = []  # [{severity: "minor"|"medium"|"major"}]
     same_theory_overlap: int = 0   # other surviving hypotheses on same asset from same theory
     diff_theory_overlap: int = 0   # other surviving hypotheses on same asset from different theories
+    resolution_channel: str = ""   # one of RESOLUTION_CHANNELS keys, for regime alignment
+    active_regime_flags: List[Dict] = []  # active flags from compute_regime_flags()
     # Stage 3 inputs
     horizon_alignment: float = 0.0  # H, 0.0-1.0
     expression_efficiency: float = 0.0  # E, 0.0-1.0

@@ -749,6 +749,7 @@ p, .body-text {
 
 /* Mobile collapse */
 @media (max-width: 768px) {
+  .col-channel,
   .col-falsifiers,
   .col-assets,
   .col-age,
@@ -1523,6 +1524,52 @@ p, .body-text {
   font-size: 10px;
   color: var(--text-tertiary);
   font-style: italic;
+}
+
+.theory-card__regime {
+  margin-top: 8px;
+  padding-top: 6px;
+  border-top: 1px solid var(--border-light);
+  display: flex;
+  gap: 6px;
+  flex-wrap: wrap;
+}
+
+.theory-card__regime-flag {
+  font-family: var(--font-data);
+  font-size: 8px;
+  font-weight: 600;
+  letter-spacing: 0.06em;
+  color: var(--accent-high);
+  border: 1px solid var(--accent-high);
+  padding: 1px 5px;
+}
+
+
+/* ─── Channel Tag (Hypothesis Table) ─────────────── */
+
+.col-channel { width: auto; }
+
+.channel-tag {
+  font-family: var(--font-data);
+  font-size: 9px;
+  font-weight: 500;
+  letter-spacing: 0.03em;
+  color: var(--text-secondary);
+  border: 1px solid var(--border-medium);
+  padding: 1px 5px;
+  white-space: nowrap;
+}
+
+.channel-tag--corrected {
+  color: var(--accent-gold);
+  border-color: var(--accent-gold);
+}
+
+.channel-tag__marker {
+  color: var(--accent-gold);
+  margin-left: 2px;
+  font-weight: 700;
 }
 
 

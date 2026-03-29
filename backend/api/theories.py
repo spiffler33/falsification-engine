@@ -9,7 +9,7 @@ from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.orm import Session
 
 from backend.db.database import get_db
-from backend.engine import activation, theory_parser
+from backend.engine import activation, regime, theory_parser
 from backend.engine.prompt_builder import THEORY_LABEL_MAP
 from backend.schemas.briefing import BriefingPacket
 
@@ -38,6 +38,21 @@ def list_theories():
 
     ar_map = {ar.theory_id: ar for ar in activation_results}
 
+    # Compute regime flags from activation status
+    status_dict = {}
+    for ar in activation_results:
+        ar_dict = ar.model_dump() if hasattr(ar, "model_dump") else ar
+        tier = ar_dict.get("effective_tier") or ar_dict.get("tier")
+        if tier:
+            status_dict[ar_dict["theory_id"]] = tier if isinstance(tier, str) else tier.value
+    active_flags = regime.compute_regime_flags(status_dict)
+
+    # Build lookup: theory_id -> list of flag_ids that affect it
+    regime_affects: dict[str, list[str]] = {}
+    for flag in active_flags:
+        for module_id in flag["affects"]:
+            regime_affects.setdefault(module_id, []).append(flag["flag_id"])
+
     result = []
     for t in theories:
         ar = ar_map.get(t.theory_id)
@@ -52,6 +67,7 @@ def list_theories():
             "hard_falsifier_count": len(t.hard_falsifiers),
             "soft_falsifier_count": len(t.soft_falsifiers),
             "prediction_count": len(t.directional_predictions),
+            "regime_flags": regime_affects.get(t.theory_id, []),
         }
 
         if ar:

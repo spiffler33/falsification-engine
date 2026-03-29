@@ -32,6 +32,7 @@ def build_generation_prompt(
     briefing: dict[str, Any],
     inbox_items: list[dict[str, Any]],
     max_adjacent: int = 1,
+    active_regime_flags: list[dict[str, Any]] | None = None,
 ) -> str:
     """Build the generation prompt for Pass 2.
 
@@ -102,6 +103,28 @@ def build_generation_prompt(
                 parts.append(f"  Tags: {tags}")
             parts.append("")
 
+    # --- Regime flags (Pass 1.5 context) ---
+    if active_regime_flags:
+        active_or_adjacent = set(active_theories + adjacent_theories[:max_adjacent])
+        parts.append("\n\n## REGIME FLAGS\n")
+        parts.append(
+            "The following regime flags are active based on current theory activation states.\n"
+            "Use the channel context below when constructing hypotheses for the affected theories.\n"
+        )
+        for flag in active_regime_flags:
+            parts.append(f"REGIME FLAG: {flag['flag_id']}")
+            parts.append(f"Triggered by: {flag['flag_id'].replace('_active', '').replace('_', ' ')} is Active\n")
+            parts.append("Channel context for affected theories:")
+            for module_id, context in flag.get("channel_context", {}).items():
+                if module_id in active_or_adjacent:
+                    label = THEORY_LABEL_MAP.get(module_id, module_id)
+                    parts.append(f"  - {label}: {context}")
+            parts.append("")
+
+    # --- Resolution channel requirement ---
+    parts.append("\n\n## RESOLUTION CHANNEL REQUIREMENT\n")
+    parts.append(_resolution_channel_instructions())
+
     # --- Data briefing ---
     parts.append("\n\n## DATA BRIEFING\n")
     parts.append("```json")
@@ -120,6 +143,7 @@ def build_elimination_prompt(
     theories: list[TheoryModule],
     activation_results: list[ActivationResult],
     briefing: dict[str, Any],
+    has_channel_tags: bool = False,
 ) -> str:
     """Build the elimination prompt for Pass 3.
 
@@ -168,9 +192,14 @@ def build_elimination_prompt(
     parts.append(json.dumps(briefing, indent=2, default=str))
     parts.append("```")
 
+    # --- Channel verification (when hypotheses have channel tags) ---
+    if has_channel_tags:
+        parts.append("\n\n## CHANNEL VERIFICATION\n")
+        parts.append(_channel_verification_instructions())
+
     # --- Output schema ---
     parts.append("\n\n## OUTPUT FORMAT\n")
-    parts.append(_elimination_output_schema())
+    parts.append(_elimination_output_schema(has_channel_tags=has_channel_tags))
 
     return "\n".join(parts)
 
@@ -212,6 +241,7 @@ def _generation_output_schema() -> str:
     "prediction": "Specific, testable prediction with magnitude and timeframe",
     "predicted_assets": ["GLD", "TLT"],
     "asset_direction": {"GLD": "LONG", "TLT": "SHORT"},
+    "resolution_channel": "one of: nominal_price_decline | inflationary_grind | real_asset_outperformance | sector_rotation | broad_credit_contraction | sector_credit_stress",
     "hard_falsifiers": [
       {"condition": "Description of what would kill this hypothesis", "metric": "data field to check", "threshold": "specific number or condition"}
     ],
@@ -282,56 +312,67 @@ RULES:
 - Every hypothesis gets the full audit. No exceptions."""
 
 
-def _elimination_output_schema() -> str:
-    return """Output a JSON array. For each hypothesis (in the same order as input), provide:
+def _elimination_output_schema(has_channel_tags: bool = False) -> str:
+    channel_block = ""
+    if has_channel_tags:
+        channel_block = (
+            '    "channel_verification": {\n'
+            '      "assigned_channel": "the resolution_channel from generation",\n'
+            '      "correct_channel": "same as assigned, or corrected channel if misclassified",\n'
+            '      "correction_reason": "null if no correction, otherwise explanation"\n'
+            '    },\n'
+        )
 
-```json
-[
-  {
-    "hypothesis_id": "the id or index from the input",
-    "theory_id": "the source theory_id",
-    "short_name": "the hypothesis short_name",
-    "status": "SURVIVED | WOUNDED | KILLED",
-    "hard_falsifier_check": {
-      "any_triggered": false,
-      "details": "Explanation of each hard falsifier check"
-    },
-    "soft_falsifier_check": {
-      "triggered_count": 0,
-      "triggered": ["list of triggered soft falsifier names"],
-      "untestable": ["list of soft falsifier names where data is unavailable"],
-      "close_to_triggering": ["list approaching threshold"],
-      "details": "Explanation"
-    },
-    "cross_theory_attack": {
-      "contradictions_found": false,
-      "details": "Explanation of any contradicting mechanisms"
-    },
-    "evidence_quality": {
-      "grade": "strong | moderate | weak",
-      "details": "Assessment of evidence supporting each prediction"
-    },
-    "composition_integrity": {
-      "applicable": false,
-      "passed": true,
-      "details": "Only for multi-theory hypotheses"
-    },
-    "elimination_notes": "Full reasoning paragraph summarizing the adversarial assessment",
-    "conviction_inputs": {
-      "support_strength": 0.0,
-      "evidence_quality": 0.0,
-      "convergence": 0.0,
-      "falsifier_clarity": 0.0,
-      "horizon_alignment": 0.0,
-      "expression_efficiency": 0.0
-    }
-  }
-]
-```
-
-IMPORTANT: Output ONLY the JSON array. No commentary before or after.
-For KILLED hypotheses, conviction_inputs should all be 0.0.
-For WOUNDED hypotheses, reduce the relevant conviction_input dimensions to reflect the wounds."""
+    return (
+        "Output a JSON array. For each hypothesis (in the same order as input), provide:\n\n"
+        "```json\n"
+        "[\n"
+        "  {\n"
+        '    "hypothesis_id": "the id or index from the input",\n'
+        '    "theory_id": "the source theory_id",\n'
+        '    "short_name": "the hypothesis short_name",\n'
+        '    "status": "SURVIVED | WOUNDED | KILLED",\n'
+        + channel_block +
+        '    "hard_falsifier_check": {\n'
+        '      "any_triggered": false,\n'
+        '      "details": "Explanation of each hard falsifier check"\n'
+        '    },\n'
+        '    "soft_falsifier_check": {\n'
+        '      "triggered_count": 0,\n'
+        '      "triggered": ["list of triggered soft falsifier names"],\n'
+        '      "untestable": ["list of soft falsifier names where data is unavailable"],\n'
+        '      "close_to_triggering": ["list approaching threshold"],\n'
+        '      "details": "Explanation"\n'
+        '    },\n'
+        '    "cross_theory_attack": {\n'
+        '      "contradictions_found": false,\n'
+        '      "details": "Explanation of any contradicting mechanisms"\n'
+        '    },\n'
+        '    "evidence_quality": {\n'
+        '      "grade": "strong | moderate | weak",\n'
+        '      "details": "Assessment of evidence supporting each prediction"\n'
+        '    },\n'
+        '    "composition_integrity": {\n'
+        '      "applicable": false,\n'
+        '      "passed": true,\n'
+        '      "details": "Only for multi-theory hypotheses"\n'
+        '    },\n'
+        '    "elimination_notes": "Full reasoning paragraph summarizing the adversarial assessment",\n'
+        '    "conviction_inputs": {\n'
+        '      "support_strength": 0.0,\n'
+        '      "evidence_quality": 0.0,\n'
+        '      "convergence": 0.0,\n'
+        '      "falsifier_clarity": 0.0,\n'
+        '      "horizon_alignment": 0.0,\n'
+        '      "expression_efficiency": 0.0\n'
+        '    }\n'
+        '  }\n'
+        ']\n'
+        "```\n\n"
+        "IMPORTANT: Output ONLY the JSON array. No commentary before or after.\n"
+        "For KILLED hypotheses, conviction_inputs should all be 0.0.\n"
+        "For WOUNDED hypotheses, reduce the relevant conviction_input dimensions to reflect the wounds."
+    )
 
 
 def _extract_falsifier_section(theory: TheoryModule) -> str:
@@ -355,3 +396,42 @@ def _extract_falsifier_section(theory: TheoryModule) -> str:
                 lines.append(f"  Implication: {sf.implication}")
 
     return "\n".join(lines) if lines else "[No falsifiers specified]"
+
+
+def _resolution_channel_instructions() -> str:
+    """Resolution channel requirement for the generation prompt."""
+    return """For each hypothesis, assign exactly one resolution_channel from this list:
+  - nominal_price_decline
+  - inflationary_grind
+  - real_asset_outperformance
+  - sector_rotation
+  - broad_credit_contraction
+  - sector_credit_stress
+
+Select the channel that describes the PRIMARY mechanism your hypothesis depends on.
+Choose the channel whose failure would most directly kill the hypothesis.
+
+If the hypothesis predicts a 15%+ nominal price decline, the channel is nominal_price_decline
+even if there are secondary inflationary dynamics. The channel is the load-bearing mechanism.
+
+Include "resolution_channel": "<channel>" in each hypothesis output."""
+
+
+def _channel_verification_instructions() -> str:
+    """Channel verification section for the elimination prompt."""
+    return """For each hypothesis, verify the resolution_channel tag:
+1. Does the predicted magnitude match the channel? A 30%+ nominal decline
+   tagged as "inflationary_grind" is a misclassification.
+2. Does the predicted timeline match the channel? An "inflationary_grind"
+   hypothesis with a 2-month timeline is suspect -- grinds take years.
+3. Does the load-bearing mechanism match the channel? If removing the
+   channel's mechanism would kill the hypothesis, the tag is correct.
+   If the hypothesis would survive without that mechanism, the tag is wrong.
+
+If you identify a channel misclassification, include in your output:
+  - "channel_verification.assigned_channel": the original channel
+  - "channel_verification.correct_channel": the corrected channel
+  - "channel_verification.correction_reason": why the reassignment is warranted
+
+The corrected channel will be used for scoring. The original assignment
+is preserved in the audit trail."""

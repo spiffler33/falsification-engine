@@ -50,17 +50,30 @@ def init_db():
 
 def _migrate(eng):
     """Apply column additions that create_all won't handle on existing tables."""
-    import sqlite3
     raw = eng.raw_connection()
     try:
         cursor = raw.cursor()
-        # Add newsletter_id to trades if missing
-        cols = [r[1] for r in cursor.execute("PRAGMA table_info(trades)").fetchall()]
-        if "newsletter_id" in cols:
-            return
-        cursor.execute("ALTER TABLE trades ADD COLUMN newsletter_id TEXT REFERENCES newsletters(id)")
+
+        def _add_column(table, column, col_type, extra=""):
+            cols = [r[1] for r in cursor.execute(f"PRAGMA table_info({table})").fetchall()]
+            if column not in cols:
+                stmt = f"ALTER TABLE {table} ADD COLUMN {column} {col_type}"
+                if extra:
+                    stmt += f" {extra}"
+                cursor.execute(stmt)
+
+        # Migration 1: newsletter_id on trades
+        _add_column("trades", "newsletter_id", "TEXT", "REFERENCES newsletters(id)")
+
+        # Migration 2: regime_flags_active on runs (v3)
+        _add_column("runs", "regime_flags_active", "TEXT")
+
+        # Migration 3: resolution channel fields on hypotheses (v3)
+        _add_column("hypotheses", "resolution_channel", "TEXT")
+        _add_column("hypotheses", "resolution_channel_original", "TEXT")
+
         raw.commit()
     except Exception:
-        pass  # Column may already exist or table may not exist yet
+        pass  # Table may not exist yet on fresh DB (create_all handles it)
     finally:
         raw.close()

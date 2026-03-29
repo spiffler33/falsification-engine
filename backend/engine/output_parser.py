@@ -68,6 +68,9 @@ FIELD_ALIASES: dict[str, list[str]] = {
         "conviction", "scoring_inputs", "conviction_scoring",
         "epistemic_inputs", "scores",
     ],
+    "resolution_channel": [
+        "channel", "resolution", "res_channel",
+    ],
 }
 
 
@@ -172,6 +175,7 @@ def parse_generation_output(
             "predicted_assets": json.dumps(predicted_assets),
             "asset_direction": json.dumps(asset_direction),
             "timeframe": item.get("timeframe", ""),
+            "resolution_channel": item.get("resolution_channel", ""),
             "elimination_notes": "",
             "generated_date": date.today().isoformat(),
         }
