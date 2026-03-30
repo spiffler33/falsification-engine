@@ -96,6 +96,25 @@ def _migrate(eng):
             )
         """)
 
+        # Migration 5: walk-forward analysis (briefing snapshot + price snapshots + outcomes)
+        _add_column("runs", "briefing_snapshot", "TEXT")
+        _add_column("runs", "price_snapshot_date", "TEXT")
+        _add_column("hypotheses", "outcome_status", "TEXT")
+        _add_column("hypotheses", "outcome_date", "TEXT")
+        _add_column("hypotheses", "outcome_notes", "TEXT")
+        _add_column("hypotheses", "outcome_pnl_pct", "REAL")
+
+        cursor.execute("""
+            CREATE TABLE IF NOT EXISTS run_price_snapshots (
+                run_id TEXT NOT NULL REFERENCES runs(id),
+                ticker TEXT NOT NULL,
+                price REAL NOT NULL,
+                date TEXT NOT NULL,
+                source TEXT NOT NULL DEFAULT 'yahoo_finance',
+                PRIMARY KEY (run_id, ticker)
+            )
+        """)
+
         raw.commit()
     except Exception:
         pass  # Table may not exist yet on fresh DB (create_all handles it)

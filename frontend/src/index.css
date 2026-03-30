@@ -3810,3 +3810,426 @@ p, .body-text {
 .trades-table__row--rejected {
   opacity: 0.4;
 }
+
+
+/* ─── Walk-Forward: Outcome Badges ─────────────────── */
+
+.outcome-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  font-family: var(--font-data);
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+
+.outcome-badge--small {
+  font-size: 9px;
+}
+
+.outcome-badge--large {
+  font-size: 11px;
+}
+
+.outcome-badge__symbol {
+  font-weight: 700;
+}
+
+.outcome-badge--correct {
+  color: var(--accent-positive);
+}
+
+.outcome-badge--incorrect {
+  color: var(--accent-high);
+}
+
+.outcome-badge--partial {
+  color: var(--accent-gold);
+}
+
+.outcome-badge--expired {
+  color: var(--text-tertiary);
+}
+
+.conviction-with-outcome {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+
+
+/* ─── Walk-Forward: Outcome Section (Hypothesis Detail) ── */
+
+.outcome-pending-label {
+  font-family: var(--font-data);
+  font-size: 10px;
+  color: var(--text-tertiary);
+  letter-spacing: 0.06em;
+}
+
+.outcome-entry-prices {
+  margin-bottom: 12px;
+}
+
+.outcome-entry-prices__label {
+  display: block;
+  font-family: var(--font-data);
+  font-size: 10px;
+  color: var(--text-secondary);
+  margin-bottom: 4px;
+}
+
+.outcome-entry-prices__values {
+  font-family: var(--font-data);
+  font-size: 12px;
+  color: var(--text-primary);
+  font-variant-numeric: tabular-nums;
+}
+
+.outcome-entry-price__sep {
+  color: var(--text-tertiary);
+  margin: 0 8px;
+}
+
+.outcome-recorded {
+  border: 1px solid var(--border-light);
+  padding: 12px;
+  margin-bottom: 12px;
+}
+
+.outcome-recorded__date {
+  font-family: var(--font-data);
+  font-size: 10px;
+  color: var(--text-tertiary);
+  margin-bottom: 6px;
+}
+
+.outcome-recorded__notes {
+  font-family: var(--font-body);
+  font-size: 14px;
+  line-height: 1.5;
+  color: var(--text-primary);
+}
+
+.outcome-recorded__pnl {
+  font-family: var(--font-data);
+  font-size: 12px;
+  font-weight: 600;
+  margin-top: 8px;
+}
+
+
+/* ─── Walk-Forward: Outcome Form ──────────────────── */
+
+.outcome-form {
+  border: 1px solid var(--border-medium);
+  padding: 16px;
+  background: var(--bg-inset);
+}
+
+.outcome-form__label {
+  font-family: var(--font-display);
+  font-size: 12px;
+  font-weight: 600;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: var(--text-secondary);
+  margin-bottom: 6px;
+  margin-top: 12px;
+}
+
+.outcome-form__label:first-child {
+  margin-top: 0;
+}
+
+.outcome-form__statuses {
+  display: flex;
+  gap: 6px;
+  flex-wrap: wrap;
+  margin-bottom: 4px;
+}
+
+.outcome-form__status-btn {
+  font-family: var(--font-data);
+  font-size: 10px;
+  padding: 4px 10px;
+  border: 1px solid var(--border-medium);
+  background: var(--bg-primary);
+  cursor: pointer;
+  letter-spacing: 0.04em;
+}
+
+.outcome-form__status-btn--active {
+  font-weight: 700;
+}
+
+.outcome-form__status-btn--correct {
+  border-color: var(--accent-positive);
+  color: var(--accent-positive);
+}
+
+.outcome-form__status-btn--incorrect {
+  border-color: var(--accent-high);
+  color: var(--accent-high);
+}
+
+.outcome-form__status-btn--partial {
+  border-color: var(--accent-gold);
+  color: var(--accent-gold);
+}
+
+.outcome-form__status-btn--expired {
+  border-color: var(--text-tertiary);
+  color: var(--text-secondary);
+}
+
+.outcome-form__notes {
+  width: 100%;
+  font-family: var(--font-body);
+  font-size: 14px;
+  padding: 8px;
+  border: 1px solid var(--border-light);
+  background: var(--bg-primary);
+  color: var(--text-primary);
+  resize: vertical;
+}
+
+.outcome-form__pnl {
+  width: 120px;
+  font-family: var(--font-data);
+  font-size: 12px;
+  padding: 6px 8px;
+  border: 1px solid var(--border-light);
+  background: var(--bg-primary);
+  color: var(--text-primary);
+}
+
+.outcome-form__error {
+  font-family: var(--font-data);
+  font-size: 11px;
+  color: var(--accent-negative);
+  margin-top: 8px;
+}
+
+.outcome-form__actions {
+  display: flex;
+  gap: 8px;
+  justify-content: flex-end;
+  margin-top: 12px;
+}
+
+
+/* ─── Walk-Forward: Run Archive ───────────────────── */
+
+.run-archive {
+  border: 1px solid var(--border-light);
+  margin-bottom: 20px;
+}
+
+.run-archive__header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 12px 16px;
+  border-bottom: 1px solid var(--border-light);
+}
+
+.run-archive__title {
+  font-family: var(--font-display);
+  font-size: 13px;
+  font-weight: 600;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--text-primary);
+}
+
+.run-archive__count {
+  font-family: var(--font-data);
+  font-size: 10px;
+  color: var(--text-tertiary);
+}
+
+.run-archive__table {
+  width: 100%;
+  border-collapse: collapse;
+}
+
+.run-archive__table th {
+  font-family: var(--font-body);
+  font-size: 12px;
+  font-weight: 400;
+  color: var(--text-secondary);
+  text-align: left;
+  padding: 8px 12px;
+  border-bottom: 1px solid var(--border-light);
+}
+
+.run-archive__table td {
+  font-family: var(--font-data);
+  font-size: 11px;
+  color: var(--text-primary);
+  padding: 6px 12px;
+  font-variant-numeric: tabular-nums;
+}
+
+.run-archive__row {
+  cursor: pointer;
+  transition: background 0.1s;
+}
+
+.run-archive__row:hover {
+  background: var(--bg-hover);
+}
+
+.run-archive__row--selected {
+  background: var(--bg-secondary);
+  border-left: 3px solid var(--accent-high);
+}
+
+.run-archive__cell-id {
+  font-weight: 600;
+}
+
+.run-archive__outcomes {
+  padding: 10px 16px;
+  border-top: 1px solid var(--border-light);
+  font-family: var(--font-data);
+  font-size: 10px;
+  color: var(--text-secondary);
+}
+
+.outcome-count--correct {
+  color: var(--accent-positive);
+}
+
+.outcome-count--incorrect {
+  color: var(--accent-high);
+}
+
+.outcome-count--partial {
+  color: var(--accent-gold);
+}
+
+.outcome-count--expired {
+  color: var(--text-tertiary);
+}
+
+
+/* ─── Walk-Forward: Survival Bar ──────────────────── */
+
+.survival-bar {
+  display: inline-flex;
+  gap: 2px;
+}
+
+.survival-block {
+  display: inline-block;
+  width: 10px;
+  height: 10px;
+}
+
+.survival-block--filled {
+  background: var(--accent-positive);
+  opacity: 0.7;
+}
+
+.survival-block--empty {
+  background: var(--border-light);
+}
+
+
+/* ─── Walk-Forward: Walk-Forward Panel ────────────── */
+
+.walkforward-panel {
+  border: 1px solid var(--border-light);
+  margin-top: 16px;
+}
+
+.walkforward-panel__header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 12px 16px;
+  border-bottom: 1px solid var(--border-light);
+}
+
+.walkforward-panel__title {
+  font-family: var(--font-display);
+  font-size: 13px;
+  font-weight: 600;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--text-primary);
+}
+
+.walkforward-panel__snapshot-date {
+  font-family: var(--font-data);
+  font-size: 10px;
+  color: var(--text-tertiary);
+}
+
+.walkforward-panel__table {
+  width: 100%;
+  border-collapse: collapse;
+}
+
+.walkforward-panel__table th {
+  font-family: var(--font-body);
+  font-size: 12px;
+  font-weight: 400;
+  color: var(--text-secondary);
+  text-align: left;
+  padding: 8px 12px;
+  border-bottom: 1px solid var(--border-light);
+}
+
+.walkforward-panel__table td {
+  font-family: var(--font-data);
+  font-size: 11px;
+  color: var(--text-primary);
+  padding: 6px 12px;
+  font-variant-numeric: tabular-nums;
+}
+
+.walkforward-panel__row {
+  cursor: pointer;
+  transition: background 0.1s;
+}
+
+.walkforward-panel__row:hover {
+  background: var(--bg-hover);
+}
+
+.walkforward-panel__cell-name {
+  font-family: var(--font-body);
+  font-size: 13px;
+}
+
+.walkforward-panel__cell-dir--long {
+  color: var(--accent-positive);
+}
+
+.walkforward-panel__cell-dir--short {
+  color: var(--accent-high);
+}
+
+.walkforward-panel__cell-price {
+  text-align: right;
+}
+
+.walkforward-panel__col-delta {
+  text-align: right;
+}
+
+.walkforward-panel__cell-delta {
+  text-align: right;
+  font-weight: 600;
+}
+
+.walkforward-panel__outcomes {
+  padding: 10px 16px;
+  border-top: 1px solid var(--border-light);
+  font-family: var(--font-data);
+  font-size: 10px;
+  color: var(--text-secondary);
+}

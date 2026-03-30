@@ -17,6 +17,8 @@ class Run(Base):
     activation_scores = Column(Text)  # JSON map of theory_id -> tier
     regime_flags_active = Column(Text)  # JSON array of active flag_ids at run time
     sector_appendices_loaded = Column(Text)  # JSON array of sector_ids injected into Pass 3
+    briefing_snapshot = Column(Text)  # Full JSON of briefing packet at run time
+    price_snapshot_date = Column(Text)  # ISO date when price snapshots were captured
 
 
 class Hypothesis(Base):
@@ -42,6 +44,11 @@ class Hypothesis(Base):
     elimination_notes = Column(Text)
     generated_date = Column(Text, nullable=False)
     created_at = Column(Text, server_default="(datetime('now'))")
+    # Outcome tracking (walk-forward analysis)
+    outcome_status = Column(Text)  # NULL | CORRECT | INCORRECT | PARTIAL | EXPIRED
+    outcome_date = Column(Text)  # ISO date when outcome was recorded
+    outcome_notes = Column(Text)  # Free text: what happened, why this verdict
+    outcome_pnl_pct = Column(Float)  # Optional: % return from run date to outcome date
 
 
 class JournalEntry(Base):
@@ -159,6 +166,16 @@ class SectorFalsifierAudit(Base):
     severity_applied = Column(Text)  # minor | medium | major | NONE
     run_id = Column(Text, ForeignKey("runs.id"), nullable=False)
     created_at = Column(Text, server_default="(datetime('now'))")
+
+
+class RunPriceSnapshot(Base):
+    __tablename__ = "run_price_snapshots"
+
+    run_id = Column(Text, ForeignKey("runs.id"), primary_key=True)
+    ticker = Column(Text, primary_key=True)
+    price = Column(Float, nullable=False)
+    date = Column(Text, nullable=False)  # ISO date of the price
+    source = Column(Text, nullable=False, server_default="yahoo_finance")
 
 
 class UserState(Base):

@@ -4,6 +4,7 @@ import { AssetTags } from '../shared/AssetTag'
 import ConvictionDisplay from '../shared/ConvictionDisplay'
 import FalsifierCompact from '../shared/FalsifierCompact'
 import ActionMarker from '../shared/ActionMarker'
+import OutcomeBadge from '../shared/OutcomeBadge'
 import { fmtAge } from '../lib/format'
 
 const CHANNEL_LABELS = {
@@ -26,6 +27,11 @@ export default function HypothesisTable({ hypotheses, onSelect }) {
   }
 
   const anyChannel = hypotheses.some(h => h.resolution_channel)
+
+  // Determine latest run_id to only show outcome badges for previous runs
+  const runIds = [...new Set(hypotheses.map(h => h.run_id).filter(Boolean))]
+  runIds.sort()
+  const latestRunId = runIds.length > 0 ? runIds[runIds.length - 1] : null
 
   return (
     <table className="hypothesis-table">
@@ -67,10 +73,15 @@ export default function HypothesisTable({ hypotheses, onSelect }) {
               </td>
             )}
             <td className="col-conviction">
-              <ConvictionDisplay
-                conviction={h.conviction}
-                convictionPrev={h.conviction_prev}
-              />
+              <span className="conviction-with-outcome">
+                <ConvictionDisplay
+                  conviction={h.conviction}
+                  convictionPrev={h.conviction_prev}
+                />
+                {h.run_id !== latestRunId && h.outcome_status && (
+                  <OutcomeBadge status={h.outcome_status} />
+                )}
+              </span>
             </td>
             <td className="col-falsifiers">
               <FalsifierCompact

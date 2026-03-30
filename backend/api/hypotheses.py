@@ -7,7 +7,7 @@ import json
 from datetime import date, datetime
 from typing import Optional
 
-from fastapi import APIRouter, Depends, HTTPException, Query
+from fastapi import APIRouter, Body, Depends, HTTPException, Query
 from sqlalchemy import desc
 from sqlalchemy.orm import Session
 
@@ -144,6 +144,10 @@ def _model_to_dict(h: HypothesisModel, db: Session) -> dict:
         "delta_type": delta_type,
         "has_action": has_action,
         "research_notes": research_notes,
+        "outcome_status": h.outcome_status,
+        "outcome_date": h.outcome_date,
+        "outcome_notes": h.outcome_notes,
+        "outcome_pnl_pct": h.outcome_pnl_pct,
     }
 
 
@@ -248,6 +252,31 @@ def get_hypothesis(hypothesis_id: str, db: Session = Depends(get_db)):
     h = db.query(HypothesisModel).filter(HypothesisModel.id == hypothesis_id).first()
     if not h:
         raise HTTPException(status_code=404, detail=f"Hypothesis {hypothesis_id} not found")
+    return _model_to_dict(h, db)
+
+
+@router.patch("/hypotheses/{hypothesis_id}/outcome")
+def record_outcome(hypothesis_id: str, payload: dict = Body(...), db: Session = Depends(get_db)):
+    """Record the walk-forward outcome for a hypothesis."""
+    h = db.query(HypothesisModel).filter(HypothesisModel.id == hypothesis_id).first()
+    if not h:
+        raise HTTPException(status_code=404, detail=f"Hypothesis {hypothesis_id} not found")
+
+    VALID_STATUSES = {"CORRECT", "INCORRECT", "PARTIAL", "EXPIRED"}
+    status = payload.get("outcome_status", "").upper()
+    if status not in VALID_STATUSES:
+        raise HTTPException(status_code=422, detail=f"outcome_status must be one of: {', '.join(sorted(VALID_STATUSES))}")
+
+    notes = payload.get("outcome_notes", "").strip()
+    if not notes:
+        raise HTTPException(status_code=422, detail="outcome_notes is required -- state WHY this verdict")
+
+    h.outcome_status = status
+    h.outcome_notes = notes
+    h.outcome_date = date.today().isoformat()
+    h.outcome_pnl_pct = payload.get("outcome_pnl_pct")
+
+    db.commit()
     return _model_to_dict(h, db)
 
 

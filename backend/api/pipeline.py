@@ -6,7 +6,7 @@ from __future__ import annotations
 
 import json
 import uuid
-from datetime import datetime
+from datetime import date, datetime
 from typing import Any
 
 from fastapi import APIRouter, Body, Depends, HTTPException
@@ -15,7 +15,7 @@ from sqlalchemy.orm import Session
 
 from backend.db.database import get_db
 from backend.db.models import Hypothesis as HypothesisModel
-from backend.db.models import InboxItem, Run, SectorFalsifierAudit
+from backend.db.models import InboxItem, Run, RunPriceSnapshot, SectorFalsifierAudit
 from backend.engine import activation, conviction, regime, theory_parser
 from backend.engine.output_parser import ParseError, parse_elimination_output, parse_generation_output, parse_sector_falsifier_audits
 from backend.engine.prompt_builder import build_elimination_prompt, build_generation_prompt
@@ -217,6 +217,57 @@ def get_latest_run(db: Session = Depends(get_db)):
     return {"id": run.id, "timestamp": run.timestamp, "status": run.status}
 
 
+@router.get("/runs/archive")
+def get_run_archive(db: Session = Depends(get_db)):
+    """All runs with summary stats for the archive panel."""
+    runs = db.query(Run).order_by(desc(Run.timestamp)).all()
+    results = []
+    # Aggregate outcome counts across all hypotheses
+    outcome_counts = {"pending": 0, "correct": 0, "incorrect": 0, "partial": 0, "expired": 0}
+
+    for r in runs:
+        hyps = db.query(HypothesisModel).filter(HypothesisModel.run_id == r.id).all()
+        total = len(hyps)
+        survived = sum(1 for h in hyps if h.status == "SURVIVED")
+        wounded = sum(1 for h in hyps if h.status == "WOUNDED")
+        killed = sum(1 for h in hyps if h.status == "KILLED")
+
+        # Count active theories from activation_scores
+        active_theories = 0
+        total_theories = 0
+        if r.activation_scores:
+            acts = json.loads(r.activation_scores)
+            if isinstance(acts, list):
+                total_theories = len(acts)
+                for a in acts:
+                    tier = (a.get("effective_tier") or a.get("tier") or "").upper()
+                    if tier == "ACTIVE":
+                        active_theories += 1
+
+        # Per-run outcome counts
+        for h in hyps:
+            if h.outcome_status:
+                key = h.outcome_status.lower()
+                if key in outcome_counts:
+                    outcome_counts[key] += 1
+            else:
+                outcome_counts["pending"] += 1
+
+        results.append({
+            "id": r.id,
+            "timestamp": r.timestamp,
+            "status": r.status,
+            "active_theories": active_theories,
+            "total_theories": total_theories,
+            "hypotheses_generated": total,
+            "hypotheses_survived": survived + wounded,
+            "hypotheses_killed": killed,
+            "price_snapshot_date": r.price_snapshot_date,
+        })
+
+    return {"runs": results, "outcome_counts": outcome_counts}
+
+
 @router.get("/runs/{run_id}")
 def get_run_detail(run_id: str, db: Session = Depends(get_db)):
     """Full run detail for audit mode -- includes all stage outputs."""
@@ -243,6 +294,96 @@ def get_run_detail(run_id: str, db: Session = Depends(get_db)):
         "generation_output": generation_output,
         "elimination_output": elimination_output,
         "hypotheses": hypothesis_dicts,
+    }
+
+
+@router.get("/runs/{run_id}/prices")
+def get_run_prices(run_id: str, db: Session = Depends(get_db)):
+    """Get price snapshots for a run."""
+    run = db.query(Run).filter(Run.id == run_id).first()
+    if not run:
+        raise HTTPException(status_code=404, detail=f"Run {run_id} not found")
+
+    snapshots = db.query(RunPriceSnapshot).filter(RunPriceSnapshot.run_id == run_id).all()
+    return {
+        "run_id": run_id,
+        "price_snapshot_date": run.price_snapshot_date,
+        "prices": {s.ticker: {"price": s.price, "date": s.date, "source": s.source} for s in snapshots},
+    }
+
+
+@router.get("/runs/{run_id}/walkforward")
+def get_run_walkforward(run_id: str, db: Session = Depends(get_db)):
+    """Walk-forward data: entry prices + current prices + direction-aware deltas."""
+    from backend.api.trades import _fetch_current_price
+
+    run = db.query(Run).filter(Run.id == run_id).first()
+    if not run:
+        raise HTTPException(status_code=404, detail=f"Run {run_id} not found")
+
+    # Get price snapshots (entry prices)
+    snapshots = db.query(RunPriceSnapshot).filter(RunPriceSnapshot.run_id == run_id).all()
+    entry_prices = {s.ticker: s.price for s in snapshots}
+
+    # Get hypotheses for this run (non-KILLED survivors for walk-forward display)
+    hyps = db.query(HypothesisModel).filter(HypothesisModel.run_id == run_id).all()
+
+    # Collect tickers we need current prices for
+    tickers_needed: set[str] = set()
+    rows = []
+    for h in hyps:
+        assets = json.loads(h.predicted_assets) if h.predicted_assets else []
+        directions = json.loads(h.asset_direction) if h.asset_direction else {}
+        primary = assets[0] if assets else None
+        if primary:
+            tickers_needed.add(primary)
+            rows.append({
+                "hypothesis_id": h.id,
+                "short_name": h.short_name,
+                "ticker": primary,
+                "direction": directions.get(primary, "LONG"),
+                "status": h.status,
+                "conviction": h.conviction,
+                "outcome_status": h.outcome_status,
+            })
+
+    # Fetch current prices
+    current_prices: dict[str, float | None] = {}
+    for ticker in tickers_needed:
+        current_prices[ticker] = _fetch_current_price(ticker)
+
+    # Compute direction-aware deltas
+    for row in rows:
+        ticker = row["ticker"]
+        entry = entry_prices.get(ticker)
+        current = current_prices.get(ticker)
+        row["entry_price"] = entry
+        row["current_price"] = current
+        if entry and current and entry > 0:
+            raw_delta = (current - entry) / entry
+            # Direction-aware: positive = hypothesis winning
+            if row["direction"] == "SHORT":
+                raw_delta = -raw_delta
+            row["delta_pct"] = round(raw_delta * 100, 2)
+        else:
+            row["delta_pct"] = None
+
+    # Outcome summary for this run
+    outcome_counts = {"pending": 0, "correct": 0, "incorrect": 0, "partial": 0, "expired": 0}
+    for h in hyps:
+        if h.outcome_status:
+            key = h.outcome_status.lower()
+            if key in outcome_counts:
+                outcome_counts[key] += 1
+        else:
+            outcome_counts["pending"] += 1
+
+    return {
+        "run_id": run_id,
+        "run_date": run.timestamp,
+        "price_snapshot_date": run.price_snapshot_date,
+        "rows": rows,
+        "outcome_counts": outcome_counts,
     }
 
 
@@ -617,6 +758,9 @@ def import_elimination(payload: dict = Body(...), db: Session = Depends(get_db))
 
         scored_results.append({"id": h.id, "status": h.status, "conviction": h.conviction})
 
+    # Capture price snapshots for all predicted tickers across all hypotheses
+    _capture_price_snapshots(db, latest_run, updated)
+
     # Update run
     latest_run.elimination_output = raw_json
     latest_run.status = "complete"
@@ -801,6 +945,39 @@ def _extract_json_for_lookup(raw_json: str) -> list[dict]:
     return []
 
 
+def _capture_price_snapshots(db: Session, run: Run, hypotheses: list[dict]):
+    """Capture current prices for all tickers across all hypotheses in this run."""
+    from backend.api.trades import _fetch_current_price
+
+    # Collect all unique tickers
+    all_tickers: set[str] = set()
+    for h_data in hypotheses:
+        pa = h_data.get("predicted_assets", "[]")
+        assets = json.loads(pa) if isinstance(pa, str) else (pa or [])
+        all_tickers.update(assets)
+
+    if not all_tickers:
+        return
+
+    today = date.today().isoformat()
+
+    # Clear any existing snapshots for this run (allows re-import)
+    db.query(RunPriceSnapshot).filter(RunPriceSnapshot.run_id == run.id).delete()
+
+    for ticker in sorted(all_tickers):
+        price = _fetch_current_price(ticker)
+        if price is not None:
+            db.add(RunPriceSnapshot(
+                run_id=run.id,
+                ticker=ticker,
+                price=price,
+                date=today,
+                source="yahoo_finance",
+            ))
+
+    run.price_snapshot_date = today
+
+
 def _get_or_create_active_run(db: Session, activation_results=None) -> Run:
     """Get the current active (partial) run, or create a new one."""
     latest = db.query(Run).order_by(desc(Run.timestamp)).first()
@@ -812,11 +989,16 @@ def _get_or_create_active_run(db: Session, activation_results=None) -> Run:
     if activation_results:
         activation_json = json.dumps([ar.model_dump() for ar in activation_results])
 
+    # Snapshot the briefing packet at run creation time
+    briefing_data = _load_briefing()
+    briefing_json = json.dumps(briefing_data) if briefing_data else None
+
     run = Run(
         id=run_id,
         timestamp=datetime.now().isoformat(),
         status="partial",
         activation_scores=activation_json,
+        briefing_snapshot=briefing_json,
     )
     db.add(run)
     db.commit()

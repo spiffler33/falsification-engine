@@ -3,6 +3,7 @@ import StatusBadge from '../shared/StatusBadge'
 import TheoryTag from '../shared/TheoryTag'
 import { AssetTags } from '../shared/AssetTag'
 import Sparkline from '../shared/Sparkline'
+import OutcomeBadge from '../shared/OutcomeBadge'
 import { fmtConviction, fmtDate, convictionTier } from '../lib/format'
 import { api } from '../lib/api'
 import { isStaticMode } from '../lib/snapshot'
@@ -51,7 +52,62 @@ export default function HypothesisDetail({ hypothesis: h, onClose }) {
 
   const [sectorAuditOpen, setSectorAuditOpen] = useState(false)
 
+  // Outcome tracking state
+  const [entryPrices, setEntryPrices] = useState(null)
+  const [showOutcomeForm, setShowOutcomeForm] = useState(false)
+  const [outcomeStatus, setOutcomeStatus] = useState('')
+  const [outcomeNotes, setOutcomeNotes] = useState('')
+  const [outcomePnl, setOutcomePnl] = useState('')
+  const [outcomeSaving, setOutcomeSaving] = useState(false)
+  const [outcomeError, setOutcomeError] = useState(null)
+  // Local outcome state (so we don't need to re-fetch the whole hypothesis)
+  const [localOutcome, setLocalOutcome] = useState(null)
+
+  // Fetch entry prices from run price snapshots
+  useEffect(() => {
+    if (h?.run_id) {
+      api.get(`/api/runs/${h.run_id}/prices`).then(data => {
+        setEntryPrices(data || null)
+      }).catch(() => setEntryPrices(null))
+    }
+  }, [h?.run_id])
+
+  const handleSaveOutcome = useCallback(() => {
+    if (!outcomeStatus || !outcomeNotes.trim()) return
+    setOutcomeSaving(true)
+    setOutcomeError(null)
+    const body = {
+      outcome_status: outcomeStatus,
+      outcome_notes: outcomeNotes.trim(),
+    }
+    if (outcomePnl !== '') {
+      const parsed = parseFloat(outcomePnl)
+      if (!isNaN(parsed)) body.outcome_pnl_pct = parsed
+    }
+    api.patch(`/api/hypotheses/${h.id}/outcome`, body).then(updated => {
+      setLocalOutcome({
+        status: updated.outcome_status,
+        date: updated.outcome_date,
+        notes: updated.outcome_notes,
+        pnl_pct: updated.outcome_pnl_pct,
+      })
+      setShowOutcomeForm(false)
+      setOutcomeSaving(false)
+    }).catch(err => {
+      setOutcomeError(err.message || 'Failed to save outcome')
+      setOutcomeSaving(false)
+    })
+  }, [h?.id, outcomeStatus, outcomeNotes, outcomePnl])
+
   if (!h) return null
+
+  // Resolve outcome: local override > hypothesis data
+  const outcome = localOutcome || (h.outcome_status ? {
+    status: h.outcome_status,
+    date: h.outcome_date,
+    notes: h.outcome_notes,
+    pnl_pct: h.outcome_pnl_pct,
+  } : null)
 
   const cm = h.conviction_math || {}
   const s1 = cm.stage1 || {}
@@ -304,7 +360,110 @@ export default function HypothesisDetail({ hypothesis: h, onClose }) {
           )}
         </div>
 
-        {/* G. Your Position (conditional — legacy journal-based) */}
+        {/* G. Outcome (walk-forward tracking) */}
+        <div className="detail-section">
+          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '12px' }}>
+            <span className="detail-section__title" style={{ margin: 0 }}>Outcome</span>
+            {outcome ? (
+              <OutcomeBadge status={outcome.status} size="large" />
+            ) : (
+              <span className="outcome-pending-label">PENDING</span>
+            )}
+          </div>
+
+          {/* Entry prices */}
+          {entryPrices?.prices && h.predicted_assets?.length > 0 && (
+            <div className="outcome-entry-prices">
+              <span className="outcome-entry-prices__label">
+                Entry prices (run date {fmtDate(entryPrices.price_snapshot_date || h.generated_date)}):
+              </span>
+              <span className="outcome-entry-prices__values">
+                {h.predicted_assets.map((ticker, i) => {
+                  const p = entryPrices.prices[ticker]
+                  return (
+                    <span key={ticker} className="outcome-entry-price">
+                      {i > 0 && <span className="outcome-entry-price__sep">|</span>}
+                      {ticker}: {p ? `$${p.price.toFixed(2)}` : '---'}
+                    </span>
+                  )
+                })}
+              </span>
+            </div>
+          )}
+
+          {/* Recorded outcome display */}
+          {outcome && (
+            <div className="outcome-recorded">
+              <div className="outcome-recorded__date">Recorded: {fmtDate(outcome.date)}</div>
+              <div className="outcome-recorded__notes">{outcome.notes}</div>
+              {outcome.pnl_pct != null && (
+                <div className={`outcome-recorded__pnl ${outcome.pnl_pct >= 0 ? 'perf--positive' : 'perf--negative'}`}>
+                  P&L: {outcome.pnl_pct >= 0 ? '+' : ''}{outcome.pnl_pct.toFixed(1)}%
+                </div>
+              )}
+            </div>
+          )}
+
+          {/* Mark outcome button / form */}
+          {!outcome && !showOutcomeForm && !isStaticMode() && (
+            <button className="btn btn--primary" onClick={() => setShowOutcomeForm(true)}>
+              MARK OUTCOME
+            </button>
+          )}
+
+          {showOutcomeForm && (
+            <div className="outcome-form">
+              <div className="outcome-form__label">Status:</div>
+              <div className="outcome-form__statuses">
+                {['CORRECT', 'INCORRECT', 'PARTIAL', 'EXPIRED'].map(s => (
+                  <button
+                    key={s}
+                    className={`btn outcome-form__status-btn ${outcomeStatus === s ? 'outcome-form__status-btn--active outcome-form__status-btn--' + s.toLowerCase() : ''}`}
+                    onClick={() => setOutcomeStatus(s)}
+                  >
+                    {s}
+                  </button>
+                ))}
+              </div>
+
+              <div className="outcome-form__label">What happened:</div>
+              <textarea
+                className="outcome-form__notes"
+                value={outcomeNotes}
+                onChange={e => setOutcomeNotes(e.target.value)}
+                placeholder="State why this verdict..."
+                rows={3}
+              />
+
+              <div className="outcome-form__label">P&L % (optional):</div>
+              <input
+                className="outcome-form__pnl"
+                type="number"
+                step="0.1"
+                value={outcomePnl}
+                onChange={e => setOutcomePnl(e.target.value)}
+                placeholder="e.g. 4.8 or -2.3"
+              />
+
+              {outcomeError && <div className="outcome-form__error">{outcomeError}</div>}
+
+              <div className="outcome-form__actions">
+                <button className="btn" onClick={() => { setShowOutcomeForm(false); setOutcomeError(null) }}>
+                  CANCEL
+                </button>
+                <button
+                  className="btn btn--primary"
+                  onClick={handleSaveOutcome}
+                  disabled={!outcomeStatus || !outcomeNotes.trim() || outcomeSaving}
+                >
+                  {outcomeSaving ? 'SAVING...' : 'SAVE'}
+                </button>
+              </div>
+            </div>
+          )}
+        </div>
+
+        {/* H. Your Position (conditional — legacy journal-based) */}
         {h.has_action && h.position && (
           <div className="detail-section">
             <div className="detail-section__title">Your Position</div>

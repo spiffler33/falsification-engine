@@ -19,7 +19,7 @@ import StatusBadge from '../shared/StatusBadge'
 import TheoryTag from '../shared/TheoryTag'
 import { fmtConviction, fmtDate } from '../lib/format'
 
-export default function PipelineView() {
+export default function PipelineView({ onSelectHypothesis }) {
   const [mode, setMode] = useState('run') // 'run' | 'audit'
 
   return (
@@ -42,7 +42,7 @@ export default function PipelineView() {
         </div>
       </div>
 
-      {mode === 'run' ? <RunMode /> : <AuditMode />}
+      {mode === 'run' ? <RunMode /> : <AuditMode onSelectHypothesis={onSelectHypothesis} />}
     </div>
   )
 }
@@ -291,21 +291,104 @@ function RunMode() {
 }
 
 
-function AuditMode() {
-  // First fetch the latest run summary to get the run ID
-  const { data: latestRun, loading: loadingSummary } = useApi('/api/runs/latest')
-  // Then fetch full run detail with all stage outputs
-  const runId = latestRun?.id || null
-  const { data: run, loading: loadingDetail } = useApi(runId ? `/api/runs/${runId}` : null)
+function AuditMode({ onSelectHypothesis }) {
+  // Fetch archive for run list
+  const { data: archive, loading: loadingArchive, refetch: refetchArchive } = useApi('/api/runs/archive')
+  const [selectedRunId, setSelectedRunId] = useState(null)
   const [expanded, setExpanded] = useState({})
+
+  const runs = archive?.runs || []
+  // Use selected run, or auto-select latest
+  const activeRunId = selectedRunId || (runs.length > 0 ? runs[0].id : null)
+
+  // Fetch full detail and walk-forward for the active run
+  const { data: run, loading: loadingDetail } = useApi(activeRunId ? `/api/runs/${activeRunId}` : null, [activeRunId])
+  const { data: walkforward, loading: loadingWF } = useApi(activeRunId ? `/api/runs/${activeRunId}/walkforward` : null, [activeRunId])
 
   const toggle = (stage) => {
     setExpanded(prev => ({ ...prev, [stage]: !prev[stage] }))
   }
 
-  if (loadingSummary || loadingDetail) return <div className="loading">Loading run data...</div>
-  if (!run) return <div className="empty-state">No completed runs to audit.</div>
+  if (loadingArchive) return <div className="loading">Loading run archive...</div>
+  if (runs.length === 0) return <div className="empty-state">No completed runs to audit.</div>
 
+  const outcomeCounts = archive?.outcome_counts || {}
+
+  return (
+    <div className="pipeline-audit">
+      {/* Run Archive Panel */}
+      <div className="run-archive">
+        <div className="run-archive__header">
+          <span className="run-archive__title">RUN ARCHIVE</span>
+          <span className="run-archive__count">{runs.length} {runs.length === 1 ? 'run' : 'runs'} total</span>
+        </div>
+
+        <table className="run-archive__table">
+          <thead>
+            <tr>
+              <th>Run</th>
+              <th>Date</th>
+              <th>Theories Active</th>
+              <th>Generated</th>
+              <th>Survived</th>
+              <th></th>
+            </tr>
+          </thead>
+          <tbody>
+            {runs.map(r => {
+              const isSelected = (activeRunId === r.id)
+              const survivalRate = r.hypotheses_generated > 0
+                ? r.hypotheses_survived / r.hypotheses_generated
+                : 0
+              return (
+                <tr
+                  key={r.id}
+                  className={`run-archive__row ${isSelected ? 'run-archive__row--selected' : ''}`}
+                  onClick={() => setSelectedRunId(r.id)}
+                >
+                  <td className="run-archive__cell-id">{r.id.replace('R-', '#')}</td>
+                  <td className="run-archive__cell-date">{fmtDate(r.timestamp)}</td>
+                  <td className="run-archive__cell-theories">
+                    {r.active_theories}/{r.total_theories || 8}
+                  </td>
+                  <td className="run-archive__cell-gen">{r.hypotheses_generated}</td>
+                  <td className="run-archive__cell-surv">{r.hypotheses_survived}</td>
+                  <td className="run-archive__cell-bar">
+                    <SurvivalBar rate={survivalRate} />
+                  </td>
+                </tr>
+              )
+            })}
+          </tbody>
+        </table>
+
+        <div className="run-archive__outcomes">
+          Outcomes:{' '}
+          {outcomeCounts.pending > 0 && <span>{outcomeCounts.pending} pending</span>}
+          {outcomeCounts.correct > 0 && <span className="outcome-count--correct"> · {outcomeCounts.correct} correct</span>}
+          {outcomeCounts.incorrect > 0 && <span className="outcome-count--incorrect"> · {outcomeCounts.incorrect} incorrect</span>}
+          {outcomeCounts.partial > 0 && <span className="outcome-count--partial"> · {outcomeCounts.partial} partial</span>}
+          {outcomeCounts.expired > 0 && <span className="outcome-count--expired"> · {outcomeCounts.expired} expired</span>}
+        </div>
+      </div>
+
+      {/* Run Detail (existing audit stages) */}
+      {loadingDetail && <div className="loading">Loading run detail...</div>}
+
+      {run && <RunDetail
+        run={run}
+        expanded={expanded}
+        toggle={toggle}
+        walkforward={walkforward}
+        loadingWF={loadingWF}
+        onSelectHypothesis={onSelectHypothesis}
+      />}
+    </div>
+  )
+}
+
+
+function RunDetail({ run, expanded, toggle, walkforward, loadingWF, onSelectHypothesis }) {
   const activation = run.activation_scores || []
   const hypotheses = run.hypotheses || []
   const generated = hypotheses
@@ -392,7 +475,6 @@ function AuditMode() {
       render: () => {
         const survived = (scored || []).filter(h => h.status === 'SURVIVED').length
         const wounded = (scored || []).filter(h => h.status === 'WOUNDED').length
-        const alive = survived + wounded
         const killedCount = (scored || []).filter(h => h.status === 'KILLED').length
         const total = scored.length
         const parts = []
@@ -414,7 +496,7 @@ function AuditMode() {
   ]
 
   return (
-    <div className="pipeline-audit">
+    <>
       <div className="audit-run-info">
         <span className="audit-run-info__id">Run: {run.id || '--'}</span>
         <span className="audit-run-info__date">{fmtDate(run.timestamp)}</span>
@@ -433,6 +515,107 @@ function AuditMode() {
           )}
         </div>
       ))}
+
+      {/* Walk-Forward Panel */}
+      <WalkForwardPanel
+        walkforward={walkforward}
+        loading={loadingWF}
+        runId={run.id}
+        onSelectHypothesis={onSelectHypothesis}
+      />
+    </>
+  )
+}
+
+
+function WalkForwardPanel({ walkforward, loading, runId, onSelectHypothesis }) {
+  if (loading) return <div className="loading">Loading walk-forward data...</div>
+  if (!walkforward || !walkforward.rows || walkforward.rows.length === 0) return null
+
+  const oc = walkforward.outcome_counts || {}
+
+  return (
+    <div className="walkforward-panel">
+      <div className="walkforward-panel__header">
+        <span className="walkforward-panel__title">
+          WALK-FORWARD · {runId.replace('R-', '#')} · {fmtDate(walkforward.run_date)}
+        </span>
+        {walkforward.price_snapshot_date && (
+          <span className="walkforward-panel__snapshot-date">
+            Price snapshot: {fmtDate(walkforward.price_snapshot_date)}
+          </span>
+        )}
+      </div>
+
+      <table className="walkforward-panel__table">
+        <thead>
+          <tr>
+            <th>Hypothesis</th>
+            <th>Direction</th>
+            <th>Entry</th>
+            <th>Current</th>
+            <th className="walkforward-panel__col-delta">Delta %</th>
+          </tr>
+        </thead>
+        <tbody>
+          {walkforward.rows.map(row => {
+            const deltaClass = row.delta_pct != null
+              ? (row.delta_pct >= 0 ? 'perf--positive' : 'perf--negative')
+              : ''
+            return (
+              <tr
+                key={row.hypothesis_id}
+                className="walkforward-panel__row"
+                onClick={() => {
+                  if (!onSelectHypothesis) return
+                  api.get(`/api/hypotheses/${row.hypothesis_id}`).then(h => {
+                    onSelectHypothesis(h)
+                  }).catch(() => {})
+                }}
+              >
+                <td className="walkforward-panel__cell-name">
+                  {row.short_name} ({row.ticker})
+                </td>
+                <td className={`walkforward-panel__cell-dir walkforward-panel__cell-dir--${row.direction.toLowerCase()}`}>
+                  {row.direction}
+                </td>
+                <td className="walkforward-panel__cell-price">
+                  {row.entry_price != null ? `$${row.entry_price.toFixed(2)}` : '---'}
+                </td>
+                <td className="walkforward-panel__cell-price">
+                  {row.current_price != null ? `$${row.current_price.toFixed(2)}` : '---'}
+                </td>
+                <td className={`walkforward-panel__cell-delta ${deltaClass}`}>
+                  {row.delta_pct != null ? `${row.delta_pct >= 0 ? '+' : ''}${row.delta_pct.toFixed(1)}%` : '---'}
+                </td>
+              </tr>
+            )
+          })}
+        </tbody>
+      </table>
+
+      <div className="walkforward-panel__outcomes">
+        Outcomes:{' '}
+        {oc.correct > 0 && <span className="outcome-count--correct">{oc.correct} correct</span>}
+        {oc.incorrect > 0 && <span className="outcome-count--incorrect"> · {oc.incorrect} incorrect</span>}
+        {oc.pending > 0 && <span> · {oc.pending} pending</span>}
+        {oc.partial > 0 && <span className="outcome-count--partial"> · {oc.partial} partial</span>}
+      </div>
     </div>
   )
+}
+
+
+function SurvivalBar({ rate }) {
+  const filled = Math.round(rate * 4)
+  const blocks = []
+  for (let i = 0; i < 4; i++) {
+    blocks.push(
+      <span
+        key={i}
+        className={`survival-block ${i < filled ? 'survival-block--filled' : 'survival-block--empty'}`}
+      />
+    )
+  }
+  return <span className="survival-bar">{blocks}</span>
 }

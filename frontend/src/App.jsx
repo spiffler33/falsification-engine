@@ -68,7 +68,7 @@ export default function App() {
       <Routes>
         <Route path="/" element={<ResearchView />} />
         <Route path="/observatory" element={<ObservatoryView onSelectHypothesis={openDetail} />} />
-        <Route path="/pipeline" element={<PipelineView />} />
+        <Route path="/pipeline" element={<PipelineView onSelectHypothesis={openDetail} />} />
         <Route path="/trades" element={<TradesView onSelectHypothesis={openDetail} />} />
         <Route path="/about" element={<AboutView />} />
         <Route path="/briefing" element={<Navigate to="/observatory" replace />} />
