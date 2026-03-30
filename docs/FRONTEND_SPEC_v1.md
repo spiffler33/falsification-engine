@@ -482,13 +482,26 @@ THEORY MODULES: [the theories those hypotheses invoke]
 DATA BRIEFING: [current briefing]
 
 For each hypothesis, attempt:
-1. Hard falsifier check (mechanical — is any hard falsifier currently triggered?)
-2. Soft falsifier check (which are triggered, which are close?)
-3. Cross-theory attack (does another Active theory's mechanism contradict this?)
-4. Evidence quality assessment (is the supporting evidence strong or weak?)
-5. Composition integrity (for multi-theory hypotheses — does combining narrow or broaden?)
+1. Hard falsifier check — is any hard falsifier currently triggered? Check each one against the data briefing and current conditions.
+2. Soft falsifier check — is any soft falsifier currently triggered or close to triggering? Include the price action falsifier: has the primary predicted asset moved 15%+ against the hypothesis direction? Report each soft falsifier's status and severity.
+3. Cross-theory attack — does another Active theory's mechanism contradict this hypothesis?
+4. Evidence quality assessment — is the supporting evidence strong or weak?
+5. Composition integrity — for multi-theory hypotheses, does combining theories narrow or broaden the prediction?
 
-Output: each hypothesis tagged SURVIVED / WOUNDED / KILLED with full reasoning.
+STATUS ASSIGNMENT RULES (mechanical — you do not have discretion here):
+- KILLED: Any hard falsifier triggered, OR 2+ major soft falsifiers triggered, OR 3+ soft falsifiers of any severity triggered.
+- WOUNDED: 1+ soft falsifier triggered AND the triggered falsifier(s) create directional doubt about the hypothesis prediction.
+- SURVIVED: No hard falsifiers triggered AND fewer soft falsifiers triggered than the WOUNDED/KILLED thresholds.
+
+For purposes of these status rules, "soft falsifiers" includes both theory-level soft falsifiers AND any falsifiers from active sector appendices that the evaluator has marked as both TRIGGERED and RELEVANT to the hypothesis's load-bearing mechanism. A sector falsifier that is triggered but NOT relevant does not count toward WOUNDED or KILLED thresholds.
+
+CRITICAL CONSTRAINT: Assign status ONLY based on pre-registered falsifiers listed in the hypothesis's parent theory module(s), plus any falsifiers from active sector appendices that the evaluator has marked as both TRIGGERED and RELEVANT to the hypothesis's load-bearing mechanism. If no pre-registered falsifier is triggered (and no sector falsifier is both triggered and relevant), the status is SURVIVED regardless of your assessment of price action, market conditions, or narrative. You are checking a list, not forming a view. If you believe a hypothesis should be WOUNDED or KILLED but cannot point to a specific pre-registered falsifier that is triggered, then the falsifier list has a gap — note this in your reasoning as "FALSIFIER GAP: [description]" so the system operator can add the missing falsifier. Do NOT compensate for the gap by overriding the status.
+
+Output: each hypothesis tagged SURVIVED / WOUNDED / KILLED with:
+- Each falsifier checked with current status (CLEAR / TRIGGERED / CLOSE / UNTESTABLE)
+- The specific falsifier(s) that justify WOUNDED or KILLED status
+- Any FALSIFIER GAP flags for conditions you believe should be falsifiers but aren't pre-registered
+- Full reasoning for the status assignment
 ```
 
 #### Audit Mode

@@ -628,6 +628,10 @@ Issues discovered during first live pipeline run after v4 ship:
 
 4. **Newsletter conviction threshold.** Was hardcoded at 6, blocking newsletter generation when all survivors scored at floor (5). Fix: threshold lowered to 5. WOUNDED hypotheses included alongside SURVIVED. MARKET POSTURE section added to newsletter format -- when conviction is low across the board, the newsletter says so honestly rather than manufacturing confidence.
 
+5. **Price action soft falsifier + elimination prompt constraint (2026-03-30).** The LLM elimination pass assigned WOUNDED status to a gold hypothesis based on -13% adverse price action, despite no pre-registered falsifier triggering. The LLM admitted it was freelancing. Two fixes:
+   - **Price action soft falsifier** added to all 8 theory modules (medium severity, 0.25 discount). Triggers when primary predicted asset moves 15%+ against hypothesis direction within holding window without a corresponding fundamental falsifier also triggering. The 15% threshold sits at 2-5x normal ETF monthly ranges (3-8%). Severity is medium, not major -- gold dropped 20% in 2013 before rallying 70%, so adverse price action is evidence, not a death sentence.
+   - **Mechanical status assignment rules** added to elimination prompt in FRONTEND_SPEC_v1.md. KILLED/WOUNDED/SURVIVED now have explicit mechanical thresholds (e.g., KILLED = any hard falsifier OR 2+ major soft falsifiers OR 3+ soft falsifiers of any severity). CRITICAL CONSTRAINT: if no pre-registered falsifier triggers, status is SURVIVED regardless of LLM judgment. When the LLM believes a hypothesis should be wounded/killed but can't cite a specific falsifier, it flags a FALSIFIER GAP for the operator rather than overriding the rules. Sector appendix falsifiers scoped in with two-gate requirement (TRIGGERED and RELEVANT).
+
 ---
 
 ## Relationship to Existing Plan Documents

@@ -219,6 +219,8 @@ These conditions weaken the theory without killing it. They suggest the magnitud
 | S3 | **Minor** | Market broadening underway | `qqq_iwm_ratio` + equal-weight vs. cap-weight | QQQ/IWM ratio declining for 2+ months AND RSP outperforming SPY trailing 1 month | Concentration is unwinding gradually without a break — changes the expression from non-linear crash to gradual rotation. The fragility mechanism (concentration + passive amplification) still holds, but its resolution may be orderly rather than disorderly. Reduces severity of eventual break but doesn't eliminate it. |
 | S4 | **Minor** | Short-term debt cycle is early, not late | `debt_cycle_short` activation status | Short-term cycle in early expansion (ISM rising, unemployment low and stable, credit expanding) | Extends the timeline. The typical catalyst for a Minsky moment — a cyclical downturn that triggers margin calls — is less likely in early cycle. Fragility can still build but the timeline to resolution lengthens. The mechanism is unchanged; only the proximity of the most common catalyst class is reduced. |
 
+| S5 | **Medium** | Primary predicted asset moves 15%+ against the hypothesis direction within the hypothesis holding window, without a corresponding fundamental falsifier triggering | Price of primary `predicted_assets` ticker(s) | 15% adverse move from hypothesis entry point within stated timeframe | The market is pricing information the hypothesis mechanism does not capture. Either the mechanism is wrong, the timeframe is wrong, or an unmodeled force is dominant. Does NOT automatically invalidate the mechanism — forced liquidations, positioning squeezes, and liquidity events can produce temporary adverse moves that reverse. But the hypothesis must explain the adverse move or accept the discount. |
+
 ---
 
 ## metadata
@@ -227,10 +229,10 @@ These conditions weaken the theory without killing it. They suggest the magnitud
 {
   "theory_id": "structural_fragility",
   "version": 1,
-  "last_updated": "2026-03-26",
-  "update_type": "new",
+  "last_updated": "2026-03-30",
+  "update_type": "refinement",
   "confidence_in_specification": "medium-high",
-  "notes": "Activation condition thresholds calibrated against 2000, 2007-08, and 2020 episodes. Phase B thresholds less tested — fewer historical data points for the resolving phase. Capex/revenue mismatch indicator is domain-specific (currently AI) and will need updating if dominant investment theme changes. Phase B qualitative indicators (narrative shift, fund liquidation evidence) separated into adjunct flags — they inform evaluation but do not contribute to mechanical activation scoring.",
+  "notes": "Activation condition thresholds calibrated against 2000, 2007-08, and 2020 episodes. Phase B thresholds less tested — fewer historical data points for the resolving phase. Capex/revenue mismatch indicator is domain-specific (currently AI) and will need updating if dominant investment theme changes. Phase B qualitative indicators (narrative shift, fund liquidation evidence) separated into adjunct flags — they inform evaluation but do not contribute to mechanical activation scoring. Added price action soft falsifier (medium severity, 0.25 discount) to close the gap where adverse price action was not captured by any pre-registered falsifier, forcing the LLM elimination pass to freelance on status assignment. The 15% threshold is calibrated above normal ETF monthly ranges (3-8%) to avoid triggering on noise.",
   "historical_episodes_referenced": [
     "1999-2000 dot-com (top 10 concentration ~27%, capex/revenue mismatch in fiber/telecom, NASDAQ -78%)",
     "2007-2008 credit crisis (Minsky mechanism in credit, not equity concentration; structural mismatch in mortgage-backed securities)",
