@@ -170,12 +170,22 @@ function RunMode() {
             type={def.type}
             state={getState(i)}
           >
-            {/* Step 1: Data Briefing — refresh button + progress log */}
+            {/* Step 1: Data Briefing — refresh button + data quality warning + progress log */}
             {i === 0 && (
               <>
                 {status?.briefing_timestamp && (
                   <div className="pipeline-step__meta">
                     Briefing data from: {new Date(status.briefing_timestamp).toLocaleString()}
+                  </div>
+                )}
+                {status?.data_quality && status.data_quality.status !== 'ok' && (
+                  <div className={`data-quality-warning data-quality-warning--${status.data_quality.status}`}>
+                    {status.data_quality.message}
+                  </div>
+                )}
+                {status?.data_quality && status.data_quality.status === 'ok' && (
+                  <div className="data-quality-ok">
+                    {status.data_quality.message}
                   </div>
                 )}
                 <div className="pipeline-step__buttons">
@@ -380,10 +390,23 @@ function AuditMode() {
       key: 'decision',
       title: 'Human Decision',
       render: () => {
-        const survivorCount = (scored || []).filter(h => h.status !== 'KILLED').length
+        const survived = (scored || []).filter(h => h.status === 'SURVIVED').length
+        const wounded = (scored || []).filter(h => h.status === 'WOUNDED').length
+        const alive = survived + wounded
+        const killedCount = (scored || []).filter(h => h.status === 'KILLED').length
+        const total = scored.length
+        const parts = []
+        if (survived > 0) parts.push(`${survived} SURVIVED`)
+        if (wounded > 0) parts.push(`${wounded} WOUNDED`)
+        if (killedCount > 0) parts.push(`${killedCount} KILLED`)
         return (
           <div className="audit-decision">
-            {survivorCount} hypothesis{survivorCount !== 1 ? 'es' : ''} survived. The system has done its work.
+            <div className="audit-decision__summary">
+              This run: {total} hypotheses scored -- {parts.join(', ')}.
+            </div>
+            <div className="audit-decision__note">
+              This audit shows run {run.id} only. The Observatory ledger shows all hypotheses across all runs.
+            </div>
           </div>
         )
       },

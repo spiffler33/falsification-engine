@@ -31,6 +31,7 @@ export default function ObservatoryView({ onSelectHypothesis }) {
   // ---- Hypotheses (from LedgerView) ----
   const [viewMode, setViewMode] = useState('hypothesis')
   const [filter, setFilter] = useState('ALIVE')
+  const [runScope, setRunScope] = useState('latest') // 'latest' | 'all'
   const [delta, setDelta] = useState(null)
   const [lastReviewedRunId, setLastReviewedRunId] = useState(
     () => localStorage.getItem('last_reviewed_run_id') || null
@@ -49,9 +50,26 @@ export default function ObservatoryView({ onSelectHypothesis }) {
     }
   }, [lastReviewedRunId])
 
+  // Determine the latest run_id from the data
+  const latestRunId = useMemo(() => {
+    if (!hypotheses || hypotheses.length === 0) return null
+    // hypotheses are sorted by conviction desc; find the most recent run_id by generated_date
+    let latest = hypotheses[0]
+    for (const h of hypotheses) {
+      if (h.generated_date > (latest.generated_date || '')) latest = h
+    }
+    return latest.run_id
+  }, [hypotheses])
+
   const filtered = useMemo(() => {
     if (!hypotheses) return []
     let list = [...hypotheses]
+
+    // Run scope filter
+    if (runScope === 'latest' && latestRunId) {
+      list = list.filter(h => h.run_id === latestRunId)
+    }
+
     switch (filter) {
       case 'ALIVE':
         list = list.filter(h => h.status !== 'KILLED')
@@ -65,7 +83,7 @@ export default function ObservatoryView({ onSelectHypothesis }) {
     }
     list.sort((a, b) => (b.conviction || 0) - (a.conviction || 0))
     return list
-  }, [hypotheses, filter])
+  }, [hypotheses, filter, runScope, latestRunId])
 
   const handleMarkReviewed = () => {
     if (hypotheses && hypotheses.length > 0) {
@@ -149,6 +167,20 @@ export default function ObservatoryView({ onSelectHypothesis }) {
           </div>
 
           <div className="controls-bar__right">
+            <div className="btn-group">
+              <button
+                className={`btn ${runScope === 'latest' ? 'btn--active' : ''}`}
+                onClick={() => setRunScope('latest')}
+              >
+                LATEST RUN
+              </button>
+              <button
+                className={`btn ${runScope === 'all' ? 'btn--active' : ''}`}
+                onClick={() => setRunScope('all')}
+              >
+                ALL RUNS
+              </button>
+            </div>
             <span className="controls-bar__count">
               {filtered.length} {filtered.length === 1 ? 'hypothesis' : 'hypotheses'}
             </span>

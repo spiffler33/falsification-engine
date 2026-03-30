@@ -49,6 +49,65 @@ def _load_briefing() -> dict[str, Any]:
     return {}
 
 
+def _assess_data_quality(briefing: dict) -> dict:
+    """Assess briefing packet completeness. Returns a quality report for the frontend.
+
+    Sections: growth, inflation, rates, liquidity, credit, sentiment (FRED-sourced)
+              computed (derived), markets (Yahoo Finance).
+    """
+    if not briefing:
+        return {"status": "missing", "message": "No briefing data. Run REFRESH DATA first.", "sections": {}}
+
+    FRED_SECTIONS = ["growth", "inflation", "rates", "liquidity", "credit", "sentiment"]
+    sections = {}
+    total_filled = 0
+    total_fields = 0
+
+    for section_name in FRED_SECTIONS:
+        section = briefing.get(section_name, {})
+        filled = sum(1 for v in section.values() if v is not None) if isinstance(section, dict) else 0
+        count = len(section) if isinstance(section, dict) else 0
+        sections[section_name] = {"filled": filled, "total": count}
+        total_filled += filled
+        total_fields += count
+
+    # Markets (Yahoo Finance)
+    markets = briefing.get("markets", {})
+    markets_count = len(markets) if isinstance(markets, dict) else 0
+    sections["markets"] = {"filled": markets_count, "total": markets_count}
+
+    # Computed
+    computed = briefing.get("computed", {})
+    comp_filled = sum(1 for v in computed.values() if v is not None) if isinstance(computed, dict) else 0
+    comp_total = len(computed) if isinstance(computed, dict) else 0
+    sections["computed"] = {"filled": comp_filled, "total": comp_total}
+
+    # Overall assessment
+    fred_empty = total_fields == 0 or total_filled == 0
+    if fred_empty and markets_count == 0:
+        status = "missing"
+        message = "No briefing data. Run REFRESH DATA first."
+    elif fred_empty:
+        status = "degraded"
+        message = (
+            f"FRED macro data is empty (growth, rates, inflation, liquidity, credit all missing). "
+            f"Markets: {markets_count} tickers loaded. "
+            f"Most theories will score Inactive without FRED data. "
+            f"Check your FRED_API_KEY in .env and re-run REFRESH DATA."
+        )
+    elif total_filled < total_fields * 0.5:
+        status = "partial"
+        message = (
+            f"FRED data partially loaded: {total_filled}/{total_fields} fields filled. "
+            f"Some theories may score lower than expected due to missing indicators."
+        )
+    else:
+        status = "ok"
+        message = f"Data loaded: {total_filled}/{total_fields} FRED fields, {markets_count} market tickers, {comp_filled}/{comp_total} computed."
+
+    return {"status": status, "message": message, "sections": sections}
+
+
 def _get_current_pipeline_state(db: Session) -> dict:
     """Determine the current state of each pipeline step."""
     latest_run = db.query(Run).order_by(desc(Run.timestamp)).first()
@@ -56,6 +115,7 @@ def _get_current_pipeline_state(db: Session) -> dict:
     briefing_data = _load_briefing()
     briefing_fresh = bool(briefing_data)
     briefing_timestamp = briefing_data.get("timestamp", "") if briefing_data else ""
+    data_quality = _assess_data_quality(briefing_data)
 
     if not latest_run:
         # No runs at all
@@ -63,6 +123,7 @@ def _get_current_pipeline_state(db: Session) -> dict:
             "current_step": 1 if briefing_fresh else 0,
             "run_id": "",
             "briefing_timestamp": briefing_timestamp,
+            "data_quality": data_quality,
             "steps": [
                 {"step": 1, "label": "Data Briefing", "type": "automated", "state": "complete" if briefing_fresh else "ready"},
                 {"step": 2, "label": "Activation Scoring", "type": "automated", "state": "waiting"},
@@ -78,6 +139,7 @@ def _get_current_pipeline_state(db: Session) -> dict:
             "current_step": 5,
             "run_id": latest_run.id,
             "briefing_timestamp": briefing_timestamp,
+            "data_quality": data_quality,
             "steps": [
                 {"step": 1, "label": "Data Briefing", "type": "automated", "state": "complete"},
                 {"step": 2, "label": "Activation Scoring", "type": "automated", "state": "complete"},
@@ -113,6 +175,7 @@ def _get_current_pipeline_state(db: Session) -> dict:
         "current_step": current,
         "run_id": latest_run.id,
         "briefing_timestamp": briefing_timestamp,
+        "data_quality": data_quality,
         "steps": steps,
     }
 

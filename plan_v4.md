@@ -616,6 +616,20 @@ Key verification points:
 
 ---
 
+## Post-Ship Fixes (2026-03-30)
+
+Issues discovered during first live pipeline run after v4 ship:
+
+1. **Data quality reporting.** FRED data was empty (missing .env) but the system silently proceeded through activation with zero Active theories. Fix: `_assess_data_quality()` in pipeline.py computes section-level coverage and returns status (missing/degraded/partial/ok) with human-readable message. Frontend shows red warning banner in Pipeline Step 1 when data is incomplete.
+
+2. **Observatory run scoping.** Observatory showed ALL hypotheses across ALL runs in one undifferentiated table. Users saw 12 hypotheses but the audit said "2 survived" -- contradictory and confusing. Fix: LATEST RUN / ALL RUNS toggle added to Observatory controls bar, defaulting to LATEST RUN.
+
+3. **Pipeline audit message clarity.** "2 hypotheses survived" was ambiguous -- didn't specify which run or break down SURVIVED vs WOUNDED vs KILLED. Fix: audit decision now shows "This run: N hypotheses scored -- X SURVIVED, Y WOUNDED, Z KILLED" with explicit note that Observatory shows all runs.
+
+4. **Newsletter conviction threshold.** Was hardcoded at 6, blocking newsletter generation when all survivors scored at floor (5). Fix: threshold lowered to 5. WOUNDED hypotheses included alongside SURVIVED. MARKET POSTURE section added to newsletter format -- when conviction is low across the board, the newsletter says so honestly rather than manufacturing confidence.
+
+---
+
 ## Relationship to Existing Plan Documents
 
 - **plan.md** — original architecture. Superseded by plan_v2.md.

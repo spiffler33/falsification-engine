@@ -2354,6 +2354,41 @@ p, .body-text {
   margin-bottom: 8px;
 }
 
+/* Data Quality Warnings */
+.data-quality-warning {
+  margin-top: 8px;
+  padding: 10px 14px;
+  font-family: var(--font-data);
+  font-size: 12px;
+  line-height: 1.5;
+  border-left: 3px solid var(--accent-negative);
+  background: rgba(127, 29, 29, 0.06);
+  color: var(--text-primary);
+}
+
+.data-quality-warning--missing {
+  border-left-color: var(--accent-negative);
+}
+
+.data-quality-warning--degraded {
+  border-left-color: var(--accent-negative);
+}
+
+.data-quality-warning--partial {
+  border-left-color: var(--accent-gold);
+}
+
+.data-quality-ok {
+  margin-top: 8px;
+  padding: 8px 14px;
+  font-family: var(--font-data);
+  font-size: 11px;
+  line-height: 1.4;
+  color: var(--text-secondary);
+  border-left: 3px solid var(--accent-positive);
+  background: rgba(54, 83, 20, 0.04);
+}
+
 /* Data Agent Progress Log */
 .data-progress {
   margin-top: 10px;

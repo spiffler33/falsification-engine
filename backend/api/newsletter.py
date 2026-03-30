@@ -29,7 +29,7 @@ from backend.config import DATA_DIR, MOCK_DATA_DIR
 
 router = APIRouter(tags=["newsletter"])
 
-CONVICTION_THRESHOLD = 6
+CONVICTION_THRESHOLD = 5
 BASE_ALLOCATION = 10000  # $10k notional per trade at conviction 10
 
 YAHOO_BASE_URL = "https://query1.finance.yahoo.com/v8/finance/chart"
@@ -40,13 +40,19 @@ SYSTEM_PROMPT = """You are a macro strategist writing a weekly newsletter. Your 
 - Every sentence must be load-bearing. No filler, no "in conclusion."
 - Use the structured data provided. Do not add analysis beyond what the data supports.
 - The newsletter must fit on one A4 page when printed in 11pt type.
-- Maximum 4 trade ideas. Only include hypotheses with conviction >= 6.
+- Maximum 4 trade ideas. Only include hypotheses with conviction >= 5.
 - For "WHAT BREAKS IT": pick the 2 falsifiers closest to triggering or the 2 with highest severity. State the condition and the current data value.
+- IMPORTANT: If all surviving hypotheses scored at or near the conviction floor (5/10), say so plainly. Open with a MARKET POSTURE section stating that conviction is low across the board and why. Do not manufacture confidence. "We do not have a strong view this week" is a valid and honest output. Explain what is keeping conviction low (e.g., exogenous uncertainty, conflicting signals, data gaps) and what would need to change for conviction to build.
 
 Output format (exactly this structure):
 
 MERIDIAN MACRO WEEKLY                                    [date]
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+MARKET POSTURE
+  > [1-3 sentences: overall conviction level, what is driving it, what
+     would change it. When conviction is low, say so. When exogenous
+     factors (policy uncertainty, geopolitical risk) dominate, name them.]
 
 HIGHEST CONVICTION: [trade name]                    Conviction: [X]/10
   > THESIS: [2-3 sentences: what the mechanism is, why now]
@@ -212,7 +218,7 @@ def get_newsletter_prompt(db: Session = Depends(get_db)):
         db.query(Hypothesis)
         .filter(
             Hypothesis.run_id == latest_run.id,
-            Hypothesis.status == "SURVIVED",
+            Hypothesis.status.in_(["SURVIVED", "WOUNDED"]),
             Hypothesis.conviction >= CONVICTION_THRESHOLD,
         )
         .order_by(desc(Hypothesis.conviction))
@@ -222,7 +228,7 @@ def get_newsletter_prompt(db: Session = Depends(get_db)):
     if not qualifying:
         raise HTTPException(
             status_code=400,
-            detail="No hypotheses meet conviction >= 6 threshold in the latest run",
+            detail=f"No hypotheses meet conviction >= {CONVICTION_THRESHOLD} threshold in the latest run",
         )
 
     activation_scores = json.loads(latest_run.activation_scores) if latest_run.activation_scores else {}
