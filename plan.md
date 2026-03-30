@@ -351,26 +351,6 @@ All visualizations are hand-rolled SVG components using CSS variables. Sparkline
 
 ---
 
-### v5: Walk-Forward Run Archive + Outcome Tracking (COMPLETE)
-
-**Goal:** Enable retrospective walk-forward analysis across pipeline runs. After 8+ runs, the user can look back at every run and answer: What did the system detect? What hypotheses survived? What were asset prices when the system spoke? Was it right?
-
-**Backend:**
-1. **Briefing snapshot** — Complete briefing packet saved as JSON on run record at run creation time
-2. **Price snapshots** — `run_price_snapshots` table captures closing prices for all predicted tickers after conviction scoring
-3. **Outcome tracking** — `PATCH /api/hypotheses/{id}/outcome` with CORRECT/INCORRECT/PARTIAL/EXPIRED status, required notes, optional P&L %
-4. **Archive + walkforward endpoints** — `GET /api/runs/archive` (summary stats + outcome counts), `GET /api/runs/{id}/prices`, `GET /api/runs/{id}/walkforward` (direction-aware delta computation)
-
-**Frontend:**
-5. **Run Archive panel** — Compact table of all historical runs with theory activation counts, survival rates (mini-bar), and aggregate outcome scorecard. Appears in Pipeline Audit Mode.
-6. **Walk-Forward panel** — Per-run table of entry prices vs current prices with direction-aware delta. Positive delta always means hypothesis winning.
-7. **Outcome section on Hypothesis Detail** — Entry prices, MARK OUTCOME form (4 status buttons, notes, optional P&L), recorded outcome display
-8. **Ledger outcome badges** — Inline badges next to conviction scores for previous-run hypotheses
-
-**Database migration 5:** `briefing_snapshot` + `price_snapshot_date` on runs, `outcome_status`/`outcome_date`/`outcome_notes`/`outcome_pnl_pct` on hypotheses, `run_price_snapshots` table.
-
----
-
 ## Success Criteria
 
 The system succeeds if:
