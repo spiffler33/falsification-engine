@@ -897,6 +897,7 @@ def publish_to_ghpages(db: Session = Depends(get_db)):
 
     Requires the backend to be running and git to be configured.
     This runs scripts/publish_ghpages.sh as a subprocess.
+    Output is logged to logs/publish.log for post-mortem investigation.
     """
     import subprocess
     from backend.config import BASE_DIR
@@ -913,14 +914,28 @@ def publish_to_ghpages(db: Session = Depends(get_db)):
             timeout=120,
             cwd=str(BASE_DIR),
         )
+        combined = (result.stdout or "") + (result.stderr or "")
         if result.returncode != 0:
             raise HTTPException(
                 status_code=500,
-                detail=f"Publish failed:\n{result.stderr[-500:] if result.stderr else result.stdout[-500:]}",
+                detail=f"Publish failed (exit {result.returncode}):\n{combined[-2000:]}",
             )
-        return {"status": "ok", "output": result.stdout[-1000:]}
+        return {"status": "ok", "output": combined[-2000:]}
     except subprocess.TimeoutExpired:
         raise HTTPException(status_code=504, detail="Publish timed out after 120 seconds")
+
+
+@router.get("/publish/log")
+def get_publish_log():
+    """Return the last publish log for debugging failed publishes."""
+    from backend.config import BASE_DIR
+
+    log_file = BASE_DIR / "logs" / "publish.log"
+    if not log_file.exists():
+        return {"log": "(no publish log found)"}
+    text = log_file.read_text()
+    # Return last 5000 chars to keep response reasonable
+    return {"log": text[-5000:]}
 
 
 def _extract_json_for_lookup(raw_json: str) -> list[dict]:

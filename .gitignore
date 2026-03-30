@@ -20,6 +20,9 @@ env/
 data/
 *.db
 
+# Logs (publish logs, etc.)
+logs/
+
 # Node / Frontend
 node_modules/
 frontend/dist/

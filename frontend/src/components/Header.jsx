@@ -60,11 +60,26 @@ export default function Header() {
       {publishMsg && (
         <div className="publish-msg" style={{
           fontFamily: 'var(--font-data)',
-          fontSize: '10px',
+          fontSize: publishMsg.includes('failed') ? '12px' : '10px',
           color: publishMsg.includes('failed') ? 'var(--accent-negative)' : 'var(--accent-positive)',
+          background: publishMsg.includes('failed') ? 'var(--accent-negative-bg, rgba(127,29,29,0.08))' : 'transparent',
+          padding: publishMsg.includes('failed') ? '6px 10px' : '0',
           marginTop: '4px',
+          display: 'flex',
+          alignItems: 'center',
+          gap: '8px',
         }}>
-          {publishMsg}
+          <span style={{ flex: 1 }}>{publishMsg}</span>
+          {publishMsg.includes('failed') && (
+            <button
+              onClick={() => setPublishMsg(null)}
+              style={{
+                background: 'none', border: 'none', cursor: 'pointer',
+                fontFamily: 'var(--font-data)', fontSize: '10px',
+                color: 'var(--accent-negative)', textDecoration: 'underline',
+              }}
+            >dismiss</button>
+          )}
         </div>
       )}
     </header>
