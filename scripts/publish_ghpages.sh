@@ -64,34 +64,22 @@ SNAPSHOT_JSON=$(curl -sf "$API_BASE/api/snapshot") || {
 
 echo "  Snapshot fetched. $(echo "$SNAPSHOT_JSON" | wc -c | tr -d ' ') bytes."
 
-# 2. Write snapshot into a JS file that sets window.__SNAPSHOT__
-SNAPSHOT_FILE="$FRONTEND_DIR/public/snapshot.js"
-echo "window.__SNAPSHOT__ = $SNAPSHOT_JSON;" > "$SNAPSHOT_FILE"
-echo "[2/5] Snapshot written to $SNAPSHOT_FILE"
-
-# 3. Inject the snapshot script tag into index.html for the build
-INDEX_HTML="$FRONTEND_DIR/index.html"
-CACHE_BUST=$(date +%s)
-if ! grep -q 'snapshot.js' "$INDEX_HTML"; then
-  # Add before closing </head> — cache-bust query param forces CDN refresh
-  sed -i.bak "s|</head>|<script src=\"/snapshot.js?v=${CACHE_BUST}\"></script></head>|" "$INDEX_HTML"
-  echo "  Injected snapshot.js script tag into index.html"
-else
-  # Update the cache-bust param on existing tag
-  sed -i.bak "s|snapshot.js[^\"]*|snapshot.js?v=${CACHE_BUST}|" "$INDEX_HTML"
-  echo "  Updated snapshot.js cache-bust param"
-fi
-
-# 4. Build the frontend
-echo "[3/5] Building frontend ..."
+# 2. Build the frontend FIRST — before touching any source files
+#    (Modifying index.html or public/ while Vite dev server is running kills it)
+echo "[2/5] Building frontend ..."
 cd "$FRONTEND_DIR"
 npx vite build
 
-# Get the repo name for base path (GitHub Pages serves at /repo-name/)
-REPO_NAME=$(cd "$PROJECT_ROOT" && basename "$(git remote get-url origin 2>/dev/null | sed 's/\.git$//')" 2>/dev/null || echo "falsification-engine")
+# 3. Inject snapshot into the BUILT output (dist/), not source files
+CACHE_BUST=$(date +%s)
+echo "window.__SNAPSHOT__ = $SNAPSHOT_JSON;" > "$FRONTEND_DIR/dist/snapshot.js"
+echo "[3/5] Snapshot written to dist/snapshot.js"
 
-# Copy snapshot.js into dist
-cp "$SNAPSHOT_FILE" "$FRONTEND_DIR/dist/snapshot.js"
+# Inject the snapshot script tag into dist/index.html (not the source index.html)
+DIST_INDEX="$FRONTEND_DIR/dist/index.html"
+sed -i.bak "s|</head>|<script src=\"./snapshot.js?v=${CACHE_BUST}\"></script></head>|" "$DIST_INDEX"
+rm -f "$DIST_INDEX.bak"
+echo "  Injected snapshot.js script tag into dist/index.html"
 
 # Add .nojekyll to prevent GitHub Pages from ignoring _-prefixed files
 touch "$FRONTEND_DIR/dist/.nojekyll"
@@ -126,12 +114,7 @@ git push origin gh-pages --force
 
 cd "$PROJECT_ROOT"
 
-# Remove the snapshot injection from index.html
-cd "$FRONTEND_DIR"
-if [ -f "index.html.bak" ]; then
-  mv "index.html.bak" "index.html"
-fi
-rm -f "$SNAPSHOT_FILE"
+# No source-file cleanup needed — we only modified dist/
 
 # 6. Verify the push landed
 echo "[5/5] Verifying deployment ..."
