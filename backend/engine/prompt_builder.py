@@ -33,6 +33,7 @@ def build_generation_prompt(
     inbox_items: list[dict[str, Any]],
     max_adjacent: int = 1,
     active_regime_flags: list[dict[str, Any]] | None = None,
+    prior_hypotheses: list[dict[str, Any]] | None = None,
 ) -> str:
     """Build the generation prompt for Pass 2.
 
@@ -120,6 +121,13 @@ def build_generation_prompt(
                     label = THEORY_LABEL_MAP.get(module_id, module_id)
                     parts.append(f"  - {label}: {context}")
             parts.append("")
+
+    # --- Prior hypotheses with realization data (continuation lineage context) ---
+    if prior_hypotheses:
+        parts.append("\n\n## PRIOR HYPOTHESES (from previous runs)\n")
+        parts.append(_prior_hypotheses_section(prior_hypotheses))
+        parts.append("\n\n## CONTINUATION CONTRACT\n")
+        parts.append(_continuation_contract_instructions())
 
     # --- Resolution channel requirement ---
     parts.append("\n\n## RESOLUTION CHANNEL REQUIREMENT\n")
@@ -274,6 +282,9 @@ def _generation_output_schema() -> str:
       "magnitude_upper": 0.30,
       "end_date": "2026-09-30"
     },
+    "continuation_of": null,
+    "continuation_generation": 1,
+    "continuation_justification": null,
     "conviction_inputs": {
       "support_strength": 0.0,
       "evidence_quality": 0.0,
@@ -285,6 +296,11 @@ def _generation_output_schema() -> str:
   }
 ]
 ```
+
+CONTINUATION FIELDS:
+- continuation_of: null for original hypotheses. For continuations, set to the parent hypothesis ID (e.g. "H-20260315-03").
+- continuation_generation: 1 for originals, 2 for first continuation, 3 for second, etc. Must be parent's generation + 1.
+- continuation_justification: null for originals. REQUIRED for continuations -- must state what is genuinely new. "The same macro factors are still active" is NOT sufficient. Acceptable: new data, mechanism extension, changed expression from current levels.
 
 IMPORTANT: Output ONLY the JSON array. No commentary before or after."""
 
@@ -571,6 +587,102 @@ If the hypothesis predicts a 15%+ nominal price decline, the channel is nominal_
 even if there are secondary inflationary dynamics. The channel is the load-bearing mechanism.
 
 Include "resolution_channel": "<channel>" in each hypothesis output."""
+
+
+def _prior_hypotheses_section(prior_hypotheses: list[dict[str, Any]]) -> str:
+    """Format prior hypotheses with realization data for the generation prompt.
+
+    Each prior hypothesis is displayed with its expression, payoff band,
+    realization primitives, and status so the LLM can decide whether to
+    regenerate, continue, or move to other mechanisms.
+    """
+    lines = []
+    lines.append(
+        "The following hypotheses survived previous pipeline runs and have "
+        "realization data. Review each before generating new hypotheses on "
+        "the same expression or mechanism.\n"
+    )
+
+    for h in prior_hypotheses:
+        h_id = h.get("id", "?")
+        lines.append(f"PRIOR HYPOTHESIS: {h_id}")
+
+        # Expression: direction + assets
+        asset_dir = h.get("asset_direction", {})
+        if asset_dir:
+            legs = []
+            for ticker, direction in asset_dir.items():
+                legs.append(f"{direction} {ticker}")
+            lines.append(f"  Expression: {' / '.join(legs)}")
+        else:
+            assets = h.get("predicted_assets", [])
+            if assets:
+                lines.append(f"  Assets: {', '.join(assets)}")
+
+        # Payoff band
+        mag_lower = h.get("predicted_magnitude_lower")
+        mag_upper = h.get("predicted_magnitude_upper")
+        end_date = h.get("timeframe_end_date")
+        if mag_lower is not None and mag_upper is not None:
+            band_str = f"{mag_lower*100:.0f}-{mag_upper*100:.0f}%"
+            if end_date:
+                band_str += f" through {end_date}"
+            lines.append(f"  Payoff band: {band_str}")
+
+        # Realization primitives
+        expr_return = h.get("expression_return")
+        if expr_return is not None:
+            lines.append(f"  Expression return since inception: {expr_return:+.1%}")
+
+        real_lower = h.get("realization_vs_lower")
+        if real_lower is not None:
+            lines.append(
+                f"  Realization vs lower bound: {real_lower:.2f}  "
+                f"({real_lower*100:.0f}% of lower bound delivered)"
+            )
+
+        real_upper = h.get("realization_vs_upper")
+        if real_upper is not None:
+            lines.append(
+                f"  Realization vs upper bound: {real_upper:.2f}  "
+                f"({real_upper*100:.0f}% of upper bound delivered)"
+            )
+
+        time_elapsed = h.get("time_elapsed_pct")
+        if time_elapsed is not None:
+            lines.append(f"  Time elapsed: {time_elapsed:.0%} of holding window")
+
+        lines.append(f"  Status: {h.get('status', 'SURVIVED')}")
+
+        # Continuation lineage
+        cont_gen = h.get("continuation_generation", 1)
+        if cont_gen > 1:
+            lines.append(f"  Continuation: Gen {cont_gen} of {h.get('continuation_of', '?')}")
+
+        lines.append("")
+
+    return "\n".join(lines)
+
+
+def _continuation_contract_instructions() -> str:
+    """Instructions for the LLM on how to handle continuations."""
+    return """When a prior hypothesis has high realization (realization_vs_upper approaching or exceeding 1.0), you have three options:
+
+1. DECLINE TO REGENERATE. The mechanism is spent. Generate hypotheses on other mechanisms instead.
+
+2. GENERATE A CONTINUATION. A new hypothesis on the same or similar expression, with:
+   - continuation_of: set to the prior hypothesis ID
+   - continuation_generation: increment from the parent (parent's generation + 1)
+   - continuation_justification: REQUIRED. Must state what is genuinely new. The following is NOT sufficient: "the same macro factors are still active."
+   Acceptable justifications:
+     - New data not available at original generation time
+     - A mechanism extension (e.g., a second-order effect now manifesting)
+     - A changed expression (same mechanism, different ETF pair from current levels)
+   The continuation gets its own payoff band calibrated from current levels, NOT the original's band.
+
+3. GENERATE A GENUINELY DIFFERENT HYPOTHESIS on the same mechanism with a different expression. This is NOT a continuation -- it is a new original hypothesis (continuation_of: null, continuation_generation: 1).
+
+CRITICAL: Do NOT silently revise a prior hypothesis's payoff band. The original's predicted_magnitude_lower, predicted_magnitude_upper, and timeframe_end_date are immutable after generation. If you want to update the view from current levels, generate a continuation."""
 
 
 def _channel_verification_instructions() -> str:

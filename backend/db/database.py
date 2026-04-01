@@ -124,6 +124,11 @@ def _migrate(eng):
         _add_column("hypotheses", "realization_vs_upper", "REAL")
         _add_column("hypotheses", "time_elapsed_pct", "REAL")
 
+        # Migration 7: continuation lineage (v6 Phase 3)
+        _add_column("hypotheses", "continuation_of", "TEXT")
+        _add_column("hypotheses", "continuation_generation", "INTEGER", "DEFAULT 1")
+        _add_column("hypotheses", "continuation_justification", "TEXT")
+
         raw.commit()
     except Exception:
         pass  # Table may not exist yet on fresh DB (create_all handles it)

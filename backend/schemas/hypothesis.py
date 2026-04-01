@@ -77,6 +77,11 @@ class Hypothesis(BaseModel):
     age: int = 0
     delta_type: str = "NEW"  # NEW | IMPROVED | DETERIORATED | KILLED | STABLE
 
+    # Continuation lineage
+    continuation_of: Optional[str] = None  # Parent hypothesis ID
+    continuation_generation: int = 1  # 1=original, 2=first continuation, etc.
+    continuation_justification: Optional[str] = None
+
     # Human annotations
     has_action: bool = False
     research_notes: list[ResearchNote] = []

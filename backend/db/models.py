@@ -1,7 +1,7 @@
 # models.py — SQLAlchemy ORM models matching FRONTEND_SPEC Section 10 schema.
 # Depends on: db/database.py (Base)
 # Depended on by: all API routes, db/seed.py
-from sqlalchemy import Column, Float, ForeignKey, Text
+from sqlalchemy import Column, Float, ForeignKey, Integer, Text
 
 from backend.db.database import Base
 
@@ -58,6 +58,11 @@ class Hypothesis(Base):
     realization_vs_lower = Column(Float)  # expression_return / magnitude_lower
     realization_vs_upper = Column(Float)  # expression_return / magnitude_upper
     time_elapsed_pct = Column(Float)  # Fraction of holding window consumed
+
+    # Continuation lineage (v6 Phase 3)
+    continuation_of = Column(Text)  # Parent hypothesis ID (null for originals)
+    continuation_generation = Column(Integer, server_default="1")  # 1=original, 2=first continuation, etc.
+    continuation_justification = Column(Text)  # Required for continuations: what is genuinely new
 
 
 class JournalEntry(Base):

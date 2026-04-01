@@ -444,12 +444,47 @@ def get_generation_prompt(db: Session = Depends(get_db)):
     run.regime_flags_active = json.dumps(flag_ids)
     db.commit()
 
+    # Query prior surviving hypotheses with realization data for continuation context
+    prior_hyps = (
+        db.query(HypothesisModel)
+        .filter(
+            HypothesisModel.run_id != run.id,
+            HypothesisModel.status.in_(["SURVIVED", "WOUNDED"]),
+        )
+        .all()
+    )
+    prior_hypotheses = []
+    for h in prior_hyps:
+        # Only include hypotheses that have at least some realization data
+        has_realization = (
+            h.expression_return is not None
+            or h.predicted_magnitude_lower is not None
+        )
+        if has_realization:
+            prior_hypotheses.append({
+                "id": h.id,
+                "short_name": h.short_name,
+                "predicted_assets": json.loads(h.predicted_assets) if h.predicted_assets else [],
+                "asset_direction": json.loads(h.asset_direction) if h.asset_direction else {},
+                "predicted_magnitude_lower": h.predicted_magnitude_lower,
+                "predicted_magnitude_upper": h.predicted_magnitude_upper,
+                "timeframe_end_date": h.timeframe_end_date,
+                "expression_return": h.expression_return,
+                "realization_vs_lower": h.realization_vs_lower,
+                "realization_vs_upper": h.realization_vs_upper,
+                "time_elapsed_pct": h.time_elapsed_pct,
+                "status": h.status,
+                "continuation_generation": h.continuation_generation or 1,
+                "continuation_of": h.continuation_of,
+            })
+
     prompt = build_generation_prompt(
         theories=theories,
         activation_results=activation_results,
         briefing=briefing_data,
         inbox_items=inbox_items,
         active_regime_flags=active_flags,
+        prior_hypotheses=prior_hypotheses if prior_hypotheses else None,
     )
 
     return {"prompt": prompt, "run_id": run.id, "regime_flags_active": flag_ids}

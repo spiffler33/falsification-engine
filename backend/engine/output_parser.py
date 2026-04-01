@@ -78,6 +78,17 @@ FIELD_ALIASES: dict[str, list[str]] = {
         "PAYOFF_BAND", "payoff", "band", "magnitude_band",
         "predicted_band", "prediction_band",
     ],
+    "continuation_of": [
+        "parent_id", "parent_hypothesis", "parent_hypothesis_id",
+        "continues", "continuation_parent", "parent",
+    ],
+    "continuation_generation": [
+        "generation", "gen", "lineage_generation", "continuation_gen",
+    ],
+    "continuation_justification": [
+        "justification", "continuation_reason", "continuation_rationale",
+        "why_continuation", "new_information",
+    ],
 }
 
 
@@ -192,6 +203,12 @@ def parse_generation_output(
         hypothesis["predicted_magnitude_lower"] = payoff.get("magnitude_lower")
         hypothesis["predicted_magnitude_upper"] = payoff.get("magnitude_upper")
         hypothesis["timeframe_end_date"] = payoff.get("end_date")
+
+        # Extract continuation lineage fields
+        continuation = _extract_continuation(item)
+        hypothesis["continuation_of"] = continuation.get("continuation_of")
+        hypothesis["continuation_generation"] = continuation.get("continuation_generation", 1)
+        hypothesis["continuation_justification"] = continuation.get("continuation_justification")
 
         # Validate payoff band if all three fields are present
         if (hypothesis["predicted_magnitude_lower"] is not None
@@ -316,6 +333,57 @@ def _extract_payoff_band(item: dict) -> dict:
     )
 
     return result
+
+
+def _extract_continuation(item: dict) -> dict:
+    """Extract continuation lineage fields from any plausible location.
+
+    Returns a dict with keys: continuation_of, continuation_generation,
+    continuation_justification. Missing values are None (generation defaults to 1).
+    """
+    result = {
+        "continuation_of": None,
+        "continuation_generation": 1,
+        "continuation_justification": None,
+    }
+
+    # Try nested "continuation" or "lineage" object first
+    for nested_key in ("continuation", "lineage", "continuation_lineage"):
+        nested = item.get(nested_key, {})
+        if isinstance(nested, dict) and nested:
+            result["continuation_of"] = (
+                nested.get("continuation_of")
+                or nested.get("parent_id")
+                or nested.get("parent_hypothesis_id")
+            )
+            gen = nested.get("continuation_generation") or nested.get("generation")
+            if gen is not None:
+                result["continuation_generation"] = _to_int(gen, default=1)
+            result["continuation_justification"] = (
+                nested.get("continuation_justification")
+                or nested.get("justification")
+            )
+            if result["continuation_of"]:
+                return result
+
+    # Try top-level fields (already normalized by _normalize_fields)
+    result["continuation_of"] = item.get("continuation_of") or None
+    gen = item.get("continuation_generation")
+    if gen is not None:
+        result["continuation_generation"] = _to_int(gen, default=1)
+    result["continuation_justification"] = item.get("continuation_justification") or None
+
+    return result
+
+
+def _to_int(val, default: int = 1) -> int:
+    """Safely convert a value to int. Returns default on failure."""
+    if val is None:
+        return default
+    try:
+        return int(val)
+    except (ValueError, TypeError):
+        return default
 
 
 def _to_float(val) -> float | None:
