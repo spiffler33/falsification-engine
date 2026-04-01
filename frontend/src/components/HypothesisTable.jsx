@@ -5,6 +5,7 @@ import ConvictionDisplay from '../shared/ConvictionDisplay'
 import FalsifierCompact from '../shared/FalsifierCompact'
 import ActionMarker from '../shared/ActionMarker'
 import OutcomeBadge from '../shared/OutcomeBadge'
+import FreshnessBadge from '../shared/FreshnessBadge'
 import { fmtAge } from '../lib/format'
 
 const CHANNEL_LABELS = {
@@ -42,6 +43,7 @@ export default function HypothesisTable({ hypotheses, onSelect }) {
           <th className="col-theory">Theory</th>
           {anyChannel && <th className="col-channel">Channel</th>}
           <th className="col-conviction">Conv.</th>
+          <th className="col-freshness">Freshness</th>
           <th className="col-falsifiers">Fals.</th>
           <th className="col-assets">Assets</th>
           <th className="col-age">Age</th>
@@ -60,6 +62,11 @@ export default function HypothesisTable({ hypotheses, onSelect }) {
             </td>
             <td className="col-hypothesis">
               <span className="hypothesis-name">{h.short_name}</span>
+              {h.continuation_of && (
+                <span className="continuation-badge" title={`Continuation of ${h.continuation_of}`}>
+                  Gen {h.continuation_generation || 2}
+                </span>
+              )}
             </td>
             <td className="col-theory">
               <TheoryTag theoryId={h.source_theory} label={h.source_theory_label} />
@@ -82,6 +89,13 @@ export default function HypothesisTable({ hypotheses, onSelect }) {
                   <OutcomeBadge status={h.outcome_status} />
                 )}
               </span>
+            </td>
+            <td className="col-freshness">
+              <FreshnessBadge
+                realization_vs_lower={h.realization_vs_lower}
+                realization_vs_upper={h.realization_vs_upper}
+                time_elapsed_pct={h.time_elapsed_pct}
+              />
             </td>
             <td className="col-falsifiers">
               <FalsifierCompact

@@ -149,6 +149,18 @@ def _model_to_dict(h: HypothesisModel, db: Session) -> dict:
         "outcome_date": h.outcome_date,
         "outcome_notes": h.outcome_notes,
         "outcome_pnl_pct": h.outcome_pnl_pct,
+        # v6: Realization primitives (stored at scoring time)
+        "predicted_magnitude_lower": h.predicted_magnitude_lower,
+        "predicted_magnitude_upper": h.predicted_magnitude_upper,
+        "timeframe_end_date": h.timeframe_end_date,
+        "expression_return": h.expression_return,
+        "realization_vs_lower": h.realization_vs_lower,
+        "realization_vs_upper": h.realization_vs_upper,
+        "time_elapsed_pct": h.time_elapsed_pct,
+        # v6: Continuation lineage
+        "continuation_of": h.continuation_of,
+        "continuation_generation": h.continuation_generation or 1,
+        "continuation_justification": h.continuation_justification,
     }
 
 

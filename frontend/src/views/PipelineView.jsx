@@ -17,6 +17,7 @@ import PromptPreview from '../components/PromptPreview'
 import ImportPanel from '../components/ImportPanel'
 import StatusBadge from '../shared/StatusBadge'
 import TheoryTag from '../shared/TheoryTag'
+import FreshnessBadge from '../shared/FreshnessBadge'
 import { fmtConviction, fmtDate } from '../lib/format'
 
 export default function PipelineView({ onSelectHypothesis }) {
@@ -521,6 +522,7 @@ function RunDetail({ run, expanded, toggle, walkforward, loadingWF, onSelectHypo
         walkforward={walkforward}
         loading={loadingWF}
         runId={run.id}
+        hypotheses={hypotheses}
         onSelectHypothesis={onSelectHypothesis}
       />
     </>
@@ -528,11 +530,19 @@ function RunDetail({ run, expanded, toggle, walkforward, loadingWF, onSelectHypo
 }
 
 
-function WalkForwardPanel({ walkforward, loading, runId, onSelectHypothesis }) {
+function WalkForwardPanel({ walkforward, loading, runId, hypotheses, onSelectHypothesis }) {
   if (loading) return <div className="loading">Loading walk-forward data...</div>
   if (!walkforward || !walkforward.rows || walkforward.rows.length === 0) return null
 
   const oc = walkforward.outcome_counts || {}
+
+  // Build lookup from hypothesis data for realization primitives
+  const hypMap = {}
+  if (hypotheses) {
+    for (const h of hypotheses) {
+      hypMap[h.id] = h
+    }
+  }
 
   return (
     <div className="walkforward-panel">
@@ -555,6 +565,7 @@ function WalkForwardPanel({ walkforward, loading, runId, onSelectHypothesis }) {
             <th>Entry</th>
             <th>Current</th>
             <th className="walkforward-panel__col-delta">Delta %</th>
+            <th>Realization</th>
           </tr>
         </thead>
         <tbody>
@@ -562,6 +573,8 @@ function WalkForwardPanel({ walkforward, loading, runId, onSelectHypothesis }) {
             const deltaClass = row.delta_pct != null
               ? (row.delta_pct >= 0 ? 'perf--positive' : 'perf--negative')
               : ''
+            const hyp = hypMap[row.hypothesis_id]
+            const exprRet = row.expression_return ?? hyp?.expression_return
             return (
               <tr
                 key={row.hypothesis_id}
@@ -587,6 +600,21 @@ function WalkForwardPanel({ walkforward, loading, runId, onSelectHypothesis }) {
                 </td>
                 <td className={`walkforward-panel__cell-delta ${deltaClass}`}>
                   {row.delta_pct != null ? `${row.delta_pct >= 0 ? '+' : ''}${row.delta_pct.toFixed(1)}%` : '---'}
+                </td>
+                <td className="walkforward-panel__cell-realization">
+                  {exprRet != null && (
+                    <span className={exprRet >= 0 ? 'perf--positive' : 'perf--negative'}>
+                      {exprRet >= 0 ? '+' : ''}{(exprRet * 100).toFixed(1)}%
+                    </span>
+                  )}
+                  {hyp && (
+                    <FreshnessBadge
+                      realization_vs_lower={hyp.realization_vs_lower}
+                      realization_vs_upper={hyp.realization_vs_upper}
+                      time_elapsed_pct={hyp.time_elapsed_pct}
+                    />
+                  )}
+                  {!exprRet && !hyp && '---'}
                 </td>
               </tr>
             )

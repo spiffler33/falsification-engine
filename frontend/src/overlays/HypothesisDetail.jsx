@@ -5,6 +5,7 @@ import { AssetTags } from '../shared/AssetTag'
 import Sparkline from '../shared/Sparkline'
 import OutcomeBadge from '../shared/OutcomeBadge'
 import { fmtConviction, fmtDate, convictionTier } from '../lib/format'
+import { computeFreshnessLabel, FRESHNESS_CLASS, FRESHNESS_ACTION, getRealizationCap } from '../lib/freshness'
 import { api } from '../lib/api'
 import { isStaticMode } from '../lib/snapshot'
 
@@ -195,6 +196,17 @@ export default function HypothesisDetail({ hypothesis: h, onClose }) {
                 isNull={s3.expression_cap == null}
                 negative={s3.expression_cap != null}
               />
+              <StageRow
+                label="Realization cap"
+                value={s3.realization_cap != null ? fmtConviction(s3.realization_cap) : '---'}
+                isNull={s3.realization_cap == null}
+                negative={s3.realization_cap != null}
+              />
+              {s3.freshness_label && s3.realization_cap != null && (
+                <div className="conviction-stage__annotation">
+                  Cap from {s3.freshness_label} state
+                </div>
+              )}
               <div className="conviction-stage__total">
                 <span className="conviction-stage__total-label">Final</span>
                 <span className={`conviction-stage__total-value conviction-final ${convictionTier(s3.final)}`}>
@@ -304,6 +316,28 @@ export default function HypothesisDetail({ hypothesis: h, onClose }) {
                 ))}
               </div>
             )}
+          </div>
+        )}
+
+        {/* D3. Realization — payoff band progress, freshness label */}
+        <RealizationSection hypothesis={h} />
+
+        {/* D4. Continuation Lineage (conditional) */}
+        {h.continuation_of && (
+          <div className="detail-section">
+            <div className="detail-section__title">Continuation Lineage</div>
+            <div className="continuation-lineage">
+              <div className="continuation-lineage__parent">
+                Continues{' '}
+                <span className="continuation-lineage__id">{h.continuation_of}</span>
+                <span className="continuation-lineage__gen">Gen {h.continuation_generation || 2}</span>
+              </div>
+              {h.continuation_justification && (
+                <div className="continuation-lineage__justification">
+                  {h.continuation_justification}
+                </div>
+              )}
+            </div>
           </div>
         )}
 
@@ -544,6 +578,130 @@ export default function HypothesisDetail({ hypothesis: h, onClose }) {
     </div>
   )
 }
+
+function RealizationSection({ hypothesis: h }) {
+  const hasPayoffBand = h.predicted_magnitude_lower != null && h.predicted_magnitude_upper != null
+  const hasRealization = h.expression_return != null
+
+  if (!hasPayoffBand && !hasRealization) return null
+
+  const freshnessLabel = computeFreshnessLabel(
+    h.realization_vs_lower, h.realization_vs_upper, h.time_elapsed_pct
+  )
+  const freshCls = FRESHNESS_CLASS[freshnessLabel] || ''
+  const actionHint = FRESHNESS_ACTION[freshnessLabel] || ''
+  const realizationCap = getRealizationCap(freshnessLabel)
+
+  // Progress bar position: where expression_return sits relative to the band
+  // 0% = 0 return, 100% = upper bound. Lower bound is marked along the way.
+  const upperBound = h.predicted_magnitude_upper || 1
+  const progressPct = hasRealization
+    ? Math.max(0, Math.min(100, (h.expression_return / upperBound) * 100))
+    : 0
+  const lowerPct = hasPayoffBand
+    ? (h.predicted_magnitude_lower / upperBound) * 100
+    : 0
+
+  return (
+    <div className="detail-section">
+      <div className="detail-section__title">Realization</div>
+
+      {/* Freshness label + action hint */}
+      {freshnessLabel !== 'INDETERMINATE' && (
+        <div className="realization-freshness">
+          <span className={`freshness-badge freshness-badge--large ${freshCls}`}>
+            {freshnessLabel}
+          </span>
+          <span className="realization-freshness__action">{actionHint}</span>
+        </div>
+      )}
+
+      {/* Payoff band */}
+      {hasPayoffBand && (
+        <div className="realization-band">
+          <div className="realization-band__header">
+            <span className="realization-band__label">Payoff band</span>
+            <span className="realization-band__values">
+              {(h.predicted_magnitude_lower * 100).toFixed(0)}% -- {(h.predicted_magnitude_upper * 100).toFixed(0)}%
+            </span>
+            {h.timeframe_end_date && (
+              <span className="realization-band__end">
+                through {fmtDate(h.timeframe_end_date)}
+              </span>
+            )}
+          </div>
+
+          {/* Progress bar */}
+          {hasRealization && (
+            <div className="realization-bar">
+              <div className="realization-bar__track">
+                <div
+                  className="realization-bar__lower-mark"
+                  style={{ left: `${lowerPct}%` }}
+                  title={`Lower bound: ${(h.predicted_magnitude_lower * 100).toFixed(0)}%`}
+                />
+                <div
+                  className={`realization-bar__fill ${h.expression_return < 0 ? 'realization-bar__fill--negative' : ''}`}
+                  style={{ width: `${Math.abs(progressPct)}%` }}
+                />
+              </div>
+              <div className="realization-bar__labels">
+                <span>0%</span>
+                <span>{(upperBound * 100).toFixed(0)}%</span>
+              </div>
+            </div>
+          )}
+        </div>
+      )}
+
+      {/* Expression return */}
+      {hasRealization && (
+        <div className="realization-metrics">
+          <div className="realization-metric">
+            <span className="realization-metric__label">Expression return</span>
+            <span className={`realization-metric__value ${h.expression_return >= 0 ? 'perf--positive' : 'perf--negative'}`}>
+              {h.expression_return >= 0 ? '+' : ''}{(h.expression_return * 100).toFixed(1)}%
+            </span>
+          </div>
+          {h.realization_vs_lower != null && (
+            <div className="realization-metric">
+              <span className="realization-metric__label">vs. lower bound</span>
+              <span className="realization-metric__value">{(h.realization_vs_lower * 100).toFixed(0)}%</span>
+            </div>
+          )}
+          {h.realization_vs_upper != null && (
+            <div className="realization-metric">
+              <span className="realization-metric__label">vs. upper bound</span>
+              <span className="realization-metric__value">{(h.realization_vs_upper * 100).toFixed(0)}%</span>
+            </div>
+          )}
+        </div>
+      )}
+
+      {/* Time elapsed */}
+      {h.time_elapsed_pct != null && (
+        <div className="realization-time">
+          <span className="realization-time__label">Holding window elapsed</span>
+          <div className="realization-time__bar">
+            <div
+              className="realization-time__fill"
+              style={{ width: `${Math.min(100, h.time_elapsed_pct * 100)}%` }}
+            />
+          </div>
+          <span className="realization-time__value">{(h.time_elapsed_pct * 100).toFixed(0)}%</span>
+        </div>
+      )}
+
+      {/* Realization cap annotation */}
+      {realizationCap != null && (
+        <div className="realization-cap-note">
+          Realization cap: {realizationCap.toFixed(1)} ({freshnessLabel})
+        </div>
+      )}
+    </div>
+  )
+}
+
 
 function StageRow({ label, value, negative, isNull }) {
   let cls = 'conviction-stage__value'

@@ -4233,3 +4233,304 @@ p, .body-text {
   font-size: 10px;
   color: var(--text-secondary);
 }
+
+.walkforward-panel__cell-realization {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-weight: 600;
+}
+
+
+/* ─── Shared: Freshness Badge ───────────────────────── */
+
+.freshness-badge {
+  font-family: var(--font-data);
+  font-size: 9px;
+  font-weight: 600;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  padding: 2px 6px;
+  display: inline-block;
+}
+
+.freshness-badge--large {
+  font-size: 11px;
+  padding: 3px 8px;
+}
+
+.freshness--fresh {
+  color: var(--accent-positive);
+  border: 1px solid var(--accent-positive);
+}
+
+.freshness--working {
+  color: var(--accent-positive);
+  border: 1px solid var(--accent-positive);
+  opacity: 0.8;
+}
+
+.freshness--accelerating {
+  color: var(--accent-gold);
+  border: 1px solid var(--accent-gold);
+}
+
+.freshness--underperforming {
+  color: var(--accent-high);
+  border: 1px solid var(--accent-high);
+}
+
+.freshness--mature {
+  color: var(--accent-gold);
+  border: 1px solid var(--accent-gold);
+  opacity: 0.8;
+}
+
+.freshness--expressed {
+  color: var(--accent-negative);
+  border: 1px solid var(--accent-negative);
+}
+
+.freshness--indeterminate {
+  color: var(--text-tertiary);
+  border: 1px solid var(--border-light);
+}
+
+
+/* ─── Continuation Badge (Ledger table) ─────────────── */
+
+.continuation-badge {
+  font-family: var(--font-data);
+  font-size: 9px;
+  font-weight: 600;
+  letter-spacing: 0.03em;
+  color: var(--text-secondary);
+  border: 1px solid var(--border-medium);
+  padding: 1px 5px;
+  margin-left: 6px;
+  vertical-align: middle;
+}
+
+
+/* ─── Continuation Lineage (Hypothesis Detail) ──────── */
+
+.continuation-lineage {
+  padding: 8px 0;
+}
+
+.continuation-lineage__parent {
+  font-family: var(--font-body);
+  font-size: 14px;
+  color: var(--text-primary);
+}
+
+.continuation-lineage__id {
+  font-family: var(--font-data);
+  font-size: 12px;
+  color: var(--accent-high);
+  margin-right: 8px;
+}
+
+.continuation-lineage__gen {
+  font-family: var(--font-data);
+  font-size: 10px;
+  font-weight: 600;
+  color: var(--text-secondary);
+  border: 1px solid var(--border-medium);
+  padding: 1px 5px;
+  margin-left: 4px;
+}
+
+.continuation-lineage__justification {
+  font-family: var(--font-body);
+  font-size: 13px;
+  font-style: italic;
+  color: var(--text-secondary);
+  margin-top: 8px;
+  padding-left: 12px;
+  border-left: 2px solid var(--border-light);
+}
+
+
+/* ─── Realization Section (Hypothesis Detail) ───────── */
+
+.realization-freshness {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  margin-bottom: 16px;
+}
+
+.realization-freshness__action {
+  font-family: var(--font-body);
+  font-size: 13px;
+  font-style: italic;
+  color: var(--text-secondary);
+}
+
+.realization-band {
+  margin-bottom: 16px;
+}
+
+.realization-band__header {
+  display: flex;
+  align-items: baseline;
+  gap: 12px;
+  margin-bottom: 8px;
+}
+
+.realization-band__label {
+  font-family: var(--font-body);
+  font-size: 13px;
+  color: var(--text-secondary);
+}
+
+.realization-band__values {
+  font-family: var(--font-data);
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--text-primary);
+}
+
+.realization-band__end {
+  font-family: var(--font-data);
+  font-size: 11px;
+  color: var(--text-tertiary);
+}
+
+/* Progress bar */
+.realization-bar {
+  margin-bottom: 4px;
+}
+
+.realization-bar__track {
+  position: relative;
+  height: 8px;
+  background: var(--bg-secondary);
+  border: 1px solid var(--border-light);
+}
+
+.realization-bar__fill {
+  position: absolute;
+  top: 0;
+  left: 0;
+  height: 100%;
+  background: var(--accent-positive);
+  opacity: 0.7;
+  transition: width 0.3s;
+}
+
+.realization-bar__fill--negative {
+  background: var(--accent-negative);
+}
+
+.realization-bar__lower-mark {
+  position: absolute;
+  top: -2px;
+  width: 2px;
+  height: 12px;
+  background: var(--text-secondary);
+  z-index: 1;
+}
+
+.realization-bar__labels {
+  display: flex;
+  justify-content: space-between;
+  font-family: var(--font-data);
+  font-size: 9px;
+  color: var(--text-tertiary);
+  margin-top: 2px;
+}
+
+/* Metrics row */
+.realization-metrics {
+  display: flex;
+  gap: 24px;
+  margin-bottom: 12px;
+}
+
+.realization-metric {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.realization-metric__label {
+  font-family: var(--font-body);
+  font-size: 11px;
+  color: var(--text-tertiary);
+}
+
+.realization-metric__value {
+  font-family: var(--font-data);
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--text-primary);
+  font-variant-numeric: tabular-nums;
+}
+
+/* Time elapsed bar */
+.realization-time {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin-bottom: 12px;
+}
+
+.realization-time__label {
+  font-family: var(--font-body);
+  font-size: 11px;
+  color: var(--text-tertiary);
+  white-space: nowrap;
+}
+
+.realization-time__bar {
+  flex: 1;
+  height: 4px;
+  background: var(--bg-secondary);
+  border: 1px solid var(--border-light);
+  position: relative;
+}
+
+.realization-time__fill {
+  position: absolute;
+  top: 0;
+  left: 0;
+  height: 100%;
+  background: var(--text-secondary);
+  opacity: 0.5;
+  transition: width 0.3s;
+}
+
+.realization-time__value {
+  font-family: var(--font-data);
+  font-size: 11px;
+  color: var(--text-secondary);
+  font-variant-numeric: tabular-nums;
+  min-width: 32px;
+  text-align: right;
+}
+
+/* Realization cap annotation */
+.realization-cap-note {
+  font-family: var(--font-data);
+  font-size: 10px;
+  color: var(--accent-high);
+  padding: 6px 10px;
+  border: 1px solid var(--accent-high);
+  opacity: 0.8;
+}
+
+/* Conviction stage annotation (for realization cap label) */
+.conviction-stage__annotation {
+  font-family: var(--font-data);
+  font-size: 9px;
+  color: var(--text-tertiary);
+  font-style: italic;
+  padding: 2px 0 4px 0;
+}
+
+/* Freshness column in hypothesis table */
+.col-freshness {
+  text-align: center;
+}
