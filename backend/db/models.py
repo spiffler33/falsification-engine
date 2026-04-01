@@ -50,6 +50,15 @@ class Hypothesis(Base):
     outcome_notes = Column(Text)  # Free text: what happened, why this verdict
     outcome_pnl_pct = Column(Float)  # Optional: % return from run date to outcome date
 
+    # Realization engine (v6 Phase 1)
+    predicted_magnitude_lower = Column(Float)  # e.g., 0.15 for 15%
+    predicted_magnitude_upper = Column(Float)  # e.g., 0.30 for 30%
+    timeframe_end_date = Column(Text)  # ISO date for payoff band end
+    expression_return = Column(Float)  # Last computed expression-level return
+    realization_vs_lower = Column(Float)  # expression_return / magnitude_lower
+    realization_vs_upper = Column(Float)  # expression_return / magnitude_upper
+    time_elapsed_pct = Column(Float)  # Fraction of holding window consumed
+
 
 class JournalEntry(Base):
     __tablename__ = "journal_entries"

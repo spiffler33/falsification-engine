@@ -353,6 +353,8 @@ def get_run_walkforward(run_id: str, db: Session = Depends(get_db)):
         current_prices[ticker] = _fetch_current_price(ticker)
 
     # Compute direction-aware deltas
+    from backend.realization import compute_expression_return
+
     for row in rows:
         ticker = row["ticker"]
         entry = entry_prices.get(ticker)
@@ -367,6 +369,19 @@ def get_run_walkforward(run_id: str, db: Session = Depends(get_db)):
             row["delta_pct"] = round(raw_delta * 100, 2)
         else:
             row["delta_pct"] = None
+
+    # Compute aggregate expression_return per hypothesis (mean of all leg deltas)
+    hyp_map = {h.id: h for h in hyps}
+    for row in rows:
+        h = hyp_map.get(row["hypothesis_id"])
+        if h:
+            h_assets = json.loads(h.predicted_assets) if h.predicted_assets else []
+            h_dirs = json.loads(h.asset_direction) if h.asset_direction else {}
+            h_current = {t: current_prices[t] for t in h_assets if t in current_prices}
+            expr_ret = compute_expression_return(h_assets, h_dirs, entry_prices, h_current)
+            row["expression_return"] = round(expr_ret, 6) if expr_ret is not None else None
+        else:
+            row["expression_return"] = None
 
     # Outcome summary for this run
     outcome_counts = {"pending": 0, "correct": 0, "incorrect": 0, "partial": 0, "expired": 0}

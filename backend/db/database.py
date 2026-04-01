@@ -115,6 +115,15 @@ def _migrate(eng):
             )
         """)
 
+        # Migration 6: realization engine columns (v6 Phase 1)
+        _add_column("hypotheses", "predicted_magnitude_lower", "REAL")
+        _add_column("hypotheses", "predicted_magnitude_upper", "REAL")
+        _add_column("hypotheses", "timeframe_end_date", "TEXT")
+        _add_column("hypotheses", "expression_return", "REAL")
+        _add_column("hypotheses", "realization_vs_lower", "REAL")
+        _add_column("hypotheses", "realization_vs_upper", "REAL")
+        _add_column("hypotheses", "time_elapsed_pct", "REAL")
+
         raw.commit()
     except Exception:
         pass  # Table may not exist yet on fresh DB (create_all handles it)

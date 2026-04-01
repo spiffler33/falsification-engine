@@ -1,0 +1,105 @@
+# realization.py — Expression-level realization computation (v6 Phase 1).
+# Pure functions, no side effects, no DB access.
+# Depends on: nothing
+# Depended on by: api/hypotheses.py (realization endpoint), api/pipeline.py (walk-forward)
+from __future__ import annotations
+
+from datetime import date
+
+
+def compute_expression_return(
+    predicted_assets: list[str],
+    asset_direction: dict[str, str],
+    entry_prices: dict[str, float],
+    current_prices: dict[str, float],
+) -> float | None:
+    """
+    Compute the expression-level return as the equal-weight mean
+    of direction-adjusted leg returns.
+
+    For a LONG leg:  leg_return = (current - entry) / entry
+    For a SHORT leg: leg_return = (entry - current) / entry
+        (equivalently: -1 * raw_return)
+
+    Expression return = mean(all leg returns)
+
+    Returns None if any ticker is missing from entry_prices or current_prices,
+    or if any entry price is zero/negative.
+    """
+    if not predicted_assets:
+        return None
+
+    leg_returns: list[float] = []
+    for ticker in predicted_assets:
+        if ticker not in entry_prices or ticker not in current_prices:
+            return None
+
+        entry = entry_prices[ticker]
+        current = current_prices[ticker]
+
+        if entry <= 0:
+            return None
+
+        raw_return = (current - entry) / entry
+
+        direction = asset_direction.get(ticker, "LONG")
+        if direction == "SHORT":
+            raw_return = -raw_return
+
+        leg_returns.append(raw_return)
+
+    return sum(leg_returns) / len(leg_returns)
+
+
+def compute_realization_ratios(
+    expression_return: float,
+    predicted_magnitude_lower: float,
+    predicted_magnitude_upper: float,
+) -> dict:
+    """
+    Compare expression return against the payoff band.
+
+    Returns:
+        realization_vs_lower: expression_return / predicted_magnitude_lower
+        realization_vs_upper: expression_return / predicted_magnitude_upper
+
+    Both are ratios. Below 1.0 = hasn't reached the bound. Above 1.0 = has passed it.
+
+    If either magnitude bound is zero or negative (data error), returns None for that ratio.
+    """
+    result = {}
+
+    if predicted_magnitude_lower and predicted_magnitude_lower > 0:
+        result["realization_vs_lower"] = expression_return / predicted_magnitude_lower
+    else:
+        result["realization_vs_lower"] = None
+
+    if predicted_magnitude_upper and predicted_magnitude_upper > 0:
+        result["realization_vs_upper"] = expression_return / predicted_magnitude_upper
+    else:
+        result["realization_vs_upper"] = None
+
+    return result
+
+
+def compute_time_elapsed_pct(
+    entry_date: str,
+    timeframe_end_date: str,
+    as_of_date: str | None = None,
+) -> float:
+    """
+    Fraction of the holding window consumed.
+
+    Returns a float clamped to [0.0, 1.0].
+    At 0.0 the window just opened. At 1.0 the window has expired.
+    """
+    entry = date.fromisoformat(entry_date)
+    end = date.fromisoformat(timeframe_end_date)
+    now = date.fromisoformat(as_of_date) if as_of_date else date.today()
+
+    window = (end - entry).days
+    if window <= 0:
+        return 1.0
+
+    elapsed = (now - entry).days
+    return max(0.0, min(1.0, elapsed / window))

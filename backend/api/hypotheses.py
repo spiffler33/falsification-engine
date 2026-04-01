@@ -13,7 +13,8 @@ from sqlalchemy.orm import Session
 
 from backend.db.database import get_db
 from backend.db.models import Hypothesis as HypothesisModel
-from backend.db.models import JournalEntry, InboxItem, Run, SectorFalsifierAudit
+from backend.db.models import JournalEntry, InboxItem, Run, RunPriceSnapshot, SectorFalsifierAudit
+from backend.realization import compute_expression_return, compute_realization_ratios, compute_time_elapsed_pct
 
 router = APIRouter(tags=["hypotheses"])
 
@@ -303,3 +304,83 @@ def get_conviction_history(hypothesis_id: str, db: Session = Depends(get_db)):
         {"run_id": row[0], "conviction": row[1], "date": row[2]}
         for row in prior
     ]
+
+
+@router.get("/hypotheses/{hypothesis_id}/realization")
+def get_hypothesis_realization(hypothesis_id: str, db: Session = Depends(get_db)):
+    """Compute and return realization primitives for a single hypothesis."""
+    from backend.api.trades import _fetch_current_price
+
+    h = db.query(HypothesisModel).filter(HypothesisModel.id == hypothesis_id).first()
+    if not h:
+        raise HTTPException(status_code=404, detail=f"Hypothesis {hypothesis_id} not found")
+
+    assets = json.loads(h.predicted_assets) if h.predicted_assets else []
+    directions = json.loads(h.asset_direction) if h.asset_direction else {}
+
+    # Entry prices from the originating run's price snapshots
+    snapshots = db.query(RunPriceSnapshot).filter(RunPriceSnapshot.run_id == h.run_id).all()
+    entry_prices = {s.ticker: s.price for s in snapshots}
+
+    # Fetch current prices
+    current_prices: dict[str, float] = {}
+    for ticker in assets:
+        price = _fetch_current_price(ticker)
+        if price is not None:
+            current_prices[ticker] = price
+
+    # Compute expression return
+    expr_return = compute_expression_return(assets, directions, entry_prices, current_prices)
+
+    # Build per-leg detail
+    legs = []
+    for ticker in assets:
+        entry_p = entry_prices.get(ticker)
+        current_p = current_prices.get(ticker)
+        leg_return = None
+        if entry_p and current_p and entry_p > 0:
+            raw = (current_p - entry_p) / entry_p
+            if directions.get(ticker, "LONG") == "SHORT":
+                raw = -raw
+            leg_return = round(raw, 6)
+        legs.append({
+            "ticker": ticker,
+            "direction": directions.get(ticker, "LONG"),
+            "entry": entry_p,
+            "current": current_p,
+            "return": leg_return,
+        })
+
+    # Realization ratios (only if payoff band is set)
+    realization_vs_lower = None
+    realization_vs_upper = None
+    if expr_return is not None and h.predicted_magnitude_lower and h.predicted_magnitude_upper:
+        ratios = compute_realization_ratios(
+            expr_return, h.predicted_magnitude_lower, h.predicted_magnitude_upper
+        )
+        realization_vs_lower = ratios.get("realization_vs_lower")
+        realization_vs_upper = ratios.get("realization_vs_upper")
+
+    # Time elapsed (only if timeframe_end_date is set)
+    time_elapsed = None
+    run = db.query(Run).filter(Run.id == h.run_id).first()
+    entry_date_str = run.price_snapshot_date if run else None
+    if h.timeframe_end_date and entry_date_str:
+        time_elapsed = compute_time_elapsed_pct(entry_date_str, h.timeframe_end_date)
+
+    return {
+        "hypothesis_id": h.id,
+        "expression_return": round(expr_return, 6) if expr_return is not None else None,
+        "legs": legs,
+        "realization_vs_lower": round(realization_vs_lower, 3) if realization_vs_lower is not None else None,
+        "realization_vs_upper": round(realization_vs_upper, 3) if realization_vs_upper is not None else None,
+        "time_elapsed_pct": round(time_elapsed, 4) if time_elapsed is not None else None,
+        "payoff_band": {
+            "lower": h.predicted_magnitude_lower,
+            "upper": h.predicted_magnitude_upper,
+            "end_date": h.timeframe_end_date,
+        },
+        "as_of_date": date.today().isoformat(),
+        "continuation_of": None,
+        "continuation_generation": 1,
+    }
