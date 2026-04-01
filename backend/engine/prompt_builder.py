@@ -229,6 +229,15 @@ RULES:
 6. Each prediction must be specific: include magnitude range, timeframe, and named ETF instruments.
 7. Hard falsifiers must be specific enough to check against data.
 8. Soft falsifiers must include severity (minor/medium/major) inherited from the source theory module.
+9. Each hypothesis MUST include a PAYOFF_BAND block with magnitude_lower, magnitude_upper, and end_date (see OUTPUT FORMAT).
+
+PAYOFF BAND RULES:
+- magnitude_lower and magnitude_upper are the expected EXPRESSION-LEVEL return range, stated as positive decimals (e.g. 0.15 for 15%).
+- For pair/spread hypotheses: the magnitude is the spread return, NOT a single-leg prediction. Example: "DBC outperforms QQQ by 15-30%" -> magnitude_lower: 0.15, magnitude_upper: 0.30.
+- For single-leg hypotheses: the magnitude is the asset return, which equals the expression return. Example: "GLD +10-20%" -> magnitude_lower: 0.10, magnitude_upper: 0.20.
+- Direction is already captured in asset_direction. Magnitudes are always POSITIVE -- they represent expected profitable return on the expression regardless of SHORT legs.
+- magnitude_upper must not exceed 1.0 (100%). No liquid ETF hypothesis should predict a double within the holding window.
+- end_date is YYYY-MM-DD format, must be in the future, within 12 months.
 
 CONSOLIDATION CHECK: Before finalizing, review all generated hypotheses grouped by their primary SHORT or LONG asset. If 3+ hypotheses share the same directional bet on the same asset:
 1. Identify whether they represent genuinely independent mechanisms or variations of the same view.
@@ -260,6 +269,11 @@ def _generation_output_schema() -> str:
       {"name": "Short name", "severity": "minor|medium|major", "condition": "What would wound it", "metric": "data field", "threshold": "value"}
     ],
     "timeframe": "e.g. Through Q3 2026",
+    "payoff_band": {
+      "magnitude_lower": 0.15,
+      "magnitude_upper": 0.30,
+      "end_date": "2026-09-30"
+    },
     "conviction_inputs": {
       "support_strength": 0.0,
       "evidence_quality": 0.0,

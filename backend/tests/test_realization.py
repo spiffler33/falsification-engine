@@ -1,10 +1,13 @@
-# test_realization.py — Tests for expression-level realization pure functions (v6 Phase 1).
+# test_realization.py — Tests for expression-level realization pure functions (v6).
+# Phase 1: compute_expression_return, compute_realization_ratios, compute_time_elapsed_pct
+# Phase 2: validate_payoff_band
 import pytest
 
 from backend.realization import (
     compute_expression_return,
     compute_realization_ratios,
     compute_time_elapsed_pct,
+    validate_payoff_band,
 )
 
 
@@ -152,3 +155,66 @@ def test_time_zero_window():
     """Entry == end -> 1.0 (degenerate window)."""
     result = compute_time_elapsed_pct("2026-01-01", "2026-01-01", "2026-01-01")
     assert result == pytest.approx(1.0)
+
+
+# --- validate_payoff_band ---
+
+def test_valid_payoff_band():
+    """A well-formed payoff band produces no errors."""
+    errors = validate_payoff_band(0.10, 0.25, "2026-09-30", as_of_date="2026-04-01")
+    assert errors == []
+
+
+def test_lower_equals_upper_rejected():
+    """Lower == upper means the band has zero width -> rejected."""
+    errors = validate_payoff_band(0.15, 0.15, "2026-09-30", as_of_date="2026-04-01")
+    assert any("less than" in e for e in errors)
+
+
+def test_lower_exceeds_upper_rejected():
+    """Lower > upper is malformed -> rejected."""
+    errors = validate_payoff_band(0.30, 0.15, "2026-09-30", as_of_date="2026-04-01")
+    assert any("less than" in e for e in errors)
+
+
+def test_upper_exceeds_ceiling_rejected():
+    """Upper > 1.0 (predicting more than a double) -> rejected."""
+    errors = validate_payoff_band(0.10, 1.50, "2026-09-30", as_of_date="2026-04-01")
+    assert any("1.0" in e for e in errors)
+
+
+def test_past_date_rejected():
+    """End date in the past -> rejected."""
+    errors = validate_payoff_band(0.10, 0.25, "2025-01-01", as_of_date="2026-04-01")
+    assert any("future" in e for e in errors)
+
+
+def test_date_too_far_rejected():
+    """End date more than 12 months out -> rejected."""
+    errors = validate_payoff_band(0.10, 0.25, "2027-06-01", as_of_date="2026-04-01")
+    assert any("12 months" in e for e in errors)
+
+
+def test_invalid_date_format_rejected():
+    """Non-ISO date string -> rejected."""
+    errors = validate_payoff_band(0.10, 0.25, "not-a-date", as_of_date="2026-04-01")
+    assert any("valid ISO date" in e for e in errors)
+
+
+def test_negative_lower_rejected():
+    """Negative lower bound -> rejected."""
+    errors = validate_payoff_band(-0.05, 0.25, "2026-09-30", as_of_date="2026-04-01")
+    assert any("positive" in e for e in errors)
+
+
+def test_zero_lower_rejected():
+    """Zero lower bound -> rejected (must be positive, not zero)."""
+    errors = validate_payoff_band(0.0, 0.25, "2026-09-30", as_of_date="2026-04-01")
+    assert any("positive" in e for e in errors)
+
+
+def test_multiple_errors_reported():
+    """A truly malformed band should report all errors, not just the first."""
+    errors = validate_payoff_band(-0.1, 1.5, "2020-01-01", as_of_date="2026-04-01")
+    # Should have: negative lower, upper > 1.0, lower >= upper, past date
+    assert len(errors) >= 3

@@ -4,7 +4,7 @@
 # Depended on by: api/hypotheses.py (realization endpoint), api/pipeline.py (walk-forward)
 from __future__ import annotations
 
-from datetime import date
+from datetime import date, timedelta
 
 
 def compute_expression_return(
@@ -103,3 +103,45 @@ def compute_time_elapsed_pct(
 
     elapsed = (now - entry).days
     return max(0.0, min(1.0, elapsed / window))
+
+
+def validate_payoff_band(
+    predicted_magnitude_lower: float,
+    predicted_magnitude_upper: float,
+    timeframe_end_date: str,
+    as_of_date: str | None = None,
+) -> list[str]:
+    """
+    Validate payoff band fields. Returns list of error messages (empty if valid).
+
+    Constraints (from plan_v6.md Component 2):
+    - Both bounds must be positive
+    - Lower must be strictly less than upper (band has width)
+    - Upper bound capped at 1.0 (100%) -- no liquid ETF hypothesis should
+      predict more than a double within the holding window
+    - timeframe_end_date must be a valid ISO date in the future, within 12 months
+    """
+    errors = []
+
+    if predicted_magnitude_lower <= 0:
+        errors.append("predicted_magnitude_lower must be positive")
+    if predicted_magnitude_upper <= 0:
+        errors.append("predicted_magnitude_upper must be positive")
+
+    if predicted_magnitude_lower >= predicted_magnitude_upper:
+        errors.append("predicted_magnitude_lower must be less than predicted_magnitude_upper")
+
+    if predicted_magnitude_upper > 1.0:
+        errors.append("predicted_magnitude_upper exceeds 1.0 (100%) ceiling")
+
+    today = date.fromisoformat(as_of_date) if as_of_date else date.today()
+    try:
+        end = date.fromisoformat(timeframe_end_date)
+        if end <= today:
+            errors.append("timeframe_end_date must be in the future")
+        if (end - today).days > 365:
+            errors.append("timeframe_end_date must be within 12 months")
+    except (ValueError, TypeError):
+        errors.append("timeframe_end_date is not a valid ISO date")
+
+    return errors

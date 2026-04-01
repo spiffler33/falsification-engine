@@ -74,6 +74,10 @@ FIELD_ALIASES: dict[str, list[str]] = {
     "resolution_channel": [
         "channel", "resolution", "res_channel",
     ],
+    "payoff_band": [
+        "PAYOFF_BAND", "payoff", "band", "magnitude_band",
+        "predicted_band", "prediction_band",
+    ],
 }
 
 
@@ -183,6 +187,30 @@ def parse_generation_output(
             "generated_date": date.today().isoformat(),
         }
 
+        # Extract payoff band fields
+        payoff = _extract_payoff_band(item)
+        hypothesis["predicted_magnitude_lower"] = payoff.get("magnitude_lower")
+        hypothesis["predicted_magnitude_upper"] = payoff.get("magnitude_upper")
+        hypothesis["timeframe_end_date"] = payoff.get("end_date")
+
+        # Validate payoff band if all three fields are present
+        if (hypothesis["predicted_magnitude_lower"] is not None
+                and hypothesis["predicted_magnitude_upper"] is not None
+                and hypothesis["timeframe_end_date"]):
+            from backend.realization import validate_payoff_band
+            band_errors = validate_payoff_band(
+                hypothesis["predicted_magnitude_lower"],
+                hypothesis["predicted_magnitude_upper"],
+                hypothesis["timeframe_end_date"],
+            )
+            if band_errors:
+                field_errors.append(
+                    f"Hypothesis {i+1} ({name}): payoff band warnings: {'; '.join(band_errors)}"
+                )
+                # Log but do NOT reject — tolerant ingestion. The fields are stored
+                # as-is so the human can see the bad values and re-import.
+                logger.warning("Payoff band validation warnings for %s: %s", name, band_errors)
+
         # Stash conviction inputs for later scoring
         conv = item.get("conviction_inputs", {})
         if isinstance(conv, dict):
@@ -250,6 +278,54 @@ def _extract_directions(item: dict, assets: list[str]) -> dict[str, str]:
         return {a: "LONG" for a in assets}
 
     return {}
+
+
+def _extract_payoff_band(item: dict) -> dict:
+    """Extract payoff band fields from any plausible location in the LLM output.
+
+    The LLM may nest these under a "payoff_band" object or place them
+    as top-level fields. We try both.
+
+    Returns a dict with keys: magnitude_lower, magnitude_upper, end_date.
+    Missing values are None.
+    """
+    result = {"magnitude_lower": None, "magnitude_upper": None, "end_date": None}
+
+    # Try nested payoff_band object first
+    band = item.get("payoff_band", {})
+    if isinstance(band, dict) and band:
+        result["magnitude_lower"] = _to_float(band.get("magnitude_lower"))
+        result["magnitude_upper"] = _to_float(band.get("magnitude_upper"))
+        result["end_date"] = band.get("end_date") or band.get("timeframe_end_date")
+        if result["magnitude_lower"] is not None:
+            return result
+
+    # Try top-level fields
+    result["magnitude_lower"] = _to_float(
+        item.get("predicted_magnitude_lower")
+        or item.get("magnitude_lower")
+    )
+    result["magnitude_upper"] = _to_float(
+        item.get("predicted_magnitude_upper")
+        or item.get("magnitude_upper")
+    )
+    result["end_date"] = (
+        item.get("timeframe_end_date")
+        or item.get("end_date")
+        or item.get("payoff_end_date")
+    )
+
+    return result
+
+
+def _to_float(val) -> float | None:
+    """Safely convert a value to float. Returns None on failure."""
+    if val is None:
+        return None
+    try:
+        return float(val)
+    except (ValueError, TypeError):
+        return None
 
 
 # ---------------------------------------------------------------------------
