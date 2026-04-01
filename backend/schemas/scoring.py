@@ -31,11 +31,13 @@ class Stage2Discounts(BaseModel):
 
 
 class Stage3Gates(BaseModel):
-    """Stage 3: Hard caps from horizon alignment and expression efficiency."""
+    """Stage 3: Hard caps from horizon alignment, expression efficiency, and realization."""
     horizon_score: float = 0.0
     horizon_cap: Optional[float] = None
     expression_score: float = 0.0
     expression_cap: Optional[float] = None
+    realization_cap: Optional[float] = None
+    freshness_label: str = ""
     final: float = 0.0
     floor_killed: bool = False
     kill_reason: str = ""
@@ -73,6 +75,6 @@ class ConvictionInput(BaseModel):
     active_regime_flags: List[Dict] = []  # active flags from compute_regime_flags()
     # Stage 3 inputs
     sector_falsifier_audit: List[Dict] = []  # parsed sector audit entries from output_parser
-    # Stage 3 inputs
     horizon_alignment: float = 0.0  # H, 0.0-1.0
     expression_efficiency: float = 0.0  # E, 0.0-1.0
+    freshness_label: str = ""  # v6: from compute_freshness_label() — drives realization cap

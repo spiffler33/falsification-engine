@@ -1,10 +1,33 @@
-# realization.py — Expression-level realization computation (v6 Phase 1).
+# realization.py — Expression-level realization computation (v6 Phases 1 + 4).
 # Pure functions, no side effects, no DB access.
 # Depends on: nothing
-# Depended on by: api/hypotheses.py (realization endpoint), api/pipeline.py (walk-forward)
+# Depended on by: api/hypotheses.py (realization endpoint), api/pipeline.py (walk-forward),
+#                 engine/conviction.py (realization cap in Stage 3)
 from __future__ import annotations
 
 from datetime import date, timedelta
+
+
+# ============================================================
+# PROVISIONAL POLICY CONFIGURATION — ALL THRESHOLDS ARE [CALIBRATION]
+# Change these values based on live run evidence.
+# They are configuration, not architecture.
+# ============================================================
+
+# [CALIBRATION] Time axis threshold — fraction of holding window
+# Below this = "early", at or above = "late"
+TIME_THRESHOLD = 0.50
+
+# [CALIBRATION] Conviction caps per freshness label (None = no cap)
+REALIZATION_CAPS = {
+    "FRESH":            None,
+    "WORKING":          None,
+    "ACCELERATING":     None,
+    "UNDERPERFORMING":  None,
+    "MATURE":           7.0,
+    "EXPRESSED":        5.0,
+    "INDETERMINATE":    None,
+}
 
 
 def compute_expression_return(
@@ -145,3 +168,52 @@ def validate_payoff_band(
         errors.append("timeframe_end_date is not a valid ISO date")
 
     return errors
+
+
+# ---------------------------------------------------------------------------
+# Provisional Policy Layer (v6 Phase 4)
+# ---------------------------------------------------------------------------
+
+def compute_freshness_label(
+    realization_vs_lower: float | None,
+    realization_vs_upper: float | None,
+    time_elapsed_pct: float,
+) -> str:
+    """
+    Compute the freshness label from realization primitives.
+
+    Two axes:
+      Magnitude: R < L (below lower) | L <= R < U (within band) | R >= U (above upper)
+      Time:      early (< TIME_THRESHOLD) | late (>= TIME_THRESHOLD)
+
+    Matrix (6 cells):
+      Below lower + early  = FRESH
+      Below lower + late   = UNDERPERFORMING
+      Within band + early  = WORKING
+      Within band + late   = MATURE
+      Above upper + early  = ACCELERATING
+      Above upper + late   = EXPRESSED
+
+    If realization ratios are None (missing payoff band data), returns INDETERMINATE.
+    """
+    if realization_vs_lower is None or realization_vs_upper is None:
+        return "INDETERMINATE"
+
+    late = time_elapsed_pct >= TIME_THRESHOLD
+
+    if realization_vs_upper >= 1.0:
+        return "EXPRESSED" if late else "ACCELERATING"
+    elif realization_vs_lower >= 1.0:
+        return "MATURE" if late else "WORKING"
+    else:
+        return "UNDERPERFORMING" if late else "FRESH"
+
+
+def compute_realization_cap(freshness_label: str) -> float | None:
+    """
+    Return the conviction cap for the given freshness label, or None if no cap applies.
+
+    This cap is applied in Stage 3 alongside horizon_cap and expression_cap:
+        FINAL = min(SCORE, horizon_cap, expression_cap, realization_cap)
+    """
+    return REALIZATION_CAPS.get(freshness_label, None)

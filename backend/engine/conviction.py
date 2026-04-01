@@ -14,6 +14,7 @@ from datetime import date, timedelta
 from typing import Any, Optional
 
 from backend.engine.regime import compute_regime_discount
+from backend.realization import compute_realization_cap
 from backend.schemas.scoring import (
     ConvictionInput,
     ConvictionMath,
@@ -340,9 +341,9 @@ def _stage2_discounts(inp: ConvictionInput, raw_score: float) -> Stage2Discounts
 # ---------------------------------------------------------------------------
 
 def _stage3_gates(inp: ConvictionInput, adjusted_score: float) -> Stage3Gates:
-    """Apply hard caps from horizon alignment and expression efficiency.
+    """Apply hard caps from horizon alignment, expression efficiency, and realization.
 
-    FINAL = min(SCORE, horizon_cap, expression_cap)
+    FINAL = min(SCORE, horizon_cap, expression_cap, realization_cap)
     Round to nearest integer. Output: 0-10.
     """
     # Horizon cap
@@ -359,12 +360,17 @@ def _stage3_gates(inp: ConvictionInput, adjusted_score: float) -> Stage3Gates:
             expression_cap = cap
             break
 
-    # Apply caps
+    # Realization cap (v6 Phase 4) — from freshness label
+    realization_cap = compute_realization_cap(inp.freshness_label) if inp.freshness_label else None
+
+    # Apply caps — most restrictive wins
     final = adjusted_score
     if horizon_cap is not None:
         final = min(final, horizon_cap)
     if expression_cap is not None:
         final = min(final, expression_cap)
+    if realization_cap is not None:
+        final = min(final, realization_cap)
 
     # Round to nearest integer
     final = round(final)
@@ -380,6 +386,8 @@ def _stage3_gates(inp: ConvictionInput, adjusted_score: float) -> Stage3Gates:
         horizon_cap=horizon_cap,
         expression_score=inp.expression_efficiency,
         expression_cap=expression_cap,
+        realization_cap=realization_cap,
+        freshness_label=inp.freshness_label,
         final=float(final),
         floor_killed=floor_killed,
         kill_reason=kill_reason,
