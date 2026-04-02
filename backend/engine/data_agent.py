@@ -24,7 +24,7 @@ from typing import Optional
 from fredapi import Fred
 
 from backend.config import DATA_DIR, MOCK_DATA_DIR, settings
-from backend.schemas.briefing import BriefingPacket, MarketData
+from backend.schemas.briefing import BriefingPacket, MarketData, WebSourcedData
 
 logger = logging.getLogger(__name__)
 
@@ -660,6 +660,7 @@ def _build_briefing_from_data(
     market_data: dict[str, MarketData],
     computed: dict[str, Optional[float]],
     fetch_timestamp: str,
+    web_sourced: Optional[dict[str, WebSourcedData]] = None,
 ) -> BriefingPacket:
     """Assemble a BriefingPacket from fetched + computed data."""
     # Split fred_data into sections by prefix
@@ -708,6 +709,7 @@ def _build_briefing_from_data(
         sentiment=sentiment,
         computed=computed_clean,
         markets=market_data,
+        web_sourced=web_sourced or {},
     )
 
 
@@ -900,7 +902,7 @@ def _compute_realized_vol(spy_daily: list[float], window: int = 20) -> Optional[
     return round(realized, 2)
 
 
-def build_briefing(use_cache: bool = True, on_progress=None) -> BriefingPacket:
+def build_briefing(use_cache: bool = True, on_progress=None, skip_web: bool = False) -> BriefingPacket:
     """Main entry point: fetch all data and build a BriefingPacket.
 
     If use_cache is True and a fresh cache exists, returns cached data.
@@ -909,6 +911,7 @@ def build_briefing(use_cache: bool = True, on_progress=None) -> BriefingPacket:
         use_cache: If True, return cached data when available.
         on_progress: Optional callback(stage, detail) for progress reporting.
                      stage: short phase name, detail: human-readable status string.
+        skip_web: If True, skip web data agent (faster, FRED+Yahoo only).
     """
     def emit(stage, detail):
         if on_progress:
@@ -944,6 +947,25 @@ def build_briefing(use_cache: bool = True, on_progress=None) -> BriefingPacket:
     market_data = fetch_yahoo_data(on_progress=yahoo_progress)
     emit("yahoo", f"Yahoo complete: {len(market_data)}/{total_tickers} tickers")
 
+    # Fetch web-sourced data (ISM, CAPE, margin debt, etc.)
+    web_sourced: dict[str, WebSourcedData] = {}
+    if not skip_web:
+        from backend.engine.web_data_agent import fetch_web_data
+
+        emit("web", "Fetching web-sourced data (16 fields)...")
+        web_ok = 0
+
+        def web_progress(field_name: str, status: str):
+            nonlocal web_ok
+            if status.startswith("ok"):
+                web_ok += 1
+            emit("web", f"Web: {field_name} — {status}")
+
+        web_sourced = fetch_web_data(fred_data=fred_data, on_progress=web_progress)
+        emit("web", f"Web complete: {len(web_sourced)}/16 fields")
+    else:
+        emit("web", "Web data skipped (--skip-web)")
+
     # Fetch SPY daily data (single fetch for both drawdown + realized vol)
     spy_daily = _fetch_spy_daily_data()
 
@@ -953,7 +975,10 @@ def build_briefing(use_cache: bool = True, on_progress=None) -> BriefingPacket:
 
     # Assemble briefing
     emit("assemble", "Assembling briefing packet...")
-    briefing = _build_briefing_from_data(fred_data, market_data, computed, fetch_timestamp)
+    briefing = _build_briefing_from_data(fred_data, market_data, computed, fetch_timestamp, web_sourced)
+
+    # Validate (placeholder — Phase 4 will add validation_agent)
+    emit("validate", "Validation: not yet implemented (Phase 4)")
 
     # Cache result
     emit("save", "Saving to cache...")

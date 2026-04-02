@@ -1,9 +1,10 @@
 #!/usr/bin/env python3
-"""CLI script: Fetch FRED + Yahoo data, produce briefing_packet.json.
+"""CLI script: Fetch FRED + Yahoo + web data, produce briefing_packet.json.
 
 Usage:
     python -m scripts.run_data              # fetch with cache
     python -m scripts.run_data --fresh      # force fresh fetch
+    python -m scripts.run_data --skip-web   # FRED+Yahoo only (no web scraping)
     python -m scripts.run_data --summary    # print summary of latest briefing
 """
 import argparse
@@ -22,6 +23,7 @@ from backend.config import MOCK_DATA_DIR, DATA_DIR
 def main():
     parser = argparse.ArgumentParser(description="Falsification Engine — Data Agent")
     parser.add_argument("--fresh", action="store_true", help="Force fresh fetch (ignore cache)")
+    parser.add_argument("--skip-web", action="store_true", help="Skip web data agent (FRED+Yahoo only)")
     parser.add_argument("--summary", action="store_true", help="Print summary of briefing")
     parser.add_argument("--output", type=str, default=None, help="Output directory (default: mock_data/)")
     args = parser.parse_args()
@@ -39,7 +41,7 @@ def main():
     print()
 
     # Build briefing
-    briefing = build_briefing(use_cache=not args.fresh)
+    briefing = build_briefing(use_cache=not args.fresh, skip_web=args.skip_web)
 
     # Save to file
     output_dir = Path(args.output) if args.output else None
@@ -96,6 +98,17 @@ def _print_summary(briefing):
     print("\n  COMPUTED METRICS")
     for k, v in sorted(briefing.computed.items()):
         print(f"    {k:30s} {_fmt(v)}")
+
+    # Web-sourced data
+    if briefing.web_sourced:
+        print("\n  WEB-SOURCED DATA")
+        for k, ws in sorted(briefing.web_sourced.items()):
+            conf = f"[{ws.confidence}]" if ws.confidence else ""
+            print(f"    {k:30s} {_fmt(ws.value):>12s}  {conf}")
+        print(f"\n    ({len(briefing.web_sourced)}/16 fields populated)")
+    else:
+        print("\n  WEB-SOURCED DATA")
+        print("    (skipped or unavailable)")
 
     # Market summary (top movers)
     print("\n  MARKETS (selected)")

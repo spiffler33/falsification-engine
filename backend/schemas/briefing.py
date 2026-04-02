@@ -99,10 +99,10 @@ class BriefingPacket(BaseModel):
             if isinstance(section, dict):
                 val = section.get(field_name)
                 if val is not None:
+                    # web_sourced values are WebSourcedData objects — extract .value
+                    if isinstance(val, WebSourcedData):
+                        return val.value
                     return val
-                # For web_sourced, extract the .value
-                if section_name == "web_sourced" and field_name in self.web_sourced:
-                    return self.web_sourced[field_name].value
             return None
 
         # Try computed metrics
