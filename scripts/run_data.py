@@ -126,6 +126,26 @@ def _print_summary(briefing):
     total_tickers = len(briefing.markets)
     print(f"\n    ({total_tickers} total tickers in universe)")
 
+    # Data quality (validation report)
+    if briefing.data_quality:
+        dq = briefing.data_quality
+        quality = dq.get("overall_quality", "unknown").upper()
+        errors = dq.get("errors", 0)
+        warnings = dq.get("warnings", 0)
+        dq_checks = dq.get("checks", [])
+
+        print(f"\n  DATA QUALITY: {quality}")
+        print(f"    {errors} errors, {warnings} warnings, {len(dq_checks)} total checks")
+
+        for check in dq_checks:
+            sev = check.get("severity", "")
+            if sev == "error":
+                print(f"    !! [{check['check_type']}] {check['message']}")
+            elif sev == "warning":
+                print(f"     ? [{check['check_type']}] {check['message']}")
+    else:
+        print("\n  DATA QUALITY: not validated")
+
     print()
     print("=" * 60)
 

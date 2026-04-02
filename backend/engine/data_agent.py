@@ -977,8 +977,23 @@ def build_briefing(use_cache: bool = True, on_progress=None, skip_web: bool = Fa
     emit("assemble", "Assembling briefing packet...")
     briefing = _build_briefing_from_data(fred_data, market_data, computed, fetch_timestamp, web_sourced)
 
-    # Validate (placeholder — Phase 4 will add validation_agent)
-    emit("validate", "Validation: not yet implemented (Phase 4)")
+    # Validate briefing data (Phase 4: validation agent)
+    from backend.engine.validation_agent import validate_briefing
+
+    emit("validate", "Running validation checks...")
+
+    # Load previous briefing for anomaly detection (raw cache, skip freshness check)
+    previous_briefing = None
+    if CACHE_FILE.exists():
+        try:
+            prev_raw = json.loads(CACHE_FILE.read_text())
+            previous_briefing = BriefingPacket.model_validate(prev_raw)
+        except Exception:
+            pass
+
+    report = validate_briefing(briefing, previous_briefing)
+    briefing.data_quality = report.model_dump()
+    emit("validate", f"Validation: {report.overall_quality} ({report.errors} errors, {report.warnings} warnings)")
 
     # Cache result
     emit("save", "Saving to cache...")
