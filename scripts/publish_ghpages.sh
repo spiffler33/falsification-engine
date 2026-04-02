@@ -24,8 +24,22 @@ LOG_FILE="$PROJECT_ROOT/logs/publish.log"
 # Ensure logs directory exists
 mkdir -p "$(dirname "$LOG_FILE")"
 
+# Rotate log if it exceeds ~44 publishes (~2000 lines)
+if [ -f "$LOG_FILE" ] && [ "$(wc -l < "$LOG_FILE")" -gt 2000 ]; then
+  tail -500 "$LOG_FILE" > "$LOG_FILE.tmp" && mv "$LOG_FILE.tmp" "$LOG_FILE"
+fi
+
 # Tee all output to log file so failures can be investigated
 exec > >(tee -a "$LOG_FILE") 2>&1
+
+# Prevent concurrent publishes from corrupting the build
+LOCKFILE="$PROJECT_ROOT/.publish.lock"
+if [ -f "$LOCKFILE" ]; then
+  echo "ERROR: Another publish is already in progress"
+  exit 1
+fi
+touch "$LOCKFILE"
+trap 'rm -f "$LOCKFILE"' EXIT
 
 echo ""
 echo "=========================================="
@@ -72,22 +86,26 @@ npx vite build
 
 # 3. Inject snapshot into the BUILT output (dist/), not source files
 CACHE_BUST=$(date +%s)
-echo "window.__SNAPSHOT__ = $SNAPSHOT_JSON;" > "$FRONTEND_DIR/dist/snapshot.js"
+# Sanitize </ sequences to prevent script context injection in the HTML page.
+# <\/ is valid in JS string literals but prevents the HTML parser from seeing a closing tag.
+SAFE_JSON=$(echo "$SNAPSHOT_JSON" | sed 's|</|<\\/|g')
+echo "window.__SNAPSHOT__ = $SAFE_JSON;" > "$FRONTEND_DIR/dist/snapshot.js"
 echo "[3/5] Snapshot written to dist/snapshot.js"
 
 # Inject the snapshot script tag into dist/index.html (not the source index.html)
 DIST_INDEX="$FRONTEND_DIR/dist/index.html"
-sed -i.bak "s|</head>|<script src=\"./snapshot.js?v=${CACHE_BUST}\"></script></head>|" "$DIST_INDEX"
+sed -i.bak "s|</head>|<script defer src=\"./snapshot.js?v=${CACHE_BUST}\"></script></head>|" "$DIST_INDEX"
 rm -f "$DIST_INDEX.bak"
 echo "  Injected snapshot.js script tag into dist/index.html"
 
 # Add .nojekyll to prevent GitHub Pages from ignoring _-prefixed files
 touch "$FRONTEND_DIR/dist/.nojekyll"
 
-# Add a 404.html that redirects to index.html (SPA support)
+# 404.html is a safety net — HashRouter means it rarely triggers, but
+# direct deep links (e.g. shared /hypothesis/X URLs) would 404 without it.
 cp "$FRONTEND_DIR/dist/index.html" "$FRONTEND_DIR/dist/404.html"
 
-# 5. Deploy to gh-pages branch
+# 4. Deploy to gh-pages branch
 echo "[4/5] Deploying to gh-pages branch ..."
 cd "$PROJECT_ROOT"
 
@@ -98,13 +116,13 @@ REMOTE_URL=$(git remote get-url origin)
 # Use a temporary directory to avoid polluting the working tree.
 # The orphan-branch-in-working-tree approach leaks node_modules, __pycache__,
 # .env, and other untracked files because the orphan has no .gitignore.
-TMPDIR=$(mktemp -d)
-trap "rm -rf $TMPDIR" EXIT
+DEPLOY_TMPDIR=$(mktemp -d)
+trap 'rm -f "$LOCKFILE"; rm -rf "$DEPLOY_TMPDIR"' EXIT
 
-cp -r "$DEPLOY_DIR"/* "$TMPDIR/"
-cp "$DEPLOY_DIR/.nojekyll" "$TMPDIR/" 2>/dev/null || true
+cp -r "$DEPLOY_DIR"/* "$DEPLOY_TMPDIR/"
+cp "$DEPLOY_DIR/.nojekyll" "$DEPLOY_TMPDIR/" 2>/dev/null || true
 
-cd "$TMPDIR"
+cd "$DEPLOY_TMPDIR"
 git init
 git checkout -b gh-pages
 git add -A
@@ -116,7 +134,7 @@ cd "$PROJECT_ROOT"
 
 # No source-file cleanup needed — we only modified dist/
 
-# 6. Verify the push landed
+# 5. Verify the push landed
 echo "[5/5] Verifying deployment ..."
 cd "$PROJECT_ROOT"
 REMOTE_SHA=$(git ls-remote origin gh-pages 2>/dev/null | awk '{print $1}')

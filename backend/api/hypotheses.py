@@ -40,11 +40,11 @@ def _build_falsifier_condition_map() -> dict[str, str]:
 _FALSIFIER_CONDITIONS: dict[str, str] = _build_falsifier_condition_map()
 
 
-def _model_to_dict(h: HypothesisModel, db: Session) -> dict:
+def _model_to_dict(h: HypothesisModel, db: Session, *, for_snapshot: bool = False) -> dict:
     """Convert a SQLAlchemy Hypothesis row to the frontend Hypothesis shape."""
     hard_f = json.loads(h.hard_falsifiers) if h.hard_falsifiers else []
     soft_f = json.loads(h.soft_falsifiers) if h.soft_falsifiers else []
-    conv_math = json.loads(h.conviction_math) if h.conviction_math else None
+    conv_math = None if for_snapshot else (json.loads(h.conviction_math) if h.conviction_math else None)
     assets = json.loads(h.predicted_assets) if h.predicted_assets else []
     directions = json.loads(h.asset_direction) if h.asset_direction else {}
     source_theories = json.loads(h.source_theories) if h.source_theories else [h.source_theory]
@@ -63,17 +63,21 @@ def _model_to_dict(h: HypothesisModel, db: Session) -> dict:
     has_action = db.query(JournalEntry).filter(JournalEntry.hypothesis_id == h.id).first() is not None
 
     # Get research notes (inbox items linked to this hypothesis)
-    notes = db.query(InboxItem).filter(InboxItem.hypothesis_id == h.id).all()
-    research_notes = [
-        {
-            "id": n.id,
-            "date": n.date,
-            "type": n.type,
-            "content": n.content,
-            "source": n.source or "",
-        }
-        for n in notes
-    ]
+    # Skipped in snapshot mode — saves ~2-5 KB per hypothesis + a DB query
+    if for_snapshot:
+        research_notes = []
+    else:
+        notes = db.query(InboxItem).filter(InboxItem.hypothesis_id == h.id).all()
+        research_notes = [
+            {
+                "id": n.id,
+                "date": n.date,
+                "type": n.type,
+                "content": n.content,
+                "source": n.source or "",
+            }
+            for n in notes
+        ]
 
     # Get conviction history from prior runs
     prior = (
@@ -125,7 +129,8 @@ def _model_to_dict(h: HypothesisModel, db: Session) -> dict:
             {"sector_id": sid, "display_name": SECTOR_DISPLAY_NAMES.get(sid, sid)}
             for sid in (json.loads(h.sector_appendices_applied) if h.sector_appendices_applied else [])
         ],
-        "sector_falsifier_audit": [
+        # Skipped in snapshot mode — saves ~2-5 KB per hypothesis + a DB query
+        "sector_falsifier_audit": [] if for_snapshot else [
             {
                 "id": a.id,
                 "sector_id": a.sector_id,
