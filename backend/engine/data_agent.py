@@ -124,6 +124,53 @@ FRED_SERIES: dict[str, dict] = {
         "field": "credit.ig_spread",
         "transform": "pct_to_bps",  # BAML IG OAS: percentage points → basis points
     },
+    # Credit — SLOOS (Senior Loan Officer Opinion Survey)
+    "DRTSCLCC": {
+        "field": "credit.sloos_tightening_ci",
+        "transform": "level",  # net % of banks tightening C&I lending standards
+    },
+    # Sentiment
+    "UMCSENT": {
+        "field": "sentiment.consumer_sentiment",
+        "transform": "level",  # University of Michigan Consumer Sentiment Index
+    },
+    # Fiscal / Debt — used by debt_cycle_long, fiscal_dominance_arithmetic, monetary_architecture
+    "GFDEGDQ188S": {
+        "field": "computed_fred.federal_debt_to_gdp",
+        "transform": "level",  # Federal Debt: Total Public Debt as % of GDP (quarterly)
+    },
+    "TCMDODNS": {
+        "field": "computed_fred.total_credit_debt",
+        "transform": "level",  # Total Credit Market Debt by Domestic Nonfinancial Sectors ($B)
+    },
+    "GFDEBTN": {
+        "field": "computed_fred.total_public_debt",
+        "transform": "level",  # Total Public Debt Outstanding ($M)
+    },
+    "FDHBFIN": {
+        "field": "computed_fred.foreign_treasury_holdings",
+        "transform": "level",  # Foreign Holdings of US Treasury Securities ($B)
+    },
+    "A091RC1Q027SBEA": {
+        "field": "computed_fred.federal_interest_payments",
+        "transform": "level",  # Federal Gov Interest Payments, annualized rate ($B)
+    },
+    "W006RC1Q027SBEA": {
+        "field": "computed_fred.federal_tax_receipts",
+        "transform": "level",  # Federal Gov Current Tax Receipts, annualized rate ($B)
+    },
+    "CP": {
+        "field": "computed_fred.corporate_profits",
+        "transform": "level",  # Corporate Profits After Tax ($B)
+    },
+    "WILL5000INDFC": {
+        "field": "computed_fred.wilshire_5000",
+        "transform": "level",  # Wilshire 5000 Full Cap Index (for Buffett Indicator)
+    },
+    "MTSDS133FMS": {
+        "field": "computed_fred.monthly_treasury_deficit",
+        "transform": "level",  # Monthly Treasury Statement: deficit ($M, negative = deficit)
+    },
 }
 
 
@@ -341,12 +388,22 @@ def _calc_return(
 def _compute_metrics(
     fred_data: dict[str, Optional[float]],
     market_data: dict[str, MarketData],
+    fred_timeseries: Optional[dict[str, object]] = None,
+    spy_daily: Optional[list[float]] = None,
 ) -> dict[str, Optional[float]]:
     """Derive computed metrics from raw FRED + Yahoo data.
 
     These field names must match what theory modules reference as computed metrics.
+
+    Args:
+        fred_data: Transformed FRED values keyed by field path.
+        market_data: Yahoo market data keyed by ticker.
+        fred_timeseries: Raw pandas Series for WALCL/WTREGEN/RRPONTSYD (for 30d change).
+        spy_daily: SPY daily closes for drawdown + realized vol.
     """
     computed: dict[str, Optional[float]] = {}
+    if fred_timeseries is None:
+        fred_timeseries = {}
 
     # --- Yield curves ---
     t2y = fred_data.get("rates.treasury_2y")
@@ -363,15 +420,30 @@ def _compute_metrics(
     if t10y is not None and be10y is not None:
         computed["real_10y"] = round(t10y - be10y, 2)
 
-    # --- Equity risk premium (SPY earnings yield - 10Y) ---
-    # SPY earnings yield ≈ 1/PE. S&P 500 PE ~22 → earnings yield ~4.5%
-    # For v1, use a rough approximation. Precise PE data requires web search.
-    spy = market_data.get("SPY")
-    if spy and spy.price and t10y is not None:
-        # Rough estimate: SPY earnings yield ≈ 4.5% (updated when we get PE data)
-        # For now, store the 10Y component and flag this as approximate
-        estimated_earnings_yield = 4.5  # placeholder — would need S&P PE ratio
-        computed["equity_risk_premium"] = round(estimated_earnings_yield - t10y, 2)
+    # --- Equity risk premium ---
+    # Improved: use corporate profits for earnings yield estimate if available.
+    # CP (after-tax corporate profits, annualized) / approx S&P market cap.
+    # Will be replaced by Shiller earnings yield in Phase 2 (web agent).
+    spy_data = market_data.get("SPY")
+    cp = fred_data.get("computed_fred.corporate_profits")
+    gdp = fred_data.get("growth.gdp_latest")
+    if cp is not None and gdp is not None and gdp > 0 and t10y is not None:
+        # S&P 500 is ~80% of total market cap; Wilshire 5000 / GDP gives Buffett ratio
+        # Earnings yield ≈ CP / (GDP * Buffett ratio) — rough but better than 4.5% constant
+        wilshire = fred_data.get("computed_fred.wilshire_5000")
+        if wilshire is not None and wilshire > 0:
+            # Wilshire 5000 index: approx conversion to market cap ($T)
+            # As of 2024-2025, Wilshire 5000 ~45000 ≈ $50T market cap
+            approx_market_cap_T = wilshire / 900  # rough scalar
+            if approx_market_cap_T > 0:
+                earnings_yield = (cp / 1000) / approx_market_cap_T * 100  # CP is $B
+                computed["equity_risk_premium"] = round(earnings_yield - t10y, 2)
+            else:
+                computed["equity_risk_premium"] = round(4.5 - t10y, 2)
+        else:
+            computed["equity_risk_premium"] = round(4.5 - t10y, 2)
+    elif spy_data and spy_data.price and t10y is not None:
+        computed["equity_risk_premium"] = round(4.5 - t10y, 2)
 
     # --- Net liquidity (Fed BS - TGA - RRP) ---
     fed_bs = fred_data.get("liquidity.fed_balance_sheet")
@@ -380,9 +452,9 @@ def _compute_metrics(
     if fed_bs is not None and tga is not None and rrp is not None:
         net_liq = fed_bs - tga - rrp
         computed["net_liquidity"] = round(net_liq, 0)
-        # 30d change would need historical data — store current value for now
-        # Will be computed when we have time-series caching
-        computed["net_liquidity_30d_change"] = None
+
+    # --- Net liquidity 30d change (from FRED time series) ---
+    computed["net_liquidity_30d_change"] = _compute_net_liq_30d_change(fred_timeseries)
 
     # --- Gold/Oil ratio (GLD price / USO price) ---
     gld = market_data.get("GLD")
@@ -392,7 +464,6 @@ def _compute_metrics(
 
     # --- EM/US relative (EEM return - SPY return) ---
     eem = market_data.get("EEM")
-    spy_data = market_data.get("SPY")
     if eem and spy_data:
         if eem.return_3m is not None and spy_data.return_3m is not None:
             computed["em_us_relative_3m"] = round(eem.return_3m - spy_data.return_3m, 2)
@@ -400,9 +471,9 @@ def _compute_metrics(
         if eem.return_12m is not None and spy_data.return_12m is not None:
             computed["em_us_relative_12m"] = round(eem.return_12m - spy_data.return_12m, 2)
 
-    # --- EEM/SPY 3-year relative (would need 3Y data, approximate with 12M) ---
+    # --- EEM/SPY 3-year relative (approximate with 12M) ---
     if eem and spy_data and eem.return_12m is not None and spy_data.return_12m is not None:
-        computed["eem_spy_3y_relative"] = computed.get("em_us_relative_12m")  # best proxy
+        computed["eem_spy_3y_relative"] = computed.get("em_us_relative_12m")
 
     # --- FXI and KWEB 3M returns (direct from market data) ---
     fxi = market_data.get("FXI")
@@ -420,15 +491,16 @@ def _compute_metrics(
 
     # --- VIX vs realized vol ---
     vix = market_data.get("^VIX")
-    if vix and vix.price is not None and spy_data:
-        # Realized vol would need daily returns series
-        # For v1: VIX level is the primary indicator, realized gap is approximate
-        # Store VIX level; compute gap when we have daily returns
-        computed["vix_vs_realized"] = None  # needs daily SPY returns for 20d realized
+    if vix and vix.price is not None and spy_daily:
+        realized = _compute_realized_vol(spy_daily)
+        if realized is not None:
+            computed["vix_vs_realized"] = round(vix.price - realized, 2)
+        else:
+            computed["vix_vs_realized"] = None
+    else:
+        computed["vix_vs_realized"] = None
 
     # --- Hard assets vs nominal bonds (12M) ---
-    # Hard assets: GLD, SLV, DBC average returns
-    # Nominal bonds: TLT, IEF, AGG average returns
     hard_tickers = ["GLD", "SLV", "DBC"]
     bond_tickers = ["TLT", "IEF", "AGG"]
 
@@ -447,15 +519,13 @@ def _compute_metrics(
         computed["hard_vs_nominal_12m"] = round(avg_hard - avg_bond, 2)
 
     # --- SPY drawdown from 52-week high ---
-    if spy_data and spy_data.price:
-        # We'd need the 52-week high. Approximate using 12M return.
-        # If 12M return is positive, drawdown is likely small.
-        # For precise value, we'd need the max price in the last year.
-        # For v1, store None — will compute from price series if available.
+    if spy_daily:
+        computed["spy_drawdown_from_52w_high"] = _compute_spy_drawdown(spy_daily)
+    else:
         computed["spy_drawdown_from_52w_high"] = None
 
-    # --- Top 10 S&P 500 weight (requires external data — web search) ---
-    computed["top_10_sp500_weight"] = None  # web search required
+    # --- Top 10 S&P 500 weight (Phase 2: web agent) ---
+    computed["top_10_sp500_weight"] = None
 
     # --- Commodity index 3M change (DBC return) ---
     dbc = market_data.get("DBC")
@@ -468,7 +538,117 @@ def _compute_metrics(
     if ff is not None and cpi is not None:
         computed["real_fed_funds"] = round(ff - cpi, 2)
 
+    # -----------------------------------------------------------------------
+    # NEW: Derived metrics from expanded FRED series
+    # -----------------------------------------------------------------------
+
+    # --- Interest expense / tax receipts ratio (fiscal_dominance_arithmetic) ---
+    interest = fred_data.get("computed_fred.federal_interest_payments")
+    receipts = fred_data.get("computed_fred.federal_tax_receipts")
+    if interest is not None and receipts is not None and receipts > 0:
+        computed["interest_receipts_ratio"] = round((interest / receipts) * 100, 1)
+
+    # --- Fed BS / GDP (debt_cycle_long) ---
+    if fed_bs is not None and gdp is not None and gdp > 0:
+        fed_bs_billions = fed_bs / 1000  # WALCL is in millions
+        computed["fed_bs_gdp_ratio"] = round((fed_bs_billions / gdp) * 100, 1)
+
+    # --- Federal debt to GDP (debt_cycle_long) ---
+    debt_gdp = fred_data.get("computed_fred.federal_debt_to_gdp")
+    if debt_gdp is not None:
+        computed["federal_debt_to_gdp"] = round(debt_gdp, 1)
+
+    # --- SLOOS net tightening (debt_cycle_short) ---
+    sloos = fred_data.get("credit.sloos_tightening_ci")
+    if sloos is not None:
+        computed["sloos_net_tightening"] = round(sloos, 1)
+
+    # --- Deficit pace annualized (fiscal_dominance_liquidity) ---
+    monthly_deficit = fred_data.get("computed_fred.monthly_treasury_deficit")
+    if monthly_deficit is not None:
+        # MTSDS133FMS is in millions; negative = deficit. Annualize and convert to $B.
+        computed["deficit_pace_annualized"] = round(abs(monthly_deficit) * 12 / 1000, 1)
+
+    # --- Buffett indicator: total market cap / GDP (valuation_mean_reversion) ---
+    wilshire = fred_data.get("computed_fred.wilshire_5000")
+    if wilshire is not None and gdp is not None and gdp > 0:
+        # Wilshire 5000 index: rough conversion to market cap in $T
+        # Historical calibration: Wilshire ~45000 ≈ $50T (factor ≈ 1/900)
+        approx_market_cap_T = wilshire / 900
+        gdp_T = gdp / 1000  # GDP is in billions
+        if gdp_T > 0:
+            computed["buffett_indicator"] = round(approx_market_cap_T / gdp_T, 2)
+
+    # --- Foreign treasury holdings % of total outstanding (monetary_architecture) ---
+    foreign_holdings = fred_data.get("computed_fred.foreign_treasury_holdings")
+    total_debt = fred_data.get("computed_fred.total_public_debt")
+    if foreign_holdings is not None and total_debt is not None and total_debt > 0:
+        # foreign_holdings is in $B, total_debt is in $M — normalize
+        total_debt_B = total_debt / 1000
+        if total_debt_B > 0:
+            computed["foreign_treasury_holdings_pct"] = round(
+                (foreign_holdings / total_debt_B) * 100, 1
+            )
+
+    # --- Corporate profits / GDP (valuation_mean_reversion) ---
+    if cp is not None and gdp is not None and gdp > 0:
+        computed["corporate_profits_gdp_ratio"] = round((cp / gdp) * 100, 1)
+
+    # --- Interest expense exceeds defense spending (fiscal_dominance_arithmetic) ---
+    # Defense spending ~$886B in FY2024, ~3%/yr growth → ~$940B by FY2026
+    # Stored as surplus: positive = interest exceeds defense
+    if interest is not None:
+        computed["interest_exceeds_defense"] = round(interest - 940, 0)
+
     return computed
+
+
+def _compute_net_liq_30d_change(fred_timeseries: dict[str, object]) -> Optional[float]:
+    """Compute 30-day change in net liquidity from WALCL - WTREGEN - RRPONTSYD.
+
+    Uses raw time series to align dates and compute the delta.
+    """
+    walcl = fred_timeseries.get("WALCL")
+    wtregen = fred_timeseries.get("WTREGEN")
+    rrpontsyd = fred_timeseries.get("RRPONTSYD")
+
+    if walcl is None or wtregen is None or rrpontsyd is None:
+        return None
+
+    try:
+        import pandas as pd
+
+        # Align all three series on their index (dates)
+        df = pd.DataFrame({
+            "walcl": walcl,
+            "wtregen": wtregen,
+            "rrpontsyd": rrpontsyd,
+        }).dropna()
+
+        if len(df) < 2:
+            return None
+
+        # Net liquidity = WALCL - WTREGEN - RRPONTSYD
+        df["net_liq"] = df["walcl"] - df["wtregen"] - df["rrpontsyd"]
+
+        current = df["net_liq"].iloc[-1]
+
+        # Find the value closest to 30 days ago
+        current_date = df.index[-1]
+        target_date = current_date - pd.Timedelta(days=30)
+        # Find nearest date at or before target
+        mask = df.index <= target_date
+        if not mask.any():
+            # Less than 30 days of data — use oldest available
+            past = df["net_liq"].iloc[0]
+        else:
+            past = df.loc[mask, "net_liq"].iloc[-1]
+
+        change = current - past
+        return round(float(change), 0)
+    except Exception as e:
+        logger.warning(f"net_liquidity_30d_change computation failed: {e}")
+        return None
 
 
 # ---------------------------------------------------------------------------
@@ -572,14 +752,25 @@ def _save_cache(briefing: BriefingPacket) -> None:
 # Public API
 # ---------------------------------------------------------------------------
 
-def fetch_fred_data() -> dict[str, Optional[float]]:
-    """Fetch all FRED series and return as {field_path: transformed_value}."""
+# Series IDs whose raw time series we need for derived computations
+# (net_liquidity_30d_change needs historical WALCL, WTREGEN, RRPONTSYD)
+_TIMESERIES_SERIES = {"WALCL", "WTREGEN", "RRPONTSYD"}
+
+
+def fetch_fred_data() -> tuple[dict[str, Optional[float]], dict[str, object]]:
+    """Fetch all FRED series and return transformed values + raw time series.
+
+    Returns:
+        (field_values, timeseries) where timeseries contains raw pandas Series
+        for series in _TIMESERIES_SERIES, keyed by series_id.
+    """
     if not settings.fred_api_key:
         logger.error("FRED_API_KEY not set — skipping FRED fetch")
-        return {}
+        return {}, {}
 
     fred = Fred(api_key=settings.fred_api_key)
     results: dict[str, Optional[float]] = {}
+    timeseries: dict[str, object] = {}
 
     for series_id, config in FRED_SERIES.items():
         field = config["field"]
@@ -590,11 +781,15 @@ def fetch_fred_data() -> dict[str, Optional[float]]:
             value = _apply_fred_transform(data, transform)
             results[field] = value
             logger.debug(f"FRED {series_id} → {field} = {value}")
+
+            # Preserve raw time series for derived computations
+            if series_id in _TIMESERIES_SERIES and data is not None:
+                timeseries[series_id] = data.dropna()
         except Exception as e:
             logger.warning(f"FRED {series_id} failed: {e}")
             results[field] = None
 
-    return results
+    return results, timeseries
 
 
 def fetch_yahoo_data(on_progress=None) -> dict[str, MarketData]:
@@ -644,8 +839,12 @@ def fetch_yahoo_data(on_progress=None) -> dict[str, MarketData]:
     return market_data
 
 
-def _compute_spy_drawdown_curl() -> Optional[float]:
-    """Compute SPY drawdown from 52-week high using curl."""
+def _fetch_spy_daily_data() -> Optional[list[float]]:
+    """Fetch SPY 1-year daily closes via curl. Single fetch, multiple uses.
+
+    Returns list of valid daily closing prices (oldest to newest), or None on failure.
+    Used for both 52-week drawdown and 20-day realized volatility calculations.
+    """
     url = f"{YAHOO_BASE_URL}/SPY?range=1y&interval=1d&includePrePost=false"
     try:
         result = subprocess.run(
@@ -664,14 +863,41 @@ def _compute_spy_drawdown_curl() -> Optional[float]:
         valid_closes = [c for c in closes if c is not None]
         if not valid_closes:
             return None
-        high_52w = max(valid_closes)
-        current = valid_closes[-1]
-        if high_52w == 0:
-            return None
-        return round(((current - high_52w) / high_52w) * 100, 2)
+        return valid_closes
     except Exception as e:
-        logger.warning(f"SPY drawdown calc failed: {e}")
+        logger.warning(f"SPY daily data fetch failed: {e}")
         return None
+
+
+def _compute_spy_drawdown(spy_daily: list[float]) -> Optional[float]:
+    """Compute SPY drawdown from 52-week high given daily closes."""
+    if not spy_daily:
+        return None
+    high_52w = max(spy_daily)
+    current = spy_daily[-1]
+    if high_52w == 0:
+        return None
+    return round(((current - high_52w) / high_52w) * 100, 2)
+
+
+def _compute_realized_vol(spy_daily: list[float], window: int = 20) -> Optional[float]:
+    """Compute annualized realized volatility from SPY daily closes.
+
+    Uses the last `window` trading days of daily log returns,
+    annualized by sqrt(252).
+    """
+    if not spy_daily or len(spy_daily) < window + 1:
+        return None
+    import math
+    returns = [
+        (spy_daily[i] - spy_daily[i - 1]) / spy_daily[i - 1]
+        for i in range(1, len(spy_daily))
+    ]
+    recent = returns[-window:]
+    mean = sum(recent) / len(recent)
+    variance = sum((r - mean) ** 2 for r in recent) / (len(recent) - 1)
+    realized = math.sqrt(variance) * math.sqrt(252) * 100
+    return round(realized, 2)
 
 
 def build_briefing(use_cache: bool = True, on_progress=None) -> BriefingPacket:
@@ -702,9 +928,9 @@ def build_briefing(use_cache: bool = True, on_progress=None) -> BriefingPacket:
     emit("start", "Starting fresh data fetch")
     fetch_timestamp = datetime.now(timezone.utc).isoformat()
 
-    # Fetch FRED
+    # Fetch FRED (expanded: returns values + time series for net_liq computation)
     emit("fred", f"Fetching FRED data ({len(FRED_SERIES)} series)...")
-    fred_data = fetch_fred_data()
+    fred_data, fred_timeseries = fetch_fred_data()
     fred_ok = sum(1 for v in fred_data.values() if v is not None)
     emit("fred", f"FRED complete: {fred_ok}/{len(FRED_SERIES)} series")
 
@@ -718,16 +944,12 @@ def build_briefing(use_cache: bool = True, on_progress=None) -> BriefingPacket:
     market_data = fetch_yahoo_data(on_progress=yahoo_progress)
     emit("yahoo", f"Yahoo complete: {len(market_data)}/{total_tickers} tickers")
 
-    # Compute SPY drawdown
-    spy_dd = _compute_spy_drawdown_curl()
+    # Fetch SPY daily data (single fetch for both drawdown + realized vol)
+    spy_daily = _fetch_spy_daily_data()
 
-    # Compute derived metrics
+    # Compute derived metrics (now receives timeseries + spy_daily)
     emit("compute", "Computing derived metrics...")
-    computed = _compute_metrics(fred_data, market_data)
-
-    # Patch in SPY drawdown if we got it
-    if spy_dd is not None:
-        computed["spy_drawdown_from_52w_high"] = spy_dd
+    computed = _compute_metrics(fred_data, market_data, fred_timeseries, spy_daily)
 
     # Assemble briefing
     emit("assemble", "Assembling briefing packet...")
