@@ -13,7 +13,7 @@ The following pipeline is built and working end-to-end:
 - Consolidation check preventing redundant hypotheses
 - React frontend: Research, Observatory, Pipeline, Trades views (+ About via header link)
 - Hermes Editorial design system (Cormorant Garamond / EB Garamond / JetBrains Mono, cream/brick/olive/gold) with night mode
-- GitHub Pages static publishing: snapshot endpoint bakes all hypotheses (across all runs) into window.__SNAPSHOT__, publish script deploys to gh-pages branch via temp directory with cache-busting query params. Read-only mode auto-detected by frontend (HashRouter, API interception from snapshot). Human-readable timestamp on static banner.
+- GitHub Pages static publishing: snapshot endpoint bakes all hypotheses (across all runs) into window.__SNAPSHOT__ (slimmed via `for_snapshot=True` — excludes conviction_math, research_notes, sector_falsifier_audit). Publish script deploys to gh-pages branch via temp directory with cache-busting, `defer` on snapshot script tag, `</`-sanitization, concurrent-publish lockfile, and log rotation. Read-only mode auto-detected by frontend (HashRouter, API interception from snapshot). Human-readable timestamp on static banner.
 - About page: 12-step pipeline description grouped into 5 sections with architectural premise, continuous CSS counter
 - Mobile-responsive CSS: nav horizontal scroll, tighter padding, table scroll wrappers, collapsed grids, reduced whitespace on small screens
 
@@ -36,7 +36,8 @@ The following pipeline is built and working end-to-end:
 ### Infrastructure Improvements
 
 - **Snapshot parity fix:** Snapshot endpoint now includes all hypotheses across all runs, matching the local ledger view (was previously filtered to latest run only).
-- **Cache-busting:** Publish script appends `?v=<unix_timestamp>` to snapshot.js script tag, preventing GitHub Pages CDN from serving stale data.
+- **Cache-busting:** Publish script appends `?v=<unix_timestamp>` to snapshot.js script tag, preventing GitHub Pages CDN from serving stale data. Script tag uses `defer` to avoid render-blocking.
+- **Publish hardening (2026-04-02):** Script injection sanitization (`</` → `<\/`), `for_snapshot` flag on `_model_to_dict` to slim payload (~40-60% per hypothesis), concurrent-publish lockfile, log rotation at 2000 lines, TMPDIR rename to avoid POSIX shadowing.
 - **Mobile tightening:** Comprehensive `@media (max-width: 768px)` block covering all views — header, nav, controls, modals, pipeline, about, briefing, trades (horizontal scroll wrappers), journal, inbox, audit, newsletter.
 - **Lightweight DB migration:** `_migrate()` in database.py handles ALTER TABLE for adding columns to existing tables (e.g., `newsletter_id` on trades). Runs on every startup, idempotent.
 

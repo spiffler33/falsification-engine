@@ -559,7 +559,7 @@ Key verification points:
 - Triggered-but-NOT-relevant falsifier produces zero discount (D_f stays 1.0)
 - Conviction floor kills at 2/10 when combined discounts drag score below 5
 - Audit records persist to SQLite and round-trip through the API correctly
-- GitHub Pages snapshot includes sector audit data via `_model_to_dict()`
+- GitHub Pages snapshot excludes sector audit data for size (via `for_snapshot=True` in `_model_to_dict()`); full audit data available on local backend
 
 ### Learnings
 
