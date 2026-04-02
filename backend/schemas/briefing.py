@@ -1,9 +1,9 @@
 # briefing.py — Pydantic models for the data briefing packet.
 # Depends on: nothing
-# Depended on by: engine/data_agent.py, engine/activation.py
+# Depended on by: engine/data_agent.py, engine/activation.py, engine/web_data_agent.py
 from __future__ import annotations
 
-from typing import Optional
+from typing import Any, Optional
 
 from pydantic import BaseModel
 
@@ -22,8 +22,24 @@ class MarketData(BaseModel):
     return_12m: Optional[float] = None
 
 
+class WebSourcedData(BaseModel):
+    """A single data point fetched from a web source (not FRED/Yahoo)."""
+    value: float
+    source: str = ""        # URL or description of data source
+    fetched_at: str = ""    # ISO timestamp of when fetched
+    confidence: str = ""    # "high", "medium", "low"
+
+
+# Web-sourced fields that replace FRED-derived proxies when available.
+# Key = original field path (what theory modules reference)
+# Value = web_sourced field name (better data)
+_FIELD_OVERRIDES: dict[str, str] = {
+    "growth.ism_proxy": "ism_pmi",  # Actual ISM PMI replaces MANEMP-derived proxy
+}
+
+
 class BriefingPacket(BaseModel):
-    """Structured data briefing from FRED + Yahoo Finance.
+    """Structured data briefing from FRED + Yahoo Finance + web sources.
 
     Field names here must match the metric_source references in theory
     module activation conditions.
@@ -45,11 +61,29 @@ class BriefingPacket(BaseModel):
     # Market data — ETF prices and returns
     markets: dict[str, MarketData] = {}
 
+    # Web-sourced data — fields not available from FRED/Yahoo
+    # Populated by web_data_agent.py (Phase 2)
+    web_sourced: dict[str, WebSourcedData] = {}
+
+    # Data quality report from validation agent (Phase 4)
+    data_quality: dict[str, Any] = {}
+
     def get_field(self, field_path: str) -> Optional[float]:
         """Resolve a dotted field path like 'credit.hy_spread' or a ticker like '^VIX'.
 
-        Also handles computed metrics like 'qqq_iwm_ratio'.
+        Resolution order:
+        0. Priority overrides (web-sourced data replacing FRED proxies)
+        1. Direct ticker (^VIX, $DXY)
+        2. Dotted section path (credit.hy_spread)
+        3. Computed metrics (qqq_iwm_ratio)
+        4. Web-sourced data (shiller_cape, china_credit_impulse)
+        5. Fallback scan across all macro sections
         """
+        # Priority overrides: web-sourced data replacing FRED proxies
+        override_key = _FIELD_OVERRIDES.get(field_path)
+        if override_key and override_key in self.web_sourced:
+            return self.web_sourced[override_key].value
+
         # Direct ticker reference (e.g. ^VIX)
         if field_path.startswith("^") or field_path.startswith("$"):
             ticker = field_path
@@ -63,12 +97,21 @@ class BriefingPacket(BaseModel):
             section_name, field_name = parts[0], parts[1]
             section = getattr(self, section_name, None)
             if isinstance(section, dict):
-                return section.get(field_name)
+                val = section.get(field_name)
+                if val is not None:
+                    return val
+                # For web_sourced, extract the .value
+                if section_name == "web_sourced" and field_name in self.web_sourced:
+                    return self.web_sourced[field_name].value
             return None
 
         # Try computed metrics
         if field_path in self.computed:
             return self.computed[field_path]
+
+        # Try web-sourced data
+        if field_path in self.web_sourced:
+            return self.web_sourced[field_path].value
 
         # Try all sections as fallback
         for section_name in ("growth", "inflation", "rates", "liquidity",

@@ -24,6 +24,68 @@ from backend.schemas.theory import (
 ACTIVE_THRESHOLD = 0.60
 ADJACENT_THRESHOLD = 0.30
 
+# Maps distinctive substrings from web-search metric_source descriptions
+# to briefing packet field names. Checked in order; first match wins.
+# Fields resolve via BriefingPacket.get_field() which searches computed,
+# web_sourced, and macro sections transparently.
+WEB_FIELD_MAP: list[tuple[str, str]] = [
+    # -- valuation_mean_reversion --
+    ("shiller cape ratio", "shiller_cape"),
+    ("total us market cap / gdp", "buffett_indicator"),
+    ("s&p 500 net profit margin", "sp500_net_margin"),
+    ("corporate profits / gdp", "corporate_profits_gdp_ratio"),
+    ("insider transactions", "insider_sell_buy_ratio"),
+    ("insider buy/sell ratio", "insider_sell_buy_ratio"),
+
+    # -- debt_cycle_short --
+    ("senior loan officer survey", "sloos_net_tightening"),
+    ("conference board consumer confidence", "consumer_confidence"),
+    ("ceo confidence survey", "consumer_confidence"),
+
+    # -- debt_cycle_long --
+    ("federal reserve z.1", "total_debt_to_gdp"),
+    ("bis global credit", "total_debt_to_gdp"),
+    ("fiscal multiplier", "deficit_pct_gdp"),
+    ("deficit vs. gdp", "deficit_pct_gdp"),
+    ("distributional financial accounts", "top10_wealth_share"),
+    ("world inequality", "top10_wealth_share"),
+
+    # -- structural_fragility --
+    ("finra margin", "finra_margin_debt"),
+    ("ici or morningstar", "passive_fund_share"),
+    ("shiller cape", "shiller_cape"),
+
+    # -- fiscal_dominance_liquidity --
+    ("treasury monthly budget statement", "deficit_pace_annualized"),
+
+    # -- fiscal_dominance_arithmetic --
+    ("treasury monthly statement", "interest_receipts_ratio"),
+    ("cbo projections", "interest_receipts_ratio"),
+    ("cbo budget data", "interest_exceeds_defense"),
+    ("treasury monthly budget statements + nber", "deficit_pace_annualized"),
+    ("treasury refunding data", "weighted_avg_interest_rate"),
+    ("weighted average interest rate", "weighted_avg_interest_rate"),
+    ("world gold council", "cb_gold_purchases"),
+    ("imf cofer", "cb_gold_purchases"),
+    ("imf ifs data", "cb_gold_purchases"),
+
+    # -- capital_flows --
+    ("msci em pe", "em_dm_pe_gap"),
+    ("eem pe vs. spy pe", "em_dm_pe_gap"),
+    ("china credit impulse", "china_credit_impulse"),
+    ("total social financing", "china_credit_impulse"),
+    ("usd/cny", "usdcny"),
+    ("cnh offshore", "usdcny"),
+
+    # -- monetary_architecture --
+    ("treasury international capital", "foreign_treasury_holdings_pct"),
+    ("tic data", "foreign_treasury_holdings_pct"),
+    ("fed custody holdings", "foreign_treasury_holdings_pct"),
+    ("swift rmb share", "rmb_swift_share"),
+    ("bilateral currency agreement", "rmb_swift_share"),
+    ("energy trade settlement", "rmb_swift_share"),
+]
+
 
 def score_all_theories(
     theories: list[TheoryModule],
@@ -143,16 +205,19 @@ def _score_phase(
             skipped.append(f"{ind.name} (qualitative)")
             continue
 
-        # Skip web-search-required indicators for v1
-        if ind.requires_web_search:
-            skipped.append(f"{ind.name} (web-search required)")
-            continue
-
-        total_mechanical_weight += ind.weight
-
         # Resolve metric from briefing
         metric_field = _extract_metric_field(ind.metric_source)
         value = briefing.get_field(metric_field) if metric_field else None
+
+        # Web-search indicators: include only when data is available.
+        # When unavailable, skip entirely (don't count in total weight)
+        # so scores match pre-enrichment behavior.
+        if ind.requires_web_search and value is None:
+            reason = "no field mapping" if metric_field is None else "web data not available"
+            skipped.append(f"{ind.name} ({reason})")
+            continue
+
+        total_mechanical_weight += ind.weight
 
         if value is None:
             indicator_results[ind.name] = {
@@ -196,14 +261,15 @@ def _extract_metric_field(metric_source: str) -> str | None:
         '`credit.hy_spread`' → 'credit.hy_spread'
         'computed: `qqq_iwm_ratio`' → 'qqq_iwm_ratio'
         'computed: `VIX - 20d_realized_vol`' → 'vix_realized_gap'
-        'web search required' → None
-        'web search: FINRA margin statistics' → None
+        'web search: FINRA margin statistics' → 'finra_margin_debt'
+        'web search: Shiller CAPE ratio' → 'shiller_cape'
+        'web search required' → None (no distinctive description)
     """
     source = metric_source.strip()
 
-    # Skip web-search sources
+    # Web-search sources: resolve via WEB_FIELD_MAP
     if "web search" in source.lower():
-        return None
+        return _resolve_web_field(source)
 
     # Extract backtick-wrapped field names
     backtick_match = re.findall(r"`([^`]+)`", source)
@@ -221,6 +287,19 @@ def _extract_metric_field(metric_source: str) -> str | None:
     if source and not source.startswith("web"):
         return source
 
+    return None
+
+
+def _resolve_web_field(metric_source: str) -> str | None:
+    """Resolve a web-search metric_source to a briefing field name.
+
+    Checks the WEB_FIELD_MAP for the first matching substring.
+    Returns the mapped field name, or None if no match.
+    """
+    source_lower = metric_source.lower()
+    for keyword, field_name in WEB_FIELD_MAP:
+        if keyword in source_lower:
+            return field_name
     return None
 
 
