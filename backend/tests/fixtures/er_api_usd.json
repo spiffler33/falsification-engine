@@ -1,0 +1,16 @@
+{
+  "result": "success",
+  "provider": "Open Exchange Rates",
+  "documentation": "https://open.er-api.com/docs",
+  "time_last_update_unix": 1743465600,
+  "time_next_update_unix": 1743552000,
+  "base_code": "USD",
+  "rates": {
+    "EUR": 0.9234,
+    "GBP": 0.7891,
+    "JPY": 149.32,
+    "CNY": 6.89,
+    "CAD": 1.3542,
+    "AUD": 1.5412
+  }
+}

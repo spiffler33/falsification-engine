@@ -868,25 +868,10 @@ def get_snapshot(db: Session = Depends(get_db)):
     # Briefing
     briefing_data = _load_briefing()
 
-    # Theories (just names and IDs, not full markdown)
-    # Annotate with regime flags that affect each theory
-    from backend.engine.regime_config import REGIME_FLAGS as _RF
-    regime_affects: dict[str, list[str]] = {}
-    for flag in _RF["flags"]:
-        if flag["flag_id"] in regime_flags_active:
-            for mod_id in flag["affects"]:
-                regime_affects.setdefault(mod_id, []).append(flag["flag_id"])
-
-    theories = theory_parser.load_all_theories()
-    theory_summaries = [
-        {
-            "theory_id": t.theory_id,
-            "name": t.title,
-            "is_two_phase": t.is_two_phase,
-            "regime_flags": regime_affects.get(t.theory_id, []),
-        }
-        for t in theories
-    ]
+    # Theories — reuse the same assembly logic as /api/theories
+    # to guarantee identical data shape on the static site.
+    from backend.api.theories import build_theory_summaries
+    theory_summaries = build_theory_summaries(briefing_data=briefing_data)
 
     # Newsletters
     from backend.db.models import Newsletter, Trade

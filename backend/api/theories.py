@@ -25,11 +25,17 @@ def _load_briefing_packet() -> dict | None:
     return None
 
 
-@router.get("/theories")
-def list_theories():
-    """Return all theory modules with current activation scores."""
+def build_theory_summaries(briefing_data: dict | None = None) -> list[dict]:
+    """Assemble theory summaries with activation scores and regime flags.
+
+    Shared by the /api/theories endpoint and the snapshot builder.
+    When called from the snapshot builder, pass the briefing data;
+    when called from the endpoint, it loads the briefing itself.
+    """
     theories = theory_parser.load_all_theories()
-    briefing_data = _load_briefing_packet()
+
+    if briefing_data is None:
+        briefing_data = _load_briefing_packet()
 
     activation_results = []
     if briefing_data:
@@ -95,6 +101,12 @@ def list_theories():
         result.append(entry)
 
     return result
+
+
+@router.get("/theories")
+def list_theories():
+    """Return all theory modules with current activation scores."""
+    return build_theory_summaries()
 
 
 @router.get("/theories/activation")

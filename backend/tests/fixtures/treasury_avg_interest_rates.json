@@ -1,0 +1,29 @@
+{
+  "data": [
+    {
+      "record_date": "2026-03-01",
+      "security_desc": "Total Interest-bearing Debt",
+      "avg_interest_rate_amt": "3.36"
+    },
+    {
+      "record_date": "2026-03-01",
+      "security_desc": "Treasury Bills",
+      "avg_interest_rate_amt": "5.12"
+    },
+    {
+      "record_date": "2026-03-01",
+      "security_desc": "Treasury Notes",
+      "avg_interest_rate_amt": "2.91"
+    },
+    {
+      "record_date": "2026-02-01",
+      "security_desc": "Total Marketable",
+      "avg_interest_rate_amt": "3.31"
+    }
+  ],
+  "meta": {
+    "count": 4,
+    "labels": {}
+  },
+  "links": {}
+}
