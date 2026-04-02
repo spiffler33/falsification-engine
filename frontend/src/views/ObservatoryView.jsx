@@ -50,13 +50,14 @@ export default function ObservatoryView({ onSelectHypothesis }) {
     }
   }, [lastReviewedRunId])
 
-  // Determine the latest run_id from the data
+  // Determine the latest run_id from the data.
+  // Compare run_id (R-YYYYMMDD-HHMMSS) not generated_date (YYYY-MM-DD),
+  // because multiple runs on the same day share the same generated_date.
   const latestRunId = useMemo(() => {
     if (!hypotheses || hypotheses.length === 0) return null
-    // hypotheses are sorted by conviction desc; find the most recent run_id by generated_date
     let latest = hypotheses[0]
     for (const h of hypotheses) {
-      if (h.generated_date > (latest.generated_date || '')) latest = h
+      if ((h.run_id || '') > (latest.run_id || '')) latest = h
     }
     return latest.run_id
   }, [hypotheses])
