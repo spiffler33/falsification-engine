@@ -20,6 +20,7 @@ from sqlalchemy.orm import Session
 from backend.db.database import get_db
 from backend.db.models import (
     Hypothesis,
+    HypothesisThread,
     Newsletter,
     PendingTradeAction,
     Run,
@@ -43,6 +44,8 @@ SYSTEM_PROMPT = """You are a macro strategist writing a weekly newsletter. Your 
 - Maximum 4 trade ideas. Only include hypotheses with conviction >= 5.
 - For "WHAT BREAKS IT": pick the 2 falsifiers closest to triggering or the 2 with highest severity. State the condition and the current data value.
 - IMPORTANT: If all surviving hypotheses scored at or near the conviction floor (5/10), say so plainly. Open with a MARKET POSTURE section stating that conviction is low across the board and why. Do not manufacture confidence. "We do not have a strong view this week" is a valid and honest output. Explain what is keeping conviction low (e.g., exogenous uncertainty, conflicting signals, data gaps) and what would need to change for conviction to build.
+- Hypotheses belong to THREADS that persist across pipeline runs. Use thread context to convey stability: a thread CONFIRMed across multiple runs is an established view; a NEW thread is a fresh call. Mention continuity naturally (e.g., "now in its 4th week" or "new this week") -- do not list lifecycle actions mechanically.
+- When a hypothesis has realization data (expression return vs. payoff band), incorporate it naturally: "GLD +6.2%, tracking the lower bound of the 10-20% band" conveys more than just repeating the thesis.
 
 Output format (exactly this structure):
 
@@ -68,7 +71,7 @@ REGIME CONTEXT
   > What we're watching: [top UNTESTABLE falsifiers awaiting data]
 
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-SYSTEM: Falsification Engine v2 | 8 theory modules | Mechanical scoring
+SYSTEM: Falsification Engine v7 | 8 theory modules | Mechanical scoring | Thread lifecycle
 This is not investment advice. These are hypotheses that survived
 systematic falsification. What the system found != what you should do.
 
@@ -76,15 +79,16 @@ Maximum 800 words total. Use ASCII characters only -- no emoji, no unicode arrow
 
 IMPORTANT: After the newsletter text, on a new line, output a JSON block wrapped in
 <TRADES> tags containing the trade recommendations from the newsletter. Each entry
-must include the hypothesis_id, primary ticker, direction, and conviction score.
+must include the thread_id, hypothesis_id (current instance), primary ticker, direction,
+and conviction score.
 Format:
 
 <TRADES>
-[{"hypothesis_id": "H-...", "ticker": "GLD", "direction": "LONG", "conviction": 8}]
+[{"thread_id": "T-...", "hypothesis_id": "H-...", "ticker": "GLD", "direction": "LONG", "conviction": 8}]
 </TRADES>
 
-Include ONLY the hypotheses that appear in the newsletter. Use the exact hypothesis_id
-values from the data provided below."""
+Include ONLY the hypotheses that appear in the newsletter. Use the exact thread_id and
+hypothesis_id values from the data provided below."""
 
 
 # ---------------------------------------------------------------------------
@@ -231,6 +235,13 @@ def get_newsletter_prompt(db: Session = Depends(get_db)):
             detail=f"No hypotheses meet conviction >= {CONVICTION_THRESHOLD} threshold in the latest run",
         )
 
+    # Gather thread data for qualifying hypotheses (v7)
+    thread_ids = [h.thread_id for h in qualifying if h.thread_id]
+    threads_by_id: dict[str, HypothesisThread] = {}
+    if thread_ids:
+        threads = db.query(HypothesisThread).filter(HypothesisThread.thread_id.in_(thread_ids)).all()
+        threads_by_id = {t.thread_id: t for t in threads}
+
     activation_scores = json.loads(latest_run.activation_scores) if latest_run.activation_scores else {}
     briefing_summary = _load_briefing_summary()
 
@@ -246,7 +257,7 @@ def get_newsletter_prompt(db: Session = Depends(get_db)):
                     "severity": f.get("severity", ""),
                 })
 
-    user_prompt = _build_user_prompt(qualifying, activation_scores, briefing_summary, untestable)
+    user_prompt = _build_user_prompt(qualifying, activation_scores, briefing_summary, untestable, threads_by_id)
 
     return {
         "system_prompt": SYSTEM_PROMPT.strip(),
@@ -446,8 +457,12 @@ def _build_user_prompt(
     activation_scores: dict,
     briefing_summary: str,
     untestable: list[dict],
+    threads_by_id: dict | None = None,
 ) -> str:
     """Assemble the structured data payload for the user prompt."""
+    if threads_by_id is None:
+        threads_by_id = {}
+
     sections = []
     sections.append("Generate the newsletter from this data:")
     sections.append("")
@@ -462,7 +477,20 @@ def _build_user_prompt(
         directions = json.loads(h.asset_direction) if h.asset_direction else {}
 
         sections.append(f"  [{h.short_name}]")
-        sections.append(f"    Hypothesis ID: {h.id}")
+        sections.append(f"    Instance ID: {h.id}")
+
+        # Thread context (v7)
+        thread = threads_by_id.get(h.thread_id) if h.thread_id else None
+        if thread:
+            sections.append(f"    Thread ID: {thread.thread_id}")
+            action = h.lifecycle_action or "NEW"
+            sections.append(f"    Lifecycle: {action} (run {thread.total_instances} of thread, {thread.confirmation_count} consecutive confirms)")
+            sections.append(f"    Thread created: {thread.created_date}")
+        elif h.thread_id:
+            sections.append(f"    Thread ID: {h.thread_id}")
+            if h.lifecycle_action:
+                sections.append(f"    Lifecycle: {h.lifecycle_action}")
+
         sections.append(f"    Theory: {h.source_theory}")
         sections.append(f"    Conviction: {h.conviction}/10")
         sections.append(f"    Thesis: {h.full_statement}")
@@ -473,6 +501,14 @@ def _build_user_prompt(
             direction = directions.get(ticker, "?")
             asset_lines.append(f"{ticker} {direction}")
         sections.append(f"    Expression: {', '.join(asset_lines)}")
+
+        # Realization data (v6/v7)
+        if h.expression_return is not None:
+            sections.append(f"    Realization: {h.expression_return:+.1%} expression return")
+            if h.realization_vs_lower is not None and h.realization_vs_upper is not None:
+                sections.append(f"      {h.realization_vs_lower:.2f}x lower bound, {h.realization_vs_upper:.2f}x upper bound")
+            if h.time_elapsed_pct is not None:
+                sections.append(f"      {h.time_elapsed_pct:.0%} of time elapsed")
 
         severity_order = {"major": 0, "medium": 1, "minor": 2}
         all_falsifiers = []

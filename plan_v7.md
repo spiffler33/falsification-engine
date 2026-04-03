@@ -1068,3 +1068,12 @@ Each phase is independently implementable and testable. Context can be cleared b
   - RETIRED threads rendered at 0.55 opacity below active threads with divider label
   - CSS: thread-table, badges, lifecycle action colors, flag colors, night mode, mobile collapse
   - 14 new tests in `test_thread_api.py` (7 _thread_to_dict + 7 list logic), 491 total passing
+
+### Post-Phase Fixes
+
+- **Newsletter prompt v7 alignment (2026-04-03).** Newsletter system prompt and user prompt builder were still pre-v7 — no thread context, no lifecycle actions, no realization data, footer said "Falsification Engine v2." Fixed:
+  - SYSTEM_PROMPT: Added thread continuity instructions (convey stability naturally, mention realization vs. payoff band), updated `<TRADES>` JSON format to include `thread_id` alongside `hypothesis_id`, footer now "Falsification Engine v7 | Thread lifecycle"
+  - `get_newsletter_prompt()`: Queries `HypothesisThread` for each qualifying hypothesis, passes `threads_by_id` to user prompt builder
+  - `_build_user_prompt()`: Each hypothesis now shows Thread ID, lifecycle action, thread age (total instances + confirmation count), thread created date, and realization data (expression return, vs lower/upper bound, time elapsed %). Falls back gracefully for pre-v7 hypotheses without thread_id.
+  - `"Hypothesis ID"` label renamed to `"Instance ID"` to match v7 terminology
+  - 537 tests passing, no regressions
