@@ -400,7 +400,7 @@ def import_newsletter(payload: dict = Body(...), db: Session = Depends(get_db)):
 @router.get("/newsletters")
 def list_newsletters(db: Session = Depends(get_db)):
     """List all newsletters, newest first."""
-    newsletters = db.query(Newsletter).order_by(desc(Newsletter.date)).all()
+    newsletters = db.query(Newsletter).order_by(desc(Newsletter.date), desc(Newsletter.id)).all()
     return [_newsletter_to_dict(nl, truncate_content=True) for nl in newsletters]
 
 
