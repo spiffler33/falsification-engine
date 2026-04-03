@@ -34,12 +34,19 @@ def build_generation_prompt(
     max_adjacent: int = 1,
     active_regime_flags: list[dict[str, Any]] | None = None,
     prior_hypotheses: list[dict[str, Any]] | None = None,
+    active_threads: list[dict[str, Any]] | None = None,
 ) -> str:
     """Build the generation prompt for Pass 2.
 
     Includes Active theories (full markdown), up to 1 Adjacent wildcard,
     the briefing packet, and queued inbox items.
+
+    v7: When active_threads is provided, injects thread context with lifecycle
+    taxonomy (CONFIRM/UPDATE/RENEW/RETIRE) and NEW hypothesis section.
+    Falls back to legacy prior_hypotheses + continuation contract when no threads.
     """
+    has_threads = bool(active_threads)
+
     active_theories = []
     adjacent_theories = []
     activation_map = {}
@@ -57,7 +64,14 @@ def build_generation_prompt(
 
     # --- System instructions ---
     parts = []
-    parts.append(_generation_system_instructions())
+    parts.append(_generation_system_instructions(has_threads=has_threads))
+
+    # --- v7 Thread context (replaces prior_hypotheses + continuation contract) ---
+    if has_threads:
+        parts.append("\n\n## ACTIVE THREADS (from prior run)\n")
+        parts.append(_thread_context_section(active_threads))
+        parts.append("\n\n## LIFECYCLE CONTRACT\n")
+        parts.append(_thread_lifecycle_contract())
 
     # --- Active theories ---
     parts.append("\n\n## ACTIVE THEORIES\n")
@@ -122,8 +136,27 @@ def build_generation_prompt(
                     parts.append(f"  - {label}: {context}")
             parts.append("")
 
-    # --- Prior hypotheses with realization data (continuation lineage context) ---
-    if prior_hypotheses:
+    # --- v7 NEW hypothesis section (for theories not in carried-forward threads) ---
+    if has_threads:
+        represented_theories = {t.get("source_theory") for t in active_threads}
+        active_scores = {}
+        for tid in active_theories:
+            ar = activation_map.get(tid)
+            if ar:
+                if ar.is_two_phase and ar.phase_scores and ar.effective_phase:
+                    active_scores[tid] = ar.phase_scores.get(ar.effective_phase, 0.0)
+                else:
+                    active_scores[tid] = ar.score if ar.score is not None else 0.0
+        parts.append("\n\n## NEW HYPOTHESIS GENERATION\n")
+        parts.append(_new_hypothesis_section(
+            active_theories=active_theories,
+            active_scores=active_scores,
+            represented_theories=represented_theories,
+            adjacent_theories=adjacent_theories[:max_adjacent] if adjacent_theories else None,
+        ))
+
+    # --- Legacy: Prior hypotheses with realization data (pre-v7 backward compat) ---
+    if not has_threads and prior_hypotheses:
         parts.append("\n\n## PRIOR HYPOTHESES (from previous runs)\n")
         parts.append(_prior_hypotheses_section(prior_hypotheses))
         parts.append("\n\n## CONTINUATION CONTRACT\n")
@@ -141,7 +174,10 @@ def build_generation_prompt(
 
     # --- Output schema ---
     parts.append("\n\n## OUTPUT FORMAT\n")
-    parts.append(_generation_output_schema())
+    if has_threads:
+        parts.append(_generation_output_schema_v7())
+    else:
+        parts.append(_generation_output_schema_legacy())
 
     return "\n".join(parts)
 
@@ -223,10 +259,32 @@ def build_elimination_prompt(
     return "\n".join(parts)
 
 
-def _generation_system_instructions() -> str:
-    return """SYSTEM: You are the Generation Pass of a Falsification Engine for global macro analysis.
+def _generation_system_instructions(has_threads: bool = False) -> str:
+    base = """SYSTEM: You are the Generation Pass of a Falsification Engine for global macro analysis.
 
-Your job is to generate testable hypotheses from the Active theory modules below, grounded in the current data briefing. Each hypothesis must trace to a specific causal mechanism in a specific theory module.
+Your job is to generate testable hypotheses from the Active theory modules below, grounded in the current data briefing. Each hypothesis must trace to a specific causal mechanism in a specific theory module."""
+
+    if has_threads:
+        base += """
+
+THIS IS A CONTINUATION RUN. Active hypothesis threads from the prior run are listed below.
+Your PRIMARY job is to review each thread and assign a lifecycle action (CONFIRM, UPDATE, RENEW, or RETIRE).
+Your SECONDARY job is to generate NEW hypotheses for active theories not adequately represented.
+
+RULES:
+1. For each active thread: state exactly one lifecycle action with reasoning.
+2. CONFIRM is the default. Do not change what does not need changing.
+3. After processing all threads, generate NEW hypotheses ONLY for active theories not represented in the carried-forward set, or where conditions have materially changed.
+4. Target: 7-9 total hypotheses (carried forward + new).
+5. You may generate 0-1 NEW hypotheses from the Adjacent wildcard theory (if provided).
+6. Do NOT rank hypotheses by importance or recommend actions.
+7. Do NOT produce hypotheses from theories not listed below.
+8. Each NEW prediction must be specific: include magnitude range, timeframe, and named ETF instruments.
+9. Hard falsifiers must be specific enough to check against data.
+10. Soft falsifiers must include severity (minor/medium/major) inherited from the source theory module.
+11. Each NEW hypothesis MUST include a PAYOFF_BAND block with magnitude_lower, magnitude_upper, and end_date."""
+    else:
+        base += """
 
 RULES:
 1. Generate 2-4 hypotheses per Active theory.
@@ -237,7 +295,9 @@ RULES:
 6. Each prediction must be specific: include magnitude range, timeframe, and named ETF instruments.
 7. Hard falsifiers must be specific enough to check against data.
 8. Soft falsifiers must include severity (minor/medium/major) inherited from the source theory module.
-9. Each hypothesis MUST include a PAYOFF_BAND block with magnitude_lower, magnitude_upper, and end_date (see OUTPUT FORMAT).
+9. Each hypothesis MUST include a PAYOFF_BAND block with magnitude_lower, magnitude_upper, and end_date (see OUTPUT FORMAT)."""
+
+    base += """
 
 PAYOFF BAND RULES:
 - magnitude_lower and magnitude_upper are the expected EXPRESSION-LEVEL return range, stated as positive decimals (e.g. 0.15 for 15%).
@@ -254,8 +314,60 @@ CONSOLIDATION CHECK: Before finalizing, review all generated hypotheses grouped 
 
 The goal is that each surviving hypothesis represents a DISTINCT bet the operator could take or leave independently. If killing hypothesis A would not change your conviction on hypothesis B, they are independent. If it would, they are variations and should be consolidated."""
 
+    return base
 
-def _generation_output_schema() -> str:
+
+def _generation_output_schema_v7() -> str:
+    """Output schema when active threads are present — lifecycle-aware format."""
+    return """Output a single JSON object with two top-level keys: "thread_actions" and "new_hypotheses".
+
+The "thread_actions" array contains one entry per active thread listed above.
+The "new_hypotheses" array contains any genuinely new hypotheses.
+
+See OUTPUT FORMAT FOR THREAD ACTIONS above for thread_actions structure.
+
+Each NEW hypothesis in "new_hypotheses" must have exactly these fields:
+
+```json
+{
+  "theory_id": "fiscal_dominance_liquidity",
+  "source_theories": ["fiscal_dominance_liquidity"],
+  "short_name": "6-12 word summary of the hypothesis",
+  "full_statement": "Complete mechanism chain, prediction, and timeframe as a paragraph",
+  "mechanism": "The causal chain from the theory module",
+  "prediction": "Specific, testable prediction with magnitude and timeframe",
+  "predicted_assets": ["GLD", "TLT"],
+  "asset_direction": {"GLD": "LONG", "TLT": "SHORT"},
+  "resolution_channel": "one of: nominal_price_decline | inflationary_grind | real_asset_outperformance | sector_rotation | broad_credit_contraction | sector_credit_stress",
+  "hard_falsifiers": [
+    {"condition": "Description of what would kill this hypothesis", "metric": "data field to check", "threshold": "specific number or condition"}
+  ],
+  "soft_falsifiers": [
+    {"name": "Short name", "severity": "minor|medium|major", "condition": "What would wound it", "metric": "data field", "threshold": "value"}
+  ],
+  "timeframe": "e.g. Through Q3 2026",
+  "payoff_band": {
+    "magnitude_lower": 0.15,
+    "magnitude_upper": 0.30,
+    "end_date": "2026-09-30"
+  },
+  "lifecycle_action": "NEW",
+  "conviction_inputs": {
+    "support_strength": 0.0,
+    "evidence_quality": 0.0,
+    "convergence": 0.0,
+    "falsifier_clarity": 0.0,
+    "horizon_alignment": 0.0,
+    "expression_efficiency": 0.0
+  }
+}
+```
+
+IMPORTANT: Output ONLY the JSON object. No commentary before or after."""
+
+
+def _generation_output_schema_legacy() -> str:
+    """Output schema for first-run (no threads) — flat array format, backward compatible."""
     return """Output a JSON array of hypothesis objects. Each object must have exactly these fields:
 
 ```json
@@ -282,9 +394,7 @@ def _generation_output_schema() -> str:
       "magnitude_upper": 0.30,
       "end_date": "2026-09-30"
     },
-    "continuation_of": null,
-    "continuation_generation": 1,
-    "continuation_justification": null,
+    "lifecycle_action": "NEW",
     "conviction_inputs": {
       "support_strength": 0.0,
       "evidence_quality": 0.0,
@@ -296,11 +406,6 @@ def _generation_output_schema() -> str:
   }
 ]
 ```
-
-CONTINUATION FIELDS:
-- continuation_of: null for original hypotheses. For continuations, set to the parent hypothesis ID (e.g. "H-20260315-03").
-- continuation_generation: 1 for originals, 2 for first continuation, 3 for second, etc. Must be parent's generation + 1.
-- continuation_justification: null for originals. REQUIRED for continuations -- must state what is genuinely new. "The same macro factors are still active" is NOT sufficient. Acceptable: new data, mechanism extension, changed expression from current levels.
 
 IMPORTANT: Output ONLY the JSON array. No commentary before or after."""
 
@@ -595,6 +700,9 @@ def _prior_hypotheses_section(prior_hypotheses: list[dict[str, Any]]) -> str:
     Each prior hypothesis is displayed with its expression, payoff band,
     realization primitives, and status so the LLM can decide whether to
     regenerate, continue, or move to other mechanisms.
+
+    NOTE: This is the v6 legacy path, used when no active threads exist
+    (e.g., runs before v7 migration). The v7 path uses _thread_context_section.
     """
     lines = []
     lines.append(
@@ -661,6 +769,246 @@ def _prior_hypotheses_section(prior_hypotheses: list[dict[str, Any]]) -> str:
 
         lines.append("")
 
+    return "\n".join(lines)
+
+
+# ---------------------------------------------------------------------------
+# v7 Thread-Based Context — replaces prior_hypotheses + continuation contract
+# ---------------------------------------------------------------------------
+
+
+def _thread_context_section(active_threads: list[dict[str, Any]]) -> str:
+    """Format active hypothesis threads with realization + staleness for generation prompt.
+
+    Each thread is displayed with its identity, expression, payoff band,
+    realization data, freshness, and falsifier status (including staleness
+    flags from the mechanical staleness gate). The LLM must assign exactly
+    one lifecycle action per thread.
+    """
+    n = len(active_threads)
+    lines = []
+    lines.append(
+        f"You are reviewing {n} active hypothesis thread{'s' if n != 1 else ''} "
+        f"from the prior run.\n"
+        "For each thread, you MUST state exactly one action: CONFIRM, UPDATE, RENEW, or RETIRE.\n"
+        "After processing all threads, you may generate NEW hypotheses for active theories\n"
+        "not adequately represented. Target: 7-9 total hypotheses (carried forward + new).\n"
+    )
+    lines.append(
+        "CONFIRM is the default action. Do not UPDATE unless you can state specifically what changed.\n"
+        "Do not RENEW unless the economic content of the call (magnitude, expression, mechanism) has changed.\n"
+        "If the expression should change (different tickers, same mechanism): that is RENEW, not UPDATE.\n"
+    )
+
+    for t in active_threads:
+        tid = t.get("thread_id", "?")
+        short_name = t.get("short_name", "?")
+        lines.append(f'Thread {tid}: "{short_name}"')
+
+        # Source theory
+        source_theory = t.get("source_theory", "?")
+        label = THEORY_LABEL_MAP.get(source_theory, source_theory)
+        lines.append(f"  Source theory: {label}")
+
+        # Age
+        total_instances = t.get("total_instances", 1)
+        created_date = t.get("created_date", "?")
+        lines.append(f"  Age: {total_instances} run{'s' if total_instances != 1 else ''} (first generated {created_date})")
+
+        # Expression: direction + assets
+        asset_dir = t.get("asset_direction", {})
+        if asset_dir:
+            legs = [f"{direction} {ticker}" for ticker, direction in asset_dir.items()]
+            lines.append(f"  Expression: {' / '.join(legs)}")
+
+        # Payoff band
+        band_lower = t.get("payoff_band_lower")
+        band_upper = t.get("payoff_band_upper")
+        end_date = t.get("timeframe_end_date")
+        if band_lower is not None and band_upper is not None:
+            band_str = f"{band_lower*100:.0f}-{band_upper*100:.0f}%"
+            if end_date:
+                band_str += f" through {end_date}"
+            lines.append(f"  Payoff band: {band_str}")
+
+        # Realization data
+        expr_return = t.get("expression_return")
+        if expr_return is not None:
+            lines.append(f"  Realization: {expr_return:+.1%} expression return")
+
+            real_lower = t.get("realization_vs_lower")
+            real_upper = t.get("realization_vs_upper")
+            if real_lower is not None and real_upper is not None:
+                lines.append(f"    {real_lower:.2f}x lower bound, {real_upper:.2f}x upper bound")
+
+            time_elapsed = t.get("time_elapsed_pct")
+            if time_elapsed is not None:
+                lines.append(f"    {time_elapsed:.0%} of time elapsed")
+
+        # Freshness label
+        freshness = t.get("freshness_label")
+        if freshness:
+            lines.append(f"  Freshness: {freshness}")
+
+        # Falsifier status
+        hard_falsifiers = t.get("hard_falsifiers", [])
+        soft_falsifiers = t.get("soft_falsifiers", [])
+
+        if hard_falsifiers:
+            passed = sum(1 for f in hard_falsifiers if f.get("status") != "FAILED")
+            failed = sum(1 for f in hard_falsifiers if f.get("status") == "FAILED")
+            lines.append(f"  Falsifier status:")
+            lines.append(f"    Hard: {passed} passed, {failed} FAILED")
+
+        if soft_falsifiers:
+            if not hard_falsifiers:
+                lines.append(f"  Falsifier status:")
+            lines.append(f"    Soft:")
+            for sf in soft_falsifiers:
+                name = sf.get("name", "?")
+                severity = sf.get("severity", "?")
+                status = sf.get("status", "UNTESTABLE")
+                metric = sf.get("metric", "?")
+                current_val = sf.get("current_market_value")
+                threshold = sf.get("threshold", "?")
+
+                val_str = f"{current_val}" if current_val is not None else "N/A"
+                lines.append(f'      - "{name}" [{severity}]: {status} (metric: {val_str}, threshold: {threshold})')
+
+                # Staleness flag
+                staleness = sf.get("staleness_flag")
+                if staleness == "STALE":
+                    lines.append(f"        >> STALE -- market moved past 2x threshold distance from generation level")
+
+                # ESCALATED_UNTESTABLE flag
+                esc_status = sf.get("escalated_status")
+                esc_count = sf.get("untestable_consecutive", 0)
+                if esc_status == "ESCALATED_UNTESTABLE":
+                    lines.append(f"        >> ESCALATED -- untestable for {esc_count} consecutive passes")
+
+        lines.append("")
+        lines.append(f"  ACTION REQUIRED: State CONFIRM, UPDATE, RENEW, or RETIRE with reasoning.")
+        lines.append("")
+
+    return "\n".join(lines)
+
+
+def _thread_lifecycle_contract() -> str:
+    """Lifecycle action taxonomy and output format for thread actions.
+
+    Injected after the thread context section. Defines what each action means
+    and the exact output format expected per thread.
+    """
+    return """## LIFECYCLE ACTION TAXONOMY
+
+| Action  | When to use |
+|---------|-------------|
+| CONFIRM | Mechanism unchanged, data consistent, falsifiers intact. Default action. |
+| UPDATE  | Mechanism intact but framing, falsifier wording, or modest timing needs adjustment. |
+| RENEW   | Economic content has changed: magnitude, expression, or mechanism materially revised. |
+| RETIRE  | Mechanism weakened, falsifier triggered, thesis no longer supported, or expression fully delivered. |
+
+CONFIRM is the expectation in a stable regime. A run that is 5 CONFIRMs + 1 UPDATE + 1 NEW reflects a real macro PM's daily workflow.
+
+Do NOT UPDATE unless you can state specifically what changed and why.
+Do NOT RENEW unless you can state specifically what economic content changed.
+A run that is 0 CONFIRMs + 7 NEWs should only happen when the regime genuinely shifts.
+
+## OUTPUT FORMAT FOR THREAD ACTIONS
+
+For each active thread above, include one object in the "thread_actions" array:
+
+```json
+{
+  "thread_actions": [
+    {
+      "thread_id": "T-...",
+      "lifecycle_action": "CONFIRM",
+      "lifecycle_reasoning": "Data consistent, mechanism intact, no changes needed."
+    },
+    {
+      "thread_id": "T-...",
+      "lifecycle_action": "UPDATE",
+      "lifecycle_reasoning": "Timing extended — [specific reason].",
+      "revised_timeframe_end_date": "2026-10-31",
+      "revised_short_name": "Updated name if framing changed",
+      "revised_full_statement": "Updated statement if framing changed"
+    },
+    {
+      "thread_id": "T-...",
+      "lifecycle_action": "RENEW",
+      "lifecycle_reasoning": "Expression changed — [specific economic content that changed].",
+      "renewed_hypothesis": {
+        "theory_id": "...",
+        "short_name": "...",
+        "full_statement": "...",
+        "predicted_assets": ["..."],
+        "asset_direction": {"...": "LONG"},
+        "resolution_channel": "...",
+        "timeframe": "...",
+        "hard_falsifiers": [{"condition": "...", "metric": "...", "threshold": "..."}],
+        "soft_falsifiers": [{"name": "...", "severity": "minor|medium|major", "condition": "...", "metric": "...", "threshold": "..."}],
+        "payoff_band": {"magnitude_lower": 0.15, "magnitude_upper": 0.30, "end_date": "YYYY-MM-DD"},
+        "conviction_inputs": {"support_strength": 0.0, "evidence_quality": 0.0, "convergence": 0.0, "falsifier_clarity": 0.0, "horizon_alignment": 0.0, "expression_efficiency": 0.0}
+      }
+    },
+    {
+      "thread_id": "T-...",
+      "lifecycle_action": "RETIRE",
+      "lifecycle_reasoning": "Hard falsifier triggered — [which one and why]."
+    }
+  ],
+  "new_hypotheses": [
+    ...see NEW HYPOTHESIS FORMAT below...
+  ]
+}
+```
+
+For CONFIRM: only thread_id, lifecycle_action, lifecycle_reasoning required.
+For UPDATE: include any revised_* fields that changed. Omit fields that did not change.
+For RENEW: include full renewed_hypothesis with complete specification (new payoff band from current levels).
+For RETIRE: only thread_id, lifecycle_action, lifecycle_reasoning required."""
+
+
+def _new_hypothesis_section(
+    active_theories: list[str],
+    active_scores: dict[str, float],
+    represented_theories: set[str],
+    adjacent_theories: list[str] | None = None,
+) -> str:
+    """NEW hypothesis generation section — for theories not represented in carried-forward threads."""
+    lines = []
+    lines.append("After processing the threads above, generate NEW hypotheses ONLY for:")
+    lines.append("  - Active theories not represented in the carried-forward set")
+    lines.append("  - Theories where conditions have materially changed since the prior run\n")
+
+    # Show which theories are represented vs. unrepresented
+    unrepresented = [t for t in active_theories if t not in represented_theories]
+    if unrepresented:
+        lines.append("Unrepresented active theories (NEW hypotheses expected):")
+        for tid in unrepresented:
+            label = THEORY_LABEL_MAP.get(tid, tid)
+            score = active_scores.get(tid)
+            score_str = f" -- Activation: {score:.0%}" if score is not None else ""
+            lines.append(f"  - {label}{score_str}")
+        lines.append("")
+
+    represented = [t for t in active_theories if t in represented_theories]
+    if represented:
+        lines.append("Already represented (generate NEW only if conditions materially changed):")
+        for tid in represented:
+            label = THEORY_LABEL_MAP.get(tid, tid)
+            lines.append(f"  - {label}")
+        lines.append("")
+
+    if adjacent_theories:
+        lines.append("Adjacent theories (max 1 wildcard, NEW only):")
+        for tid in adjacent_theories:
+            label = THEORY_LABEL_MAP.get(tid, tid)
+            lines.append(f"  - {label}")
+        lines.append("")
+
+    lines.append("Target: 7-9 total hypotheses across carried-forward + new.")
     return "\n".join(lines)
 
 

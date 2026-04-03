@@ -20,6 +20,8 @@ from backend.engine import activation, conviction, regime, theory_parser
 from backend.engine.output_parser import ParseError, parse_elimination_output, parse_generation_output, parse_sector_falsifier_audits
 from backend.engine.prompt_builder import build_elimination_prompt, build_generation_prompt
 from backend.engine.sector_appendices import select_sector_appendices
+from backend.lifecycle import compute_thread_staleness
+from backend.realization import compute_freshness_label
 from backend.schemas.briefing import BriefingPacket
 from backend.schemas.scoring import ConvictionInput
 
@@ -444,39 +446,45 @@ def get_generation_prompt(db: Session = Depends(get_db)):
     run.regime_flags_active = json.dumps(flag_ids)
     db.commit()
 
-    # Query prior surviving hypotheses with realization data for continuation context
-    prior_hyps = (
-        db.query(HypothesisModel)
-        .filter(
-            HypothesisModel.run_id != run.id,
-            HypothesisModel.status.in_(["SURVIVED", "WOUNDED"]),
+    # v7: Query active threads with staleness gate for thread-based generation
+    active_threads = _build_thread_summaries_for_prompt(db, briefing)
+
+    # Legacy fallback: prior hypotheses for runs without threads (pre-v7 compat)
+    prior_hypotheses = None
+    if not active_threads:
+        prior_hyps = (
+            db.query(HypothesisModel)
+            .filter(
+                HypothesisModel.run_id != run.id,
+                HypothesisModel.status.in_(["SURVIVED", "WOUNDED"]),
+            )
+            .all()
         )
-        .all()
-    )
-    prior_hypotheses = []
-    for h in prior_hyps:
-        # Only include hypotheses that have at least some realization data
-        has_realization = (
-            h.expression_return is not None
-            or h.predicted_magnitude_lower is not None
-        )
-        if has_realization:
-            prior_hypotheses.append({
-                "id": h.id,
-                "short_name": h.short_name,
-                "predicted_assets": json.loads(h.predicted_assets) if h.predicted_assets else [],
-                "asset_direction": json.loads(h.asset_direction) if h.asset_direction else {},
-                "predicted_magnitude_lower": h.predicted_magnitude_lower,
-                "predicted_magnitude_upper": h.predicted_magnitude_upper,
-                "timeframe_end_date": h.timeframe_end_date,
-                "expression_return": h.expression_return,
-                "realization_vs_lower": h.realization_vs_lower,
-                "realization_vs_upper": h.realization_vs_upper,
-                "time_elapsed_pct": h.time_elapsed_pct,
-                "status": h.status,
-                "continuation_generation": h.continuation_generation or 1,
-                "continuation_of": h.continuation_of,
-            })
+        prior_hypotheses_list = []
+        for h in prior_hyps:
+            has_realization = (
+                h.expression_return is not None
+                or h.predicted_magnitude_lower is not None
+            )
+            if has_realization:
+                prior_hypotheses_list.append({
+                    "id": h.id,
+                    "short_name": h.short_name,
+                    "predicted_assets": json.loads(h.predicted_assets) if h.predicted_assets else [],
+                    "asset_direction": json.loads(h.asset_direction) if h.asset_direction else {},
+                    "predicted_magnitude_lower": h.predicted_magnitude_lower,
+                    "predicted_magnitude_upper": h.predicted_magnitude_upper,
+                    "timeframe_end_date": h.timeframe_end_date,
+                    "expression_return": h.expression_return,
+                    "realization_vs_lower": h.realization_vs_lower,
+                    "realization_vs_upper": h.realization_vs_upper,
+                    "time_elapsed_pct": h.time_elapsed_pct,
+                    "status": h.status,
+                    "continuation_generation": h.continuation_generation or 1,
+                    "continuation_of": h.continuation_of,
+                })
+        if prior_hypotheses_list:
+            prior_hypotheses = prior_hypotheses_list
 
     prompt = build_generation_prompt(
         theories=theories,
@@ -484,7 +492,8 @@ def get_generation_prompt(db: Session = Depends(get_db)):
         briefing=briefing_data,
         inbox_items=inbox_items,
         active_regime_flags=active_flags,
-        prior_hypotheses=prior_hypotheses if prior_hypotheses else None,
+        prior_hypotheses=prior_hypotheses,
+        active_threads=active_threads if active_threads else None,
     )
 
     return {"prompt": prompt, "run_id": run.id, "regime_flags_active": flag_ids}
@@ -1295,6 +1304,100 @@ def _inherit_falsifier_counters(h_data: dict, prior: HypothesisModel) -> None:
                 sf.setdefault("generation_market_value", gmv)
 
     h_data["soft_falsifiers"] = json.dumps(new_sf)
+
+
+def _build_thread_summaries_for_prompt(
+    db: Session,
+    briefing: BriefingPacket,
+) -> list[dict[str, Any]]:
+    """Build thread summary dicts for the generation prompt.
+
+    Queries all ACTIVE threads, finds each thread's latest instance,
+    runs the staleness gate on soft falsifiers, and assembles the
+    summary dict that prompt_builder._thread_context_section expects.
+
+    Returns empty list if no active threads exist (first run).
+    """
+    threads = db.query(HypothesisThread).filter(HypothesisThread.status == "ACTIVE").all()
+    if not threads:
+        return []
+
+    summaries = []
+    for thread in threads:
+        # Find the latest instance in this thread
+        latest = (
+            db.query(HypothesisModel)
+            .filter(HypothesisModel.thread_id == thread.thread_id)
+            .order_by(HypothesisModel.generated_date.desc())
+            .first()
+        )
+        if not latest:
+            continue
+
+        # Parse falsifiers from latest instance
+        try:
+            soft_falsifiers = json.loads(latest.soft_falsifiers or "[]")
+        except (json.JSONDecodeError, TypeError):
+            soft_falsifiers = []
+
+        try:
+            hard_falsifiers = json.loads(latest.hard_falsifiers or "[]")
+        except (json.JSONDecodeError, TypeError):
+            hard_falsifiers = []
+
+        # Build current market values for staleness gate
+        # Collect metrics from soft falsifiers, look them up in the briefing
+        current_market_values: dict[str, float] = {}
+        for sf in soft_falsifiers:
+            metric = sf.get("metric", "")
+            if metric:
+                val = briefing.get_field(metric)
+                if val is not None:
+                    current_market_values[metric] = val
+
+        # Run staleness gate
+        staleness_enriched = compute_thread_staleness(soft_falsifiers, current_market_values)
+
+        # Enrich with current_market_value for display in prompt
+        for sf in staleness_enriched:
+            metric = sf.get("metric", "")
+            if metric and metric in current_market_values:
+                sf["current_market_value"] = current_market_values[metric]
+
+        # Parse asset direction
+        try:
+            asset_direction = json.loads(latest.asset_direction or "{}")
+        except (json.JSONDecodeError, TypeError):
+            asset_direction = {}
+
+        # Compute freshness label from realization primitives
+        freshness = compute_freshness_label(
+            latest.realization_vs_lower,
+            latest.realization_vs_upper,
+            latest.time_elapsed_pct or 0.0,
+        )
+
+        summary = {
+            "thread_id": thread.thread_id,
+            "short_name": latest.short_name,
+            "source_theory": thread.source_theory,
+            "total_instances": thread.total_instances or 1,
+            "created_date": thread.created_date,
+            "asset_direction": asset_direction,
+            "payoff_band_lower": thread.payoff_band_lower,
+            "payoff_band_upper": thread.payoff_band_upper,
+            "timeframe_end_date": thread.timeframe_end_date,
+            "expression_return": latest.expression_return,
+            "realization_vs_lower": latest.realization_vs_lower,
+            "realization_vs_upper": latest.realization_vs_upper,
+            "time_elapsed_pct": latest.time_elapsed_pct,
+            "freshness_label": freshness,
+            "hard_falsifiers": hard_falsifiers,
+            "soft_falsifiers": staleness_enriched,
+        }
+        summaries.append(summary)
+
+    return summaries
 
 
 def _get_current_prices_for_threads(db: Session, run: Run) -> dict[str, float]:
