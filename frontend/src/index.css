@@ -4741,3 +4741,322 @@ p, .body-text {
     display: none;
   }
 }
+
+
+/* ─── Falsifier Lifecycle Badges ─────────────────────── */
+
+.falsifier-lifecycle {
+  font-family: var(--font-data);
+  font-size: 9px;
+  font-weight: 600;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  padding: 1px 6px;
+  border: 1px solid;
+  display: inline-flex;
+  align-items: center;
+  gap: 3px;
+}
+
+.falsifier-lifecycle--clear {
+  color: var(--accent-positive);
+  border-color: var(--accent-positive);
+}
+
+.falsifier-lifecycle--triggered {
+  color: var(--accent-negative);
+  border-color: var(--accent-negative);
+}
+
+.falsifier-lifecycle--untestable {
+  color: var(--text-tertiary);
+  border-color: var(--border-medium);
+}
+
+.falsifier-lifecycle--stale {
+  color: var(--accent-gold);
+  border-color: var(--accent-gold);
+}
+
+.falsifier-lifecycle--escalated {
+  color: var(--accent-negative);
+  border-color: var(--accent-negative);
+  background: #7F1D1D0A;
+}
+
+.falsifier-lifecycle__counter {
+  font-size: 8px;
+  opacity: 0.7;
+}
+
+
+/* ─── Thread Detail Overlay ──────────────────────────── */
+
+.thread-detail-identity__ids {
+  display: flex;
+  align-items: baseline;
+  gap: 12px;
+  margin-bottom: 4px;
+}
+
+.thread-detail-identity__instance-id {
+  font-family: var(--font-data);
+  font-size: 10px;
+  color: var(--text-tertiary);
+}
+
+.thread-detail-identity__meta-row {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  margin-top: 8px;
+}
+
+.thread-detail-identity__retired {
+  font-family: var(--font-data);
+  font-size: 9px;
+  font-weight: 600;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: var(--text-tertiary);
+  border: 1px solid var(--border-light);
+  padding: 1px 6px;
+}
+
+.thread-detail-identity__renewed {
+  font-family: var(--font-data);
+  font-size: 10px;
+  color: var(--text-secondary);
+}
+
+.thread-detail-identity__instances {
+  font-family: var(--font-data);
+  font-size: 10px;
+  color: var(--text-tertiary);
+}
+
+/* Lifecycle reasoning */
+.thread-detail-reasoning {
+  padding-top: 12px;
+  padding-bottom: 12px;
+}
+
+.thread-detail-reasoning .detail-statement {
+  font-style: italic;
+  color: var(--text-secondary);
+}
+
+/* V7 falsifier items with lifecycle badges */
+.falsifier-item--v7 {
+  flex-wrap: wrap;
+}
+
+.falsifier-item__badges {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.falsifier-item__staleness-note {
+  width: 100%;
+  font-family: var(--font-body);
+  font-size: 11px;
+  color: var(--text-secondary);
+  font-style: italic;
+  padding-left: 18px;
+  margin-top: 2px;
+}
+
+/* Falsifier dot colors for v7 statuses */
+.falsifier-dot--stale {
+  background: var(--accent-gold);
+}
+
+.falsifier-dot--untestable {
+  background: var(--text-tertiary);
+}
+
+
+/* ─── Emergent Risk Card ─────────────────────────────── */
+
+.emergent-risk-card {
+  border: 1px solid var(--accent-high);
+  padding: 12px;
+  background: #7C2D120A;
+}
+
+.emergent-risk-card__header {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin-bottom: 8px;
+}
+
+.emergent-risk-card__label {
+  font-family: var(--font-data);
+  font-size: 9px;
+  font-weight: 600;
+  letter-spacing: 0.04em;
+  color: var(--text-tertiary);
+}
+
+.emergent-risk-card__condition {
+  font-family: var(--font-body);
+  font-size: 13px;
+  color: var(--text-primary);
+  margin-bottom: 6px;
+}
+
+.emergent-risk-card__chain {
+  font-family: var(--font-body);
+  font-size: 12px;
+  color: var(--text-secondary);
+  font-style: italic;
+}
+
+
+/* ─── Lineage Panel ──────────────────────────────────── */
+
+.lineage-panel__header {
+  width: 100%;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  background: none;
+  border: none;
+  padding: 0;
+  cursor: pointer;
+  font-family: var(--font-display);
+  font-size: 12px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  color: var(--text-primary);
+}
+
+.lineage-panel__title {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.lineage-panel__count {
+  font-family: var(--font-data);
+  font-size: 10px;
+  font-weight: 400;
+  color: var(--text-tertiary);
+  letter-spacing: 0;
+  text-transform: none;
+}
+
+.lineage-panel__toggle {
+  font-family: var(--font-data);
+  font-size: 14px;
+  color: var(--text-tertiary);
+}
+
+.lineage-panel__content {
+  margin-top: 12px;
+}
+
+.lineage-instance {
+  border-bottom: 1px solid var(--border-light);
+}
+
+.lineage-instance:last-child {
+  border-bottom: none;
+}
+
+.lineage-instance--latest {
+  background: var(--bg-inset);
+}
+
+.lineage-instance__row {
+  width: 100%;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 8px 4px;
+  background: none;
+  border: none;
+  cursor: pointer;
+  font-size: 12px;
+}
+
+.lineage-instance__row:hover {
+  background: var(--bg-hover);
+}
+
+.lineage-instance__date {
+  font-family: var(--font-data);
+  font-size: 11px;
+  color: var(--text-secondary);
+  min-width: 80px;
+}
+
+.lineage-instance__conviction {
+  font-family: var(--font-data);
+  font-size: 12px;
+  font-weight: 600;
+}
+
+.lineage-instance__falsifiers {
+  font-family: var(--font-data);
+  font-size: 10px;
+  color: var(--text-tertiary);
+}
+
+.lineage-instance__emr {
+  font-family: var(--font-data);
+  font-size: 8px;
+  font-weight: 700;
+  color: var(--accent-high);
+  border: 1px solid var(--accent-high);
+  padding: 0 3px;
+}
+
+.lineage-instance__current {
+  font-family: var(--font-data);
+  font-size: 8px;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  color: var(--accent-positive);
+  margin-left: auto;
+}
+
+.lineage-instance__toggle {
+  font-family: var(--font-data);
+  font-size: 12px;
+  color: var(--text-tertiary);
+}
+
+.lineage-instance__detail {
+  padding: 4px 4px 12px 22px;
+}
+
+.lineage-instance__detail-row {
+  display: flex;
+  gap: 12px;
+  margin-bottom: 4px;
+  font-size: 11px;
+}
+
+.lineage-instance__detail-label {
+  font-family: var(--font-body);
+  color: var(--text-secondary);
+  min-width: 80px;
+}
+
+.lineage-instance__detail-value {
+  font-family: var(--font-data);
+  color: var(--text-primary);
+}
+
+.lineage-panel__renew-link {
+  font-family: var(--font-data);
+  font-size: 10px;
+  color: var(--text-tertiary);
+  padding: 8px 4px;
+  border-top: 1px dashed var(--border-light);
+  font-style: italic;
+}

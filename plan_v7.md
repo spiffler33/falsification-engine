@@ -910,7 +910,7 @@ Thread entry prices are derived from `run_price_snapshots` of the originating ru
 | 10 | Conviction pipeline: ESCALATED_UNTESTABLE in D_u | ESCALATED_UNTESTABLE adds escalation penalty to D_u computation. | Phase 3 |
 | 11 | Conviction pipeline: TRIGGERED_BY_PASSAGE in D_f | TRIGGERED_BY_PASSAGE treated as TRIGGERED at registered severity in D_f. | Phase 3 |
 | 12 | Frontend: thread-centered Ledger | Rows = threads. Thread age badge. Last action badge. Retired thread display. | Phase 4 |
-| 13 | Frontend: Thread Detail view | Current state + collapsible lineage panel. Falsifier lifecycle badges. Emergent risk display. | Phase 4 |
+| 13 | Frontend: Thread Detail view | Current state + collapsible lineage panel. Falsifier lifecycle badges. Emergent risk display. DONE | Phase 4 |
 | 14 | Frontend: Pipeline Run summary | Action summary ("5 CONFIRMs, 1 UPDATE..."). Thread-based run output display. | Phase 4 |
 | 15 | Frontend: Pipeline Audit columns | Thread age, lifecycle action, STALE count, ESCALATED count, emergent risk indicator. | Phase 4 |
 

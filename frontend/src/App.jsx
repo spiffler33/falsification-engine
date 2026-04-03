@@ -8,6 +8,7 @@ import PipelineView from './views/PipelineView'
 import TradesView from './views/TradesView'
 import AboutView from './views/AboutView'
 import HypothesisDetail from './overlays/HypothesisDetail'
+import ThreadDetail from './overlays/ThreadDetail'
 import { api } from './lib/api'
 import { isStaticMode, getSnapshot } from './lib/snapshot'
 
@@ -76,10 +77,17 @@ export default function App() {
       </Routes>
 
       {selectedHypothesis && (
-        <HypothesisDetail
-          hypothesis={selectedHypothesis}
-          onClose={closeDetail}
-        />
+        selectedHypothesis.thread_id ? (
+          <ThreadDetail
+            thread={selectedHypothesis}
+            onClose={closeDetail}
+          />
+        ) : (
+          <HypothesisDetail
+            hypothesis={selectedHypothesis}
+            onClose={closeDetail}
+          />
+        )
       )}
     </div>
   )
