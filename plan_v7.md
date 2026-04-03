@@ -912,7 +912,7 @@ Thread entry prices are derived from `run_price_snapshots` of the originating ru
 | 12 | Frontend: thread-centered Ledger | Rows = threads. Thread age badge. Last action badge. Retired thread display. | Phase 4 |
 | 13 | Frontend: Thread Detail view | Current state + collapsible lineage panel. Falsifier lifecycle badges. Emergent risk display. DONE | Phase 4 |
 | 14 | Frontend: Pipeline Run summary | Action summary ("5 CONFIRMs, 1 UPDATE..."). Thread-based run output display. DONE | Phase 4 |
-| 15 | Frontend: Pipeline Audit columns | Thread age, lifecycle action, STALE count, ESCALATED count, emergent risk indicator. | Phase 4 |
+| 15 | Frontend: Pipeline Audit columns | Thread age, lifecycle action, STALE count, ESCALATED count, emergent risk indicator. DONE | Phase 4 |
 
 ### Implementation Notes for Claude Code
 

@@ -330,6 +330,15 @@ def get_run_walkforward(run_id: str, db: Session = Depends(get_db)):
     # Get hypotheses for this run (non-KILLED survivors for walk-forward display)
     hyps = db.query(HypothesisModel).filter(HypothesisModel.run_id == run_id).all()
 
+    # Batch-fetch threads for all hypotheses in this run
+    thread_ids = {h.thread_id for h in hyps if h.thread_id}
+    threads = {}
+    if thread_ids:
+        for t in db.query(HypothesisThread).filter(HypothesisThread.thread_id.in_(thread_ids)).all():
+            threads[t.thread_id] = t
+
+    today = date.today()
+
     # Collect tickers we need current prices for
     tickers_needed: set[str] = set()
     rows = []
@@ -339,6 +348,21 @@ def get_run_walkforward(run_id: str, db: Session = Depends(get_db)):
         primary = assets[0] if assets else None
         if primary:
             tickers_needed.add(primary)
+
+            # v7: thread age in days
+            thread_age = None
+            if h.thread_id and h.thread_id in threads:
+                try:
+                    created = date.fromisoformat(threads[h.thread_id].created_date)
+                    thread_age = (today - created).days
+                except (ValueError, TypeError):
+                    pass
+
+            # v7: count STALE and ESCALATED_UNTESTABLE falsifiers
+            soft_f = json.loads(h.soft_falsifiers) if h.soft_falsifiers else []
+            stale_count = sum(1 for f in soft_f if f.get("staleness_flag") == "STALE")
+            escalated_count = sum(1 for f in soft_f if f.get("status") == "ESCALATED_UNTESTABLE")
+
             rows.append({
                 "hypothesis_id": h.id,
                 "short_name": h.short_name,
@@ -347,6 +371,11 @@ def get_run_walkforward(run_id: str, db: Session = Depends(get_db)):
                 "status": h.status,
                 "conviction": h.conviction,
                 "outcome_status": h.outcome_status,
+                "thread_age": thread_age,
+                "lifecycle_action": h.lifecycle_action,
+                "stale_count": stale_count,
+                "escalated_count": escalated_count,
+                "has_emergent_risk": bool(h.emergent_risk_condition),
             })
 
     # Fetch current prices

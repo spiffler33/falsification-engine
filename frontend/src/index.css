@@ -4404,6 +4404,55 @@ p, .body-text {
   font-weight: 600;
 }
 
+.walkforward-panel__cell-action {
+  white-space: nowrap;
+}
+
+.walkforward-panel__cell-age {
+  text-align: right;
+  font-variant-numeric: tabular-nums;
+}
+
+.walkforward-panel__col-health {
+  text-align: center;
+}
+
+.walkforward-panel__cell-health {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  white-space: nowrap;
+}
+
+.health-flag {
+  font-family: var(--font-data);
+  font-size: 9px;
+  font-weight: 600;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  padding: 1px 4px;
+}
+
+.health-flag--stale {
+  color: var(--accent-gold);
+  border: 1px solid var(--accent-gold);
+}
+
+.health-flag--escalated {
+  color: var(--accent-negative);
+  border: 1px solid var(--accent-negative);
+}
+
+.health-flag--emergent {
+  color: var(--accent-high);
+  font-size: 11px;
+  font-weight: 700;
+}
+
+.health-flag--clear {
+  color: var(--text-tertiary);
+}
+
 
 /* ─── Shared: Freshness Badge ───────────────────────── */
 

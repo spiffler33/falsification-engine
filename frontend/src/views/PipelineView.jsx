@@ -19,6 +19,7 @@ import RunSummary from '../components/RunSummary'
 import StatusBadge from '../shared/StatusBadge'
 import TheoryTag from '../shared/TheoryTag'
 import FreshnessBadge from '../shared/FreshnessBadge'
+import LifecycleActionBadge from '../shared/LifecycleActionBadge'
 import { fmtConviction, fmtDate } from '../lib/format'
 
 export default function PipelineView({ onSelectHypothesis }) {
@@ -567,11 +568,14 @@ function WalkForwardPanel({ walkforward, loading, runId, hypotheses, onSelectHyp
         <thead>
           <tr>
             <th>Hypothesis</th>
+            <th>Action</th>
+            <th>Age</th>
             <th>Direction</th>
             <th>Entry</th>
             <th>Current</th>
             <th className="walkforward-panel__col-delta">Delta %</th>
             <th>Realization</th>
+            <th className="walkforward-panel__col-health">Health</th>
           </tr>
         </thead>
         <tbody>
@@ -594,6 +598,12 @@ function WalkForwardPanel({ walkforward, loading, runId, hypotheses, onSelectHyp
               >
                 <td className="walkforward-panel__cell-name">
                   {row.short_name} ({row.ticker})
+                </td>
+                <td className="walkforward-panel__cell-action">
+                  <LifecycleActionBadge action={row.lifecycle_action} />
+                </td>
+                <td className="walkforward-panel__cell-age">
+                  {row.thread_age != null ? `${row.thread_age}d` : '---'}
                 </td>
                 <td className={`walkforward-panel__cell-dir walkforward-panel__cell-dir--${row.direction.toLowerCase()}`}>
                   {row.direction}
@@ -621,6 +631,20 @@ function WalkForwardPanel({ walkforward, loading, runId, hypotheses, onSelectHyp
                     />
                   )}
                   {!exprRet && !hyp && '---'}
+                </td>
+                <td className="walkforward-panel__cell-health">
+                  {row.stale_count > 0 && (
+                    <span className="health-flag health-flag--stale">{row.stale_count} STALE</span>
+                  )}
+                  {row.escalated_count > 0 && (
+                    <span className="health-flag health-flag--escalated">{row.escalated_count} ESC</span>
+                  )}
+                  {row.has_emergent_risk && (
+                    <span className="health-flag health-flag--emergent" title="Emergent risk identified">*</span>
+                  )}
+                  {!row.stale_count && !row.escalated_count && !row.has_emergent_risk && (
+                    <span className="health-flag health-flag--clear">--</span>
+                  )}
                 </td>
               </tr>
             )
