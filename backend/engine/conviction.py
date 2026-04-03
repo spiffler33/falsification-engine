@@ -44,6 +44,9 @@ UNTESTABLE_WEIGHTS = {
     "major": 0.15,
 }
 
+# v7: additional penalty per ESCALATED_UNTESTABLE falsifier (compounds on top of base)
+UNTESTABLE_ESCALATION_PENALTY = 0.05
+
 # Stage 3 gate caps from CLAUDE.md
 HORIZON_CAPS = [
     (0.10, 1),   # H < 0.10 → capped at 1/10
@@ -311,6 +314,9 @@ def _stage2_discounts(inp: ConvictionInput, raw_score: float) -> Stage2Discounts
     for f in inp.untestable_soft_falsifiers:
         weight = UNTESTABLE_WEIGHTS.get(f.get("severity", "minor"), 0.05)
         d_u *= (1.0 - weight)
+        # v7: ESCALATED_UNTESTABLE gets additional penalty for prolonged untestability
+        if f.get("status") == "ESCALATED_UNTESTABLE":
+            d_u *= (1.0 - UNTESTABLE_ESCALATION_PENALTY)
     d_u = max(0.05, d_u)
 
     # Regime alignment discount (D_r)

@@ -43,10 +43,11 @@ def _pipeline_escalation_roundtrip(soft_falsifiers_json: str) -> str:
 def _collect_untestable_sf(soft_falsifiers_json: str) -> list[dict]:
     """Simulate the conviction scoring collection in import_elimination:
     collect falsifiers with status in (UNTESTABLE, ESCALATED_UNTESTABLE).
+    v7 Task 10: now includes status so conviction can differentiate.
     """
     soft_f = json.loads(soft_falsifiers_json)
     return [
-        {"severity": sf["severity"]}
+        {"severity": sf["severity"], "status": sf["status"]}
         for sf in soft_f
         if sf.get("status") in ("UNTESTABLE", "ESCALATED_UNTESTABLE")
     ]
@@ -135,18 +136,20 @@ class TestConvictionScoringCollection:
     for the D_u discount in conviction scoring."""
 
     def test_untestable_collected(self):
-        """Regular UNTESTABLE falsifiers feed into D_u."""
+        """Regular UNTESTABLE falsifiers feed into D_u with status preserved."""
         sf_json = json.dumps([_sf("f1", "minor", "UNTESTABLE", 1)])
         result = _collect_untestable_sf(sf_json)
         assert len(result) == 1
         assert result[0]["severity"] == "minor"
+        assert result[0]["status"] == "UNTESTABLE"
 
     def test_escalated_untestable_collected(self):
-        """ESCALATED_UNTESTABLE falsifiers also feed into D_u."""
+        """ESCALATED_UNTESTABLE falsifiers feed into D_u with status preserved."""
         sf_json = json.dumps([_sf("f1", "major", "ESCALATED_UNTESTABLE", 3)])
         result = _collect_untestable_sf(sf_json)
         assert len(result) == 1
         assert result[0]["severity"] == "major"
+        assert result[0]["status"] == "ESCALATED_UNTESTABLE"
 
     def test_clear_not_collected(self):
         """CLEAR falsifiers excluded from D_u."""
@@ -174,7 +177,9 @@ class TestConvictionScoringCollection:
         result = _collect_untestable_sf(sf_json)
         assert len(result) == 2
         assert result[0]["severity"] == "medium"
+        assert result[0]["status"] == "UNTESTABLE"
         assert result[1]["severity"] == "major"
+        assert result[1]["status"] == "ESCALATED_UNTESTABLE"
 
 
 # ===================================================================

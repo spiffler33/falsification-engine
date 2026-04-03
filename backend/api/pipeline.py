@@ -881,7 +881,7 @@ def import_elimination(payload: dict = Body(...), db: Session = Depends(get_db))
             # v7: emergent risk slot compounds into D_f as additional triggered soft falsifier
             if h.emergent_risk_severity:
                 triggered_sf.append({"severity": h.emergent_risk_severity})
-            untestable_sf = [{"severity": sf["severity"]} for sf in soft_f if sf.get("status") in ("UNTESTABLE", "ESCALATED_UNTESTABLE")]
+            untestable_sf = [{"severity": sf["severity"], "status": sf["status"]} for sf in soft_f if sf.get("status") in ("UNTESTABLE", "ESCALATED_UNTESTABLE")]
 
             # Compute theory-aware overlap for primary asset
             assets = json.loads(h.predicted_assets) if h.predicted_assets else []

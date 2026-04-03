@@ -1051,7 +1051,7 @@ Each phase is independently implementable and testable. Context can be cleared b
   - Compounds multiplicatively into D_f through existing SEVERITY_WEIGHTS (minor=0.10, medium=0.25, major=0.45)
   - No changes to conviction.py or schemas — emergent risk is just another entry in triggered_soft_falsifiers
   - 12 new tests in test_conviction_emergent_risk.py (7 engine + 5 pipeline assembly), 455 total passing
-- Task 10: PENDING — Conviction pipeline: ESCALATED_UNTESTABLE in D_u
+- Task 10: DONE — Conviction pipeline: ESCALATED_UNTESTABLE in D_u
 - Task 11: PENDING — Conviction pipeline: TRIGGERED_BY_PASSAGE in D_f
 
 ### Phase 4: PENDING (Tasks 12-15) — Frontend

@@ -20,7 +20,7 @@ class Stage2Discounts(BaseModel):
     soft_falsifier_discount: float = 0.0  # the D_f multiplier (0.05 to 1.0)
     triggered_soft_falsifiers: List[Dict] = []  # [{severity: ...}] inputs that produced D_f
     untestable_discount: float = 0.0      # the D_u multiplier for UNTESTABLE falsifiers
-    untestable_soft_falsifiers: List[Dict] = []  # [{severity: ...}] inputs that produced D_u
+    untestable_soft_falsifiers: List[Dict] = []  # [{severity: ..., status: ...}] inputs that produced D_u
     sector_falsifier_discount: float = 1.0  # sector-level D_f multiplier (triggered AND relevant only)
     sector_falsifier_entries: List[Dict] = []  # sector audit entries that produced discounts
     regime_discount: float = 1.0          # the D_r multiplier from channel-regime alignment
@@ -68,7 +68,7 @@ class ConvictionInput(BaseModel):
     falsifier_clarity: float = 0.0
     # Stage 2 inputs
     triggered_soft_falsifiers: List[Dict] = []  # [{severity: "minor"|"medium"|"major"}]
-    untestable_soft_falsifiers: List[Dict] = []  # [{severity: "minor"|"medium"|"major"}]
+    untestable_soft_falsifiers: List[Dict] = []  # [{severity: ..., status: "UNTESTABLE"|"ESCALATED_UNTESTABLE"}]
     same_theory_overlap: int = 0   # other surviving hypotheses on same asset from same theory
     diff_theory_overlap: int = 0   # other surviving hypotheses on same asset from different theories
     resolution_channel: str = ""   # one of RESOLUTION_CHANNELS keys, for regime alignment
