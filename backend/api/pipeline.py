@@ -1072,7 +1072,7 @@ def get_snapshot(db: Session = Depends(get_db)):
 
     # Newsletters
     from backend.db.models import Newsletter, Trade
-    newsletters_raw = db.query(Newsletter).order_by(desc(Newsletter.date)).all()
+    newsletters_raw = db.query(Newsletter).order_by(desc(Newsletter.date), desc(Newsletter.id)).all()
     newsletters = []
     for nl in newsletters_raw:
         recs = json.loads(nl.trade_recommendations) if nl.trade_recommendations else []
