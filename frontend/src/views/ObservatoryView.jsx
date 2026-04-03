@@ -1,10 +1,10 @@
 /**
- * ObservatoryView -- Full context layer.
+ * ObservatoryView -- Full context layer (v7: thread-centered).
  * 1. Theory cards (activation state)
- * 2. Hypothesis ledger (delta banner, filters, table/asset view)
+ * 2. Thread ledger (delta banner, filters, thread table / asset view)
  * 3. Data briefing grid
  *
- * Depends on: GET /api/theories, GET /api/hypotheses, GET /api/hypotheses/delta,
+ * Depends on: GET /api/theories, GET /api/threads, GET /api/hypotheses/delta,
  *             GET /api/briefing/latest
  */
 import { useState, useEffect, useMemo, useCallback } from 'react'
@@ -13,7 +13,7 @@ import { api } from '../lib/api'
 import TheoryCard from '../components/TheoryCard'
 import TheoryDetail from '../overlays/TheoryDetail'
 import DeltaBanner from '../components/DeltaBanner'
-import HypothesisTable from '../components/HypothesisTable'
+import ThreadTable from '../components/ThreadTable'
 import AssetGroupView from '../components/AssetGroupView'
 import BriefingGrid from '../components/BriefingGrid'
 
@@ -28,16 +28,17 @@ export default function ObservatoryView({ onSelectHypothesis }) {
   // ---- Theories ----
   const { data: theories, loading: theoriesLoading } = useApi('/api/theories')
 
-  // ---- Hypotheses (from LedgerView) ----
-  const [viewMode, setViewMode] = useState('hypothesis')
+  // ---- Threads (v7: primary ledger data source) ----
+  const [viewMode, setViewMode] = useState('thread') // 'thread' | 'asset'
   const [filter, setFilter] = useState('ALIVE')
-  const [runScope, setRunScope] = useState('latest') // 'latest' | 'all'
+  const [showRetired, setShowRetired] = useState(true)
   const [delta, setDelta] = useState(null)
   const [lastReviewedRunId, setLastReviewedRunId] = useState(
     () => localStorage.getItem('last_reviewed_run_id') || null
   )
-  const { data: hypotheses, loading: hypLoading } = useApi('/api/hypotheses')
+  const { data: threads, loading: threadLoading } = useApi('/api/threads')
 
+  // Delta still works at instance level — shows what changed since last review
   useEffect(() => {
     if (lastReviewedRunId) {
       api.get(`/api/hypotheses/delta?since_run_id=${lastReviewedRunId}`)
@@ -50,49 +51,60 @@ export default function ObservatoryView({ onSelectHypothesis }) {
     }
   }, [lastReviewedRunId])
 
-  // Determine the latest run_id from the data.
-  // Compare run_id (R-YYYYMMDD-HHMMSS) not generated_date (YYYY-MM-DD),
-  // because multiple runs on the same day share the same generated_date.
-  const latestRunId = useMemo(() => {
-    if (!hypotheses || hypotheses.length === 0) return null
-    let latest = hypotheses[0]
-    for (const h of hypotheses) {
-      if ((h.run_id || '') > (latest.run_id || '')) latest = h
-    }
-    return latest.run_id
-  }, [hypotheses])
-
+  // Filter and sort threads
   const filtered = useMemo(() => {
-    if (!hypotheses) return []
-    let list = [...hypotheses]
+    if (!threads) return []
+    let list = [...threads]
 
-    // Run scope filter
-    if (runScope === 'latest' && latestRunId) {
-      list = list.filter(h => h.run_id === latestRunId)
-    }
-
+    // Status filter (on latest instance status)
     switch (filter) {
       case 'ALIVE':
-        list = list.filter(h => h.status !== 'KILLED')
+        list = list.filter(t => t.status !== 'KILLED' && t.thread_status !== 'RETIRED')
         break
       case 'WOUNDED':
-        list = list.filter(h => h.status === 'WOUNDED')
+        list = list.filter(t => t.status === 'WOUNDED')
         break
       case 'KILLED':
-        list = list.filter(h => h.status === 'KILLED')
+        list = list.filter(t => t.status === 'KILLED')
         break
+      // 'ALL' — no status filter
     }
-    list.sort((a, b) => (b.conviction || 0) - (a.conviction || 0))
+
+    // Retired visibility
+    if (!showRetired) {
+      list = list.filter(t => t.thread_status !== 'RETIRED')
+    }
+
+    // Sort: active threads by conviction desc, retired at bottom
+    list.sort((a, b) => {
+      const aRetired = a.thread_status === 'RETIRED' ? 1 : 0
+      const bRetired = b.thread_status === 'RETIRED' ? 1 : 0
+      if (aRetired !== bRetired) return aRetired - bRetired
+      return (b.conviction || 0) - (a.conviction || 0)
+    })
+
     return list
-  }, [hypotheses, filter, runScope, latestRunId])
+  }, [threads, filter, showRetired])
+
+  // Count active vs retired for display
+  const activeCount = useMemo(() => {
+    return filtered.filter(t => t.thread_status !== 'RETIRED').length
+  }, [filtered])
+  const retiredCount = useMemo(() => {
+    return filtered.filter(t => t.thread_status === 'RETIRED').length
+  }, [filtered])
 
   const handleMarkReviewed = () => {
-    if (hypotheses && hypotheses.length > 0) {
-      const latestRunId = hypotheses[0]?.run_id
-      if (latestRunId) {
-        localStorage.setItem('last_reviewed_run_id', latestRunId)
-        setLastReviewedRunId(latestRunId)
-        api.put('/api/user-state', { last_reviewed_run_id: latestRunId }).catch(() => {})
+    if (threads && threads.length > 0) {
+      // Find the latest run_id across all threads
+      let latestRun = ''
+      for (const t of threads) {
+        if ((t.run_id || '') > latestRun) latestRun = t.run_id
+      }
+      if (latestRun) {
+        localStorage.setItem('last_reviewed_run_id', latestRun)
+        setLastReviewedRunId(latestRun)
+        api.put('/api/user-state', { last_reviewed_run_id: latestRun }).catch(() => {})
       }
     }
     setDelta(null)
@@ -129,7 +141,7 @@ export default function ObservatoryView({ onSelectHypothesis }) {
         <div className="empty-state">No theory modules found.</div>
       )}
 
-      {/* Hypothesis Ledger */}
+      {/* Thread Ledger */}
       <div className="observatory-view__ledger">
         <DeltaBanner
           delta={delta}
@@ -141,10 +153,10 @@ export default function ObservatoryView({ onSelectHypothesis }) {
           <div className="controls-bar__left">
             <div className="btn-group">
               <button
-                className={`btn ${viewMode === 'hypothesis' ? 'btn--active' : ''}`}
-                onClick={() => setViewMode('hypothesis')}
+                className={`btn ${viewMode === 'thread' ? 'btn--active' : ''}`}
+                onClick={() => setViewMode('thread')}
               >
-                BY HYPOTHESIS
+                BY THREAD
               </button>
               <button
                 className={`btn ${viewMode === 'asset' ? 'btn--active' : ''}`}
@@ -168,31 +180,26 @@ export default function ObservatoryView({ onSelectHypothesis }) {
           </div>
 
           <div className="controls-bar__right">
-            <div className="btn-group">
-              <button
-                className={`btn ${runScope === 'latest' ? 'btn--active' : ''}`}
-                onClick={() => setRunScope('latest')}
-              >
-                LATEST RUN
-              </button>
-              <button
-                className={`btn ${runScope === 'all' ? 'btn--active' : ''}`}
-                onClick={() => setRunScope('all')}
-              >
-                ALL RUNS
-              </button>
-            </div>
+            <button
+              className={`btn ${showRetired ? 'btn--active' : ''}`}
+              onClick={() => setShowRetired(!showRetired)}
+            >
+              {showRetired ? 'HIDE RETIRED' : 'SHOW RETIRED'}
+            </button>
             <span className="controls-bar__count">
-              {filtered.length} {filtered.length === 1 ? 'hypothesis' : 'hypotheses'}
+              {activeCount} {activeCount === 1 ? 'thread' : 'threads'}
+              {showRetired && retiredCount > 0 && (
+                <span className="controls-bar__retired-count"> + {retiredCount} retired</span>
+              )}
             </span>
           </div>
         </div>
 
-        {hypLoading ? (
-          <div className="loading">Loading hypotheses...</div>
-        ) : viewMode === 'hypothesis' ? (
-          <HypothesisTable
-            hypotheses={filtered}
+        {threadLoading ? (
+          <div className="loading">Loading threads...</div>
+        ) : viewMode === 'thread' ? (
+          <ThreadTable
+            threads={filtered}
             onSelect={onSelectHypothesis}
           />
         ) : (

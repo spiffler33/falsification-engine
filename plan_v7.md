@@ -1059,4 +1059,12 @@ Each phase is independently implementable and testable. Context can be cleared b
   - No changes to conviction.py — engine is agnostic about routing source
   - 12 new tests in test_conviction_triggered_by_passage.py (5 engine + 7 pipeline assembly), 477 total passing
 
-### Phase 4: PENDING (Tasks 12-15) — Frontend
+### Phase 4: IN PROGRESS (Tasks 12-15) — Frontend
+- Task 12: COMPLETE (2026-04-03) — Thread-centered Ledger view
+  - Backend: `GET /api/threads` endpoint in `backend/api/threads.py` — returns threads with latest instance data, sorted ACTIVE-first by conviction
+  - Frontend: `ThreadTable.jsx` component — rows = threads, columns: Status, Thread (name+ID), Theory, Conv., Freshness, Fals., Assets, Age (days + confirmation count), Action (lifecycle badge), Flags (STALE/ESCALATED/EMR)
+  - Shared components: `ThreadAgeBadge.jsx` (days + xN confirmations), `LifecycleActionBadge.jsx` (CONFIRM/UPDATE/RENEW/RETIRE/NEW), `ThreadFlagsBadge.jsx` (S:N, E:N, EMR)
+  - `ObservatoryView.jsx` refactored: fetches `/api/threads`, "BY THREAD" / "BY ASSET" toggle, SHOW/HIDE RETIRED button, thread count display
+  - RETIRED threads rendered at 0.55 opacity below active threads with divider label
+  - CSS: thread-table, badges, lifecycle action colors, flag colors, night mode, mobile collapse
+  - 14 new tests in `test_thread_api.py` (7 _thread_to_dict + 7 list logic), 491 total passing
