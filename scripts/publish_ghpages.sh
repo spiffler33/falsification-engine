@@ -93,10 +93,15 @@ echo "window.__SNAPSHOT__ = $SAFE_JSON;" > "$FRONTEND_DIR/dist/snapshot.js"
 echo "[3/5] Snapshot written to dist/snapshot.js"
 
 # Inject the snapshot script tag into dist/index.html (not the source index.html)
+# IMPORTANT: Must be a synchronous (non-defer) script placed BEFORE the Vite module
+# script. If snapshot.js loads after the module script, window.__SNAPSHOT__ may be
+# unset when main.jsx runs, causing BrowserRouter to be used on GitHub Pages instead
+# of HashRouter. BrowserRouter rewrites the URL on nav clicks from
+# /falsification-engine/ to / (stripping the project base path).
 DIST_INDEX="$FRONTEND_DIR/dist/index.html"
-sed -i.bak "s|</head>|<script defer src=\"./snapshot.js?v=${CACHE_BUST}\"></script></head>|" "$DIST_INDEX"
+sed -i.bak "s|<script type=\"module\"|<script src=\"./snapshot.js?v=${CACHE_BUST}\"></script><script type=\"module\"|" "$DIST_INDEX"
 rm -f "$DIST_INDEX.bak"
-echo "  Injected snapshot.js script tag into dist/index.html"
+echo "  Injected snapshot.js script tag into dist/index.html (before module script)"
 
 # Add .nojekyll to prevent GitHub Pages from ignoring _-prefixed files
 touch "$FRONTEND_DIR/dist/.nojekyll"
