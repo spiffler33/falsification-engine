@@ -129,6 +129,32 @@ def _migrate(eng):
         _add_column("hypotheses", "continuation_generation", "INTEGER", "DEFAULT 1")
         _add_column("hypotheses", "continuation_justification", "TEXT")
 
+        # Migration 8: thread identity + lifecycle (v7)
+        cursor.execute("""
+            CREATE TABLE IF NOT EXISTS hypothesis_threads (
+                thread_id TEXT PRIMARY KEY,
+                status TEXT NOT NULL DEFAULT 'ACTIVE',
+                originating_instance_id TEXT NOT NULL REFERENCES hypotheses(id),
+                originating_run_id TEXT NOT NULL REFERENCES runs(id),
+                entry_prices TEXT,
+                payoff_band_lower REAL,
+                payoff_band_upper REAL,
+                timeframe_end_date TEXT,
+                renewed_from TEXT,
+                source_theory TEXT NOT NULL,
+                created_date TEXT NOT NULL,
+                confirmation_count INTEGER NOT NULL DEFAULT 0,
+                total_instances INTEGER NOT NULL DEFAULT 1
+            )
+        """)
+        _add_column("hypotheses", "thread_id", "TEXT",
+                     "REFERENCES hypothesis_threads(thread_id)")
+        _add_column("hypotheses", "lifecycle_action", "TEXT")
+        _add_column("hypotheses", "lifecycle_reasoning", "TEXT")
+        _add_column("hypotheses", "emergent_risk_condition", "TEXT")
+        _add_column("hypotheses", "emergent_risk_severity", "TEXT")
+        _add_column("hypotheses", "emergent_risk_causal_chain", "TEXT")
+
         raw.commit()
     except Exception:
         pass  # Table may not exist yet on fresh DB (create_all handles it)

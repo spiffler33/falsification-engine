@@ -64,6 +64,16 @@ class Hypothesis(Base):
     continuation_generation = Column(Integer, server_default="1")  # 1=original, 2=first continuation, etc.
     continuation_justification = Column(Text)  # Required for continuations: what is genuinely new
 
+    # Thread identity + lifecycle (v7)
+    thread_id = Column(Text, ForeignKey("hypothesis_threads.thread_id"))  # FK to thread
+    lifecycle_action = Column(Text)  # CONFIRM | UPDATE | RENEW | RETIRE | NEW
+    lifecycle_reasoning = Column(Text)  # LLM's stated reason for the action
+
+    # Emergent risk slot (v7) — one per instance, injected by elimination pass
+    emergent_risk_condition = Column(Text)
+    emergent_risk_severity = Column(Text)  # minor | medium | major
+    emergent_risk_causal_chain = Column(Text)  # how it threatens the mechanism
+
 
 class JournalEntry(Base):
     __tablename__ = "journal_entries"
@@ -190,6 +200,32 @@ class RunPriceSnapshot(Base):
     price = Column(Float, nullable=False)
     date = Column(Text, nullable=False)  # ISO date of the price
     source = Column(Text, nullable=False, server_default="yahoo_finance")
+
+
+class HypothesisThread(Base):
+    __tablename__ = "hypothesis_threads"
+
+    thread_id = Column(Text, primary_key=True)  # T-{first_run_ts}-{seq:02d}
+    status = Column(Text, nullable=False, server_default="ACTIVE")  # ACTIVE | RETIRED
+
+    # Realization anchor (pinned to originating instance)
+    originating_instance_id = Column(Text, ForeignKey("hypotheses.id"), nullable=False)
+    originating_run_id = Column(Text, ForeignKey("runs.id"), nullable=False)
+    entry_prices = Column(Text)  # JSON: Record<ticker, price>
+    payoff_band_lower = Column(Float)
+    payoff_band_upper = Column(Float)
+    timeframe_end_date = Column(Text)  # ISO date, may be updated via UPDATE action
+
+    # Lineage
+    renewed_from = Column(Text)  # thread_id of parent thread (if created via RENEW)
+
+    # Provenance
+    source_theory = Column(Text, nullable=False)
+    created_date = Column(Text, nullable=False)  # ISO date of first generation
+
+    # Thread-level accumulators
+    confirmation_count = Column(Integer, nullable=False, server_default="0")
+    total_instances = Column(Integer, nullable=False, server_default="1")
 
 
 class UserState(Base):
