@@ -15,6 +15,7 @@ import { api } from '../lib/api'
 import PipelineStep from '../components/PipelineStep'
 import PromptPreview from '../components/PromptPreview'
 import ImportPanel from '../components/ImportPanel'
+import RunSummary from '../components/RunSummary'
 import StatusBadge from '../shared/StatusBadge'
 import TheoryTag from '../shared/TheoryTag'
 import FreshnessBadge from '../shared/FreshnessBadge'
@@ -249,6 +250,11 @@ function RunMode() {
           </PipelineStep>
         ))}
       </div>
+
+      {/* Run summary — shows after conviction scoring completes */}
+      {status?.run_id && getState(4) === 'complete' && (
+        <RunSummary runId={status.run_id} />
+      )}
 
       {apiError && (
         <div className="pipeline-api-error">

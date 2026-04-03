@@ -166,6 +166,10 @@ def _model_to_dict(h: HypothesisModel, db: Session, *, for_snapshot: bool = Fals
         "continuation_of": h.continuation_of,
         "continuation_generation": h.continuation_generation or 1,
         "continuation_justification": h.continuation_justification,
+        # v7: Thread lifecycle
+        "thread_id": h.thread_id,
+        "lifecycle_action": h.lifecycle_action,
+        "lifecycle_reasoning": h.lifecycle_reasoning,
     }
 
 

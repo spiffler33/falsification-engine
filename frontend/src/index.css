@@ -2543,6 +2543,168 @@ p, .body-text {
   color: var(--text-secondary);
 }
 
+/* ─── Run Summary (post-run output in Run Mode) ───── */
+
+.run-summary {
+  margin-top: 32px;
+  border-top: 2px solid var(--text-primary);
+  padding-top: 20px;
+}
+
+.run-summary__header {
+  margin-bottom: 16px;
+}
+
+.run-summary__title {
+  font-family: var(--font-display);
+  font-size: 18px;
+  color: var(--text-primary);
+  letter-spacing: 0.02em;
+}
+
+.run-summary__actions {
+  margin-bottom: 20px;
+}
+
+.run-summary__actions-label {
+  display: block;
+  font-family: var(--font-data);
+  font-size: 10px;
+  letter-spacing: 0.08em;
+  color: var(--text-tertiary);
+  text-transform: uppercase;
+  margin-bottom: 8px;
+}
+
+.run-summary__action-counts {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  font-family: var(--font-data);
+  font-size: 13px;
+}
+
+.run-summary__action-count {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.run-summary__action-sep {
+  color: var(--border-medium);
+  margin: 0 8px;
+}
+
+.run-summary__count {
+  font-weight: 600;
+  min-width: 16px;
+  text-align: right;
+}
+
+.run-summary__count--zero {
+  color: var(--text-tertiary);
+}
+
+.run-summary__count--confirm { color: var(--accent-positive); }
+.run-summary__count--update { color: var(--accent-gold); }
+.run-summary__count--renew { color: var(--text-secondary); }
+.run-summary__count--retire { color: var(--text-tertiary); }
+.run-summary__count--new { color: var(--accent-high); }
+
+.run-summary__action-label {
+  font-size: 10px;
+  letter-spacing: 0.06em;
+  color: var(--text-secondary);
+}
+
+.run-summary__table {
+  width: 100%;
+  border-collapse: collapse;
+}
+
+.run-summary__table th {
+  font-family: var(--font-data);
+  font-size: 10px;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--text-tertiary);
+  text-align: left;
+  padding: 8px 12px;
+  border-bottom: 1px solid var(--border-medium);
+}
+
+.run-summary__table td {
+  font-family: var(--font-body);
+  font-size: 13px;
+  padding: 8px 12px;
+  border-bottom: 1px solid var(--border-light);
+  color: var(--text-primary);
+}
+
+.run-summary__row:hover {
+  background: var(--bg-hover);
+}
+
+.run-summary__row--retire {
+  opacity: 0.55;
+}
+
+.run-summary__cell-thread {
+  font-family: var(--font-data);
+  font-size: 11px;
+  color: var(--text-tertiary);
+  white-space: nowrap;
+}
+
+.run-summary__cell-name {
+  font-family: var(--font-body);
+  font-size: 13px;
+  color: var(--text-primary);
+}
+
+.run-summary__cell-action {
+  white-space: nowrap;
+}
+
+.run-summary__col-conviction {
+  text-align: right;
+}
+
+.run-summary__cell-conviction {
+  text-align: right;
+  white-space: nowrap;
+}
+
+/* Conviction arrow: "8/10 -> 8/10" */
+.conviction-arrow {
+  font-family: var(--font-data);
+  font-size: 12px;
+  color: var(--text-secondary);
+}
+
+.conviction-arrow__before {
+  color: var(--text-tertiary);
+}
+
+.conviction-arrow__sep {
+  margin: 0 4px;
+  color: var(--border-medium);
+}
+
+.conviction-arrow__after {
+  color: var(--text-primary);
+  font-weight: 600;
+}
+
+.conviction-arrow--up .conviction-arrow__after {
+  color: var(--accent-positive);
+}
+
+.conviction-arrow--down .conviction-arrow__after {
+  color: var(--accent-negative);
+}
+
+
 /* Audit Mode */
 .audit-run-info {
   display: flex;
