@@ -1046,7 +1046,11 @@ Each phase is independently implementable and testable. Context can be cleared b
   - ESCALATED_UNTESTABLE included in untestable_sf collection for D_u discount
   - Counter inheritance: CONFIRM/UPDATE carry forward; NEW/RENEW reset to 0 (via _inherit_falsifier_counters)
   - 25 new tests in test_untestable_escalation_pipeline.py, 443 total passing
-- Task 9: PENDING — Conviction pipeline: emergent risk in D_f
+- Task 9: COMPLETE (2026-04-03) — Conviction pipeline: emergent risk in D_f
+  - In `import_elimination()`, after building triggered_sf from soft falsifiers, checks h.emergent_risk_severity — if truthy, appends {"severity": h.emergent_risk_severity} to triggered_sf
+  - Compounds multiplicatively into D_f through existing SEVERITY_WEIGHTS (minor=0.10, medium=0.25, major=0.45)
+  - No changes to conviction.py or schemas — emergent risk is just another entry in triggered_soft_falsifiers
+  - 12 new tests in test_conviction_emergent_risk.py (7 engine + 5 pipeline assembly), 455 total passing
 - Task 10: PENDING — Conviction pipeline: ESCALATED_UNTESTABLE in D_u
 - Task 11: PENDING — Conviction pipeline: TRIGGERED_BY_PASSAGE in D_f
 
