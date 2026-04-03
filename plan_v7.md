@@ -1035,8 +1035,17 @@ Each phase is independently implementable and testable. Context can be cleared b
   - `_enrich_elimination_falsifiers()` in pipeline.py: runs staleness gate on hypothesis falsifiers using current briefing data, annotates with staleness_flag + current_market_value
   - Pipeline `get_elimination_prompt()` detects thread presence and auto-enables lifecycle mode
   - 27 new tests in test_elimination_lifecycle.py, 406 total passing
-- Task 7: PENDING — Elimination output parser: v7 fields
-- Task 8: PENDING — UNTESTABLE escalation post-elimination
+- Task 7: COMPLETE (2026-04-03) — Elimination output parser: v7 fields
+  - `parse_elimination_output()` list-format path: accepts STALE status, carries through staleness_classification + staleness_reasoning per falsifier
+  - `parse_elimination_output()` extracts emergent_risk object, flattens to emergent_risk_condition/severity/causal_chain on hypothesis dict
+  - `import_elimination()` persists emergent_risk_condition/severity/causal_chain to HypothesisModel
+  - 12 new tests in test_elimination_parser_v7.py, 418 total passing
+- Task 8: COMPLETE (2026-04-03) — UNTESTABLE escalation post-elimination
+  - `apply_untestable_escalation()` called in `import_elimination()` after parser sets statuses, before conviction scoring
+  - Counters increment per UNTESTABLE pass; at N=3, status becomes ESCALATED_UNTESTABLE
+  - ESCALATED_UNTESTABLE included in untestable_sf collection for D_u discount
+  - Counter inheritance: CONFIRM/UPDATE carry forward; NEW/RENEW reset to 0 (via _inherit_falsifier_counters)
+  - 25 new tests in test_untestable_escalation_pipeline.py, 443 total passing
 - Task 9: PENDING — Conviction pipeline: emergent risk in D_f
 - Task 10: PENDING — Conviction pipeline: ESCALATED_UNTESTABLE in D_u
 - Task 11: PENDING — Conviction pipeline: TRIGGERED_BY_PASSAGE in D_f

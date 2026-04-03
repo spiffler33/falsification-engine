@@ -662,7 +662,7 @@ def parse_elimination_output(
                 if not isinstance(sf_item, dict):
                     continue
                 item_status = sf_item.get("status", "").upper()
-                if item_status in ("TRIGGERED", "UNTESTABLE"):
+                if item_status in ("TRIGGERED", "UNTESTABLE", "STALE"):
                     name = sf_item.get("name", sf_item.get("id", "")).lower().strip()
                     for sf in existing_sf:
                         if sf.get("status") == "TRIGGERED":
@@ -673,9 +673,23 @@ def parse_elimination_output(
                                 or name in sf_name or name in sf_cond
                                 or sf_name in name or sf_cond in name):
                             sf["status"] = item_status
+                            # v7: carry through staleness lifecycle fields
+                            staleness_cls = sf_item.get("staleness_classification")
+                            if staleness_cls:
+                                sf["staleness_classification"] = staleness_cls
+                            staleness_reason = sf_item.get("staleness_reasoning")
+                            if staleness_reason:
+                                sf["staleness_reasoning"] = staleness_reason
                             break
 
         matched["soft_falsifiers"] = json.dumps(existing_sf)
+
+        # v7: extract emergent risk slot (one per hypothesis, injected by elimination)
+        emergent_risk = item.get("emergent_risk")
+        if emergent_risk and isinstance(emergent_risk, dict):
+            matched["emergent_risk_condition"] = emergent_risk.get("condition", "")
+            matched["emergent_risk_severity"] = emergent_risk.get("severity", "")
+            matched["emergent_risk_causal_chain"] = emergent_risk.get("causal_chain", "")
 
         # Store conviction inputs
         matched["_conviction_inputs"] = item.get("conviction_inputs", {})

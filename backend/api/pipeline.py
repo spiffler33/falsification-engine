@@ -20,7 +20,7 @@ from backend.engine import activation, conviction, regime, theory_parser
 from backend.engine.output_parser import ParseError, parse_elimination_output, parse_generation_output, parse_sector_falsifier_audits
 from backend.engine.prompt_builder import build_elimination_prompt, build_generation_prompt
 from backend.engine.sector_appendices import select_sector_appendices
-from backend.lifecycle import compute_thread_staleness
+from backend.lifecycle import apply_untestable_escalation, compute_thread_staleness
 from backend.realization import compute_freshness_label
 from backend.schemas.briefing import BriefingPacket
 from backend.schemas.scoring import ConvictionInput
@@ -841,6 +841,23 @@ def import_elimination(payload: dict = Body(...), db: Session = Depends(get_db))
         h.elimination_notes = h_data.get("elimination_notes", "")
         h.soft_falsifiers = h_data.get("soft_falsifiers", h.soft_falsifiers)
 
+        # v7 Task 8: Apply UNTESTABLE escalation post-elimination, pre-conviction.
+        # Increments untestable_consecutive counters and escalates to
+        # ESCALATED_UNTESTABLE at N=3 consecutive passes.
+        if h.soft_falsifiers:
+            try:
+                _sf_list = json.loads(h.soft_falsifiers)
+                if _sf_list:
+                    _sf_list = apply_untestable_escalation(_sf_list)
+                    h.soft_falsifiers = json.dumps(_sf_list)
+            except (json.JSONDecodeError, TypeError):
+                pass
+
+        # v7: persist emergent risk slot (one per hypothesis per elimination pass)
+        h.emergent_risk_condition = h_data.get("emergent_risk_condition")
+        h.emergent_risk_severity = h_data.get("emergent_risk_severity")
+        h.emergent_risk_causal_chain = h_data.get("emergent_risk_causal_chain")
+
         # Handle channel correction from evaluator
         elim_for_channel = None
         for er in data:
@@ -861,7 +878,7 @@ def import_elimination(payload: dict = Body(...), db: Session = Depends(get_db))
             llm_inputs = h_data.get("_conviction_inputs", {})
             soft_f = json.loads(h.soft_falsifiers) if h.soft_falsifiers else []
             triggered_sf = [{"severity": sf["severity"]} for sf in soft_f if sf.get("status") == "TRIGGERED"]
-            untestable_sf = [{"severity": sf["severity"]} for sf in soft_f if sf.get("status") == "UNTESTABLE"]
+            untestable_sf = [{"severity": sf["severity"]} for sf in soft_f if sf.get("status") in ("UNTESTABLE", "ESCALATED_UNTESTABLE")]
 
             # Compute theory-aware overlap for primary asset
             assets = json.loads(h.predicted_assets) if h.predicted_assets else []
