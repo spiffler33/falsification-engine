@@ -61,7 +61,7 @@ CRITICAL_FIELDS: set[str] = {
 }
 
 # Critical computed fields — missing these is an error.
-CRITICAL_COMPUTED: set[str] = {"net_liquidity", "equity_risk_premium"}
+CRITICAL_COMPUTED: set[str] = {"net_liquidity", "equity_risk_premium", "buffett_indicator"}
 
 # Range bounds: (min, max). Values outside are flagged.
 # Bounds are generous — designed to catch bad data, not normal extremes.
@@ -105,7 +105,7 @@ RANGE_BOUNDS: dict[str, tuple[float, float]] = {
     "interest_receipts_ratio": (0, 100),
     "buffett_indicator": (0.2, 5),
     # Web-sourced
-    "ism_pmi": (25, 75),
+    "ism_pmi": (25, 80),
     "shiller_cape": (5, 80),
     "finra_margin_debt": (50, 3_000),
     "total_debt_to_gdp": (50, 500),
@@ -565,6 +565,39 @@ def _check_anomalies(
     return checks
 
 
+def _check_provenance(briefing: BriefingPacket) -> list[ValidationCheck]:
+    """Flag computed metrics derived via fallback, hardcoded, or missing paths.
+
+    Reads field_provenance from the briefing packet. Any metric with a
+    non-primary derivation method is surfaced here — no need to maintain
+    a separate list of fields to watch. Adding provenance tracking to a
+    new metric in _compute_metrics is sufficient for it to appear in
+    validation automatically.
+    """
+    checks: list[ValidationCheck] = []
+
+    _SEVERITY_MAP = {
+        "fallback": "warning",
+        "hardcoded": "info",
+        "missing": "warning",  # completeness check handles error severity
+    }
+
+    for field_name, prov in sorted(briefing.field_provenance.items()):
+        if prov.method == "primary":
+            continue
+
+        severity = _SEVERITY_MAP.get(prov.method, "info")
+        checks.append(ValidationCheck(
+            field=field_name,
+            check_type="provenance",
+            severity=severity,
+            message=f"{field_name}: {prov.detail}",
+            details={"method": prov.method},
+        ))
+
+    return checks
+
+
 # ---------------------------------------------------------------------------
 # Main entry point
 # ---------------------------------------------------------------------------
@@ -589,6 +622,7 @@ def validate_briefing(
     checks.extend(_check_consistency(briefing))
     checks.extend(_check_cross_source(briefing))
     checks.extend(_check_staleness(briefing))
+    checks.extend(_check_provenance(briefing))
 
     if previous_briefing is not None:
         checks.extend(_check_anomalies(briefing, previous_briefing))

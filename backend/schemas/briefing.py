@@ -30,6 +30,24 @@ class WebSourcedData(BaseModel):
     confidence: str = ""    # "high", "medium", "low"
 
 
+class FieldProvenance(BaseModel):
+    """Tracks how a computed metric was derived.
+
+    Computed metrics sometimes have fallback paths that produce a value
+    even when the intended data source is unavailable. Without provenance,
+    downstream code (activation scoring, validation) can't distinguish
+    "real value from intended source" from "synthetic value from degraded path."
+
+    method values:
+    - "primary":   derived from intended data source — no quality concern
+    - "fallback":  value exists but was derived from a degraded/alternate path
+    - "hardcoded": depends on a hardcoded constant that drifts over time
+    - "missing":   could not be computed due to missing upstream data
+    """
+    method: str   # primary, fallback, hardcoded, missing
+    detail: str   # human-readable explanation of derivation path
+
+
 # Web-sourced fields that replace FRED-derived proxies when available.
 # Key = original field path (what theory modules reference)
 # Value = web_sourced field name (better data)
@@ -67,6 +85,11 @@ class BriefingPacket(BaseModel):
 
     # Data quality report from validation agent (Phase 4)
     data_quality: dict[str, Any] = {}
+
+    # Provenance tracking for computed metrics.
+    # Records how each value was derived — especially when fallbacks were used.
+    # Validation reads this to flag degraded derivations automatically.
+    field_provenance: dict[str, FieldProvenance] = {}
 
     def get_field(self, field_path: str) -> Optional[float]:
         """Resolve a dotted field path like 'credit.hy_spread' or a ticker like '^VIX'.

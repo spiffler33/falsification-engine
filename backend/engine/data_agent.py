@@ -395,13 +395,21 @@ def _compute_metrics(
 
     These field names must match what theory modules reference as computed metrics.
 
+    Returns:
+        (computed, provenance) tuple. provenance tracks derivation quality for
+        metrics that have fallback paths or hardcoded dependencies. Absence from
+        provenance dict means "primary" — the intended data source was used.
+
     Args:
         fred_data: Transformed FRED values keyed by field path.
         market_data: Yahoo market data keyed by ticker.
         fred_timeseries: Raw pandas Series for WALCL/WTREGEN/RRPONTSYD (for 30d change).
         spy_daily: SPY daily closes for drawdown + realized vol.
     """
+    from backend.schemas.briefing import FieldProvenance
+
     computed: dict[str, Optional[float]] = {}
+    provenance: dict[str, FieldProvenance] = {}
     if fred_timeseries is None:
         fred_timeseries = {}
 
@@ -438,12 +446,28 @@ def _compute_metrics(
             if approx_market_cap_T > 0:
                 earnings_yield = (cp / 1000) / approx_market_cap_T * 100  # CP is $B
                 computed["equity_risk_premium"] = round(earnings_yield - t10y, 2)
+                provenance["equity_risk_premium"] = FieldProvenance(
+                    method="primary",
+                    detail="CP/Wilshire5000 earnings yield - 10Y yield",
+                )
             else:
                 computed["equity_risk_premium"] = round(4.5 - t10y, 2)
+                provenance["equity_risk_premium"] = FieldProvenance(
+                    method="fallback",
+                    detail="4.5% constant - 10Y yield (Wilshire5000 index <= 0)",
+                )
         else:
             computed["equity_risk_premium"] = round(4.5 - t10y, 2)
+            provenance["equity_risk_premium"] = FieldProvenance(
+                method="fallback",
+                detail="4.5% constant - 10Y yield (WILL5000INDFC FRED series unavailable)",
+            )
     elif spy_data and spy_data.price and t10y is not None:
         computed["equity_risk_premium"] = round(4.5 - t10y, 2)
+        provenance["equity_risk_premium"] = FieldProvenance(
+            method="fallback",
+            detail="4.5% constant - 10Y yield (corporate profits data unavailable)",
+        )
 
     # --- Net liquidity (Fed BS - TGA - RRP) ---
     fed_bs = fred_data.get("liquidity.fed_balance_sheet")
@@ -578,6 +602,12 @@ def _compute_metrics(
         gdp_T = gdp / 1000  # GDP is in billions
         if gdp_T > 0:
             computed["buffett_indicator"] = round(approx_market_cap_T / gdp_T, 2)
+    else:
+        provenance["buffett_indicator"] = FieldProvenance(
+            method="missing",
+            detail="Cannot compute: WILL5000INDFC unavailable" if gdp is not None
+                   else "Cannot compute: GDP and/or WILL5000INDFC unavailable",
+        )
 
     # --- Foreign treasury holdings % of total outstanding (monetary_architecture) ---
     foreign_holdings = fred_data.get("computed_fred.foreign_treasury_holdings")
@@ -599,8 +629,19 @@ def _compute_metrics(
     # Stored as surplus: positive = interest exceeds defense
     if interest is not None:
         computed["interest_exceeds_defense"] = round(interest - 940, 0)
+        provenance["interest_exceeds_defense"] = FieldProvenance(
+            method="hardcoded",
+            detail="Interest - $940B defense (FY2026 estimate, ~3%/yr from FY2024 $886B)",
+        )
 
-    return computed
+    # --- Top 10 S&P 500 weight (no data source wired) ---
+    # Already set to None above; record provenance so validation surfaces it.
+    provenance["top_10_sp500_weight"] = FieldProvenance(
+        method="missing",
+        detail="No data source implemented (placeholder since v1)",
+    )
+
+    return computed, provenance
 
 
 def _compute_net_liq_30d_change(fred_timeseries: dict[str, object]) -> Optional[float]:
@@ -661,6 +702,7 @@ def _build_briefing_from_data(
     computed: dict[str, Optional[float]],
     fetch_timestamp: str,
     web_sourced: Optional[dict[str, WebSourcedData]] = None,
+    field_provenance: Optional[dict] = None,
 ) -> BriefingPacket:
     """Assemble a BriefingPacket from fetched + computed data."""
     # Split fred_data into sections by prefix
@@ -710,6 +752,7 @@ def _build_briefing_from_data(
         computed=computed_clean,
         markets=market_data,
         web_sourced=web_sourced or {},
+        field_provenance=field_provenance or {},
     )
 
 
@@ -971,11 +1014,13 @@ def build_briefing(use_cache: bool = True, on_progress=None, skip_web: bool = Fa
 
     # Compute derived metrics (now receives timeseries + spy_daily)
     emit("compute", "Computing derived metrics...")
-    computed = _compute_metrics(fred_data, market_data, fred_timeseries, spy_daily)
+    computed, field_provenance = _compute_metrics(fred_data, market_data, fred_timeseries, spy_daily)
 
     # Assemble briefing
     emit("assemble", "Assembling briefing packet...")
-    briefing = _build_briefing_from_data(fred_data, market_data, computed, fetch_timestamp, web_sourced)
+    briefing = _build_briefing_from_data(
+        fred_data, market_data, computed, fetch_timestamp, web_sourced, field_provenance,
+    )
 
     # Validate briefing data (Phase 4: validation agent)
     from backend.engine.validation_agent import validate_briefing

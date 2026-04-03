@@ -17,11 +17,12 @@ from backend.engine.validation_agent import (
     _check_completeness,
     _check_consistency,
     _check_cross_source,
+    _check_provenance,
     _check_ranges,
     _check_staleness,
     validate_briefing,
 )
-from backend.schemas.briefing import BriefingPacket, MarketData, WebSourcedData
+from backend.schemas.briefing import BriefingPacket, FieldProvenance, MarketData, WebSourcedData
 
 
 # ---------------------------------------------------------------------------
@@ -55,6 +56,7 @@ def _make_briefing(**overrides) -> BriefingPacket:
         computed={
             "net_liquidity": 6_050_000, "equity_risk_premium": 2.5,
             "vix_vs_realized": 3.0, "spy_drawdown_from_52w_high": -4.5,
+            "buffett_indicator": 1.85,
         },
         markets={"^VIX": MarketData(price=18.5)},
         web_sourced={},
@@ -407,6 +409,71 @@ class TestValidateBriefing:
         assert "completeness" in check_types or "range" in check_types
         assert "cross_source" in check_types
         assert "staleness" in check_types
+
+
+# ---------------------------------------------------------------------------
+# Provenance checks
+# ---------------------------------------------------------------------------
+
+
+class TestProvenance:
+    def test_primary_provenance_no_warnings(self):
+        bp = _make_briefing()
+        bp.field_provenance = {
+            "equity_risk_premium": FieldProvenance(method="primary", detail="real data"),
+        }
+        checks = _check_provenance(bp)
+        assert checks == []
+
+    def test_fallback_provenance_is_warning(self):
+        bp = _make_briefing()
+        bp.field_provenance = {
+            "equity_risk_premium": FieldProvenance(
+                method="fallback", detail="4.5% constant - 10Y (WILL5000INDFC unavailable)",
+            ),
+        }
+        checks = _check_provenance(bp)
+        assert len(checks) == 1
+        assert checks[0].severity == "warning"
+        assert checks[0].check_type == "provenance"
+        assert "WILL5000INDFC" in checks[0].message
+
+    def test_hardcoded_provenance_is_info(self):
+        bp = _make_briefing()
+        bp.field_provenance = {
+            "interest_exceeds_defense": FieldProvenance(
+                method="hardcoded", detail="Interest - $940B defense (FY2026 estimate)",
+            ),
+        }
+        checks = _check_provenance(bp)
+        assert len(checks) == 1
+        assert checks[0].severity == "info"
+
+    def test_missing_provenance_is_warning(self):
+        bp = _make_briefing()
+        bp.field_provenance = {
+            "buffett_indicator": FieldProvenance(
+                method="missing", detail="WILL5000INDFC unavailable",
+            ),
+        }
+        checks = _check_provenance(bp)
+        assert len(checks) == 1
+        assert checks[0].severity == "warning"
+
+    def test_empty_provenance_no_checks(self):
+        bp = _make_briefing()
+        checks = _check_provenance(bp)
+        assert checks == []
+
+    def test_provenance_integrated_into_validate(self):
+        bp = _make_briefing()
+        bp.field_provenance = {
+            "equity_risk_premium": FieldProvenance(
+                method="fallback", detail="test fallback",
+            ),
+        }
+        report = validate_briefing(bp)
+        assert any(c.check_type == "provenance" for c in report.checks)
 
 
 # ---------------------------------------------------------------------------

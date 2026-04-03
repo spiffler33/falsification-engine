@@ -143,6 +143,8 @@ def _print_summary(briefing):
                 print(f"    !! [{check['check_type']}] {check['message']}")
             elif sev == "warning":
                 print(f"     ? [{check['check_type']}] {check['message']}")
+            elif sev == "info" and check.get("check_type") == "provenance":
+                print(f"     ~ [{check['check_type']}] {check['message']}")
     else:
         print("\n  DATA QUALITY: not validated")
 

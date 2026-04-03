@@ -92,6 +92,64 @@ FX Pairs:      CNYUSD=X, DX-Y.NYB, EURUSD=X, JPYUSD=X
 
 ---
 
+## Design Pattern: Provenance Tracking for Computed Metrics
+
+### The Problem
+
+Computed metrics sometimes have fallback paths. When the intended data source fails (e.g., a FRED series goes offline), the fallback produces a value that passes validation but carries a different signal. Example: `equity_risk_premium` falls back to `4.5% - 10Y yield` when Wilshire 5000 data is unavailable, producing 0.17% instead of a real ~2-3%. Downstream code (activation scoring, the human operator) has no way to know the number is synthetic.
+
+This is distinct from "missing data" (value = null, caught by completeness checks). The dangerous case is **present-but-degraded data** that looks legitimate.
+
+### The Solution: FieldProvenance
+
+A parallel metadata layer that travels with the briefing packet. Every computed metric with a fallback, hardcoded dependency, or missing upstream records a `FieldProvenance` entry.
+
+```python
+class FieldProvenance(BaseModel):
+    method: str   # "primary", "fallback", "hardcoded", "missing"
+    detail: str   # human-readable explanation
+```
+
+Lives in `BriefingPacket.field_provenance: dict[str, FieldProvenance]`. Defaults to empty dict (backward-compatible with old caches). Absence from the dict means "primary" -- only non-primary derivations are recorded.
+
+### How to Use When Adding New Metrics
+
+When adding a computed metric with multiple derivation paths:
+
+```python
+# In _compute_metrics() in data_agent.py:
+if primary_source is not None:
+    computed["new_metric"] = calculate(primary_source)
+    provenance["new_metric"] = FieldProvenance(
+        method="primary", detail="Derived from XYZ source",
+    )
+else:
+    computed["new_metric"] = fallback_value
+    provenance["new_metric"] = FieldProvenance(
+        method="fallback", detail="Using ABC estimate (XYZ source unavailable)",
+    )
+```
+
+The validation agent's `_check_provenance()` reads the provenance dict and flags non-primary entries automatically -- no registries to update. The CLI output shows provenance warnings with a `~` marker.
+
+### Method Values
+
+| Method | Meaning | Validation severity |
+|--------|---------|-------------------|
+| `primary` | Intended data source used | (not reported) |
+| `fallback` | Degraded path -- value exists but lower quality | warning |
+| `hardcoded` | Depends on a constant that drifts over time | info |
+| `missing` | Could not compute; upstream data absent | warning |
+
+### Design Principles
+
+1. **Additive, not refactoring** -- existing `dict[str, float]` shape unchanged. Provenance is a parallel dict, not a richer type.
+2. **Opt-in** -- only metrics with fallback paths need provenance. Simple derivations (curve = 10Y - 2Y) are self-evident.
+3. **Structurally complete** -- validation reads the provenance dict, not a hardcoded list of fields. Adding provenance in `_compute_metrics` is sufficient for it to appear in validation and CLI output.
+4. **Serialization-safe** -- Pydantic model, round-trips through JSON cache, old caches without provenance load fine.
+
+---
+
 ## User Context
 
 - ~$1.5M AUM, personal capital, not a fund
