@@ -189,6 +189,7 @@ def build_elimination_prompt(
     briefing: dict[str, Any],
     has_channel_tags: bool = False,
     sector_appendices: list[dict[str, Any]] | None = None,
+    has_falsifier_lifecycle: bool = False,
 ) -> str:
     """Build the elimination prompt for Pass 3.
 
@@ -197,6 +198,12 @@ def build_elimination_prompt(
     non-empty list the sector falsifier section and structured audit
     output format are appended; when empty or None they are omitted
     entirely — the prompt is unchanged from v3.
+
+    When *has_falsifier_lifecycle* is True (v7), the prompt includes
+    falsifier lifecycle instructions: staleness interpretation,
+    emergent risk slot, and UNTESTABLE counter awareness.  Hypothesis
+    dicts are expected to carry per-falsifier lifecycle metadata
+    (staleness_flag, untestable_consecutive).
     """
     theory_map = {t.theory_id: t for t in theories}
 
@@ -240,6 +247,10 @@ def build_elimination_prompt(
     parts.append(json.dumps(briefing, indent=2, default=str))
     parts.append("```")
 
+    # --- Falsifier lifecycle instructions (v7) ---
+    if has_falsifier_lifecycle:
+        parts.append("\n\n" + _falsifier_lifecycle_instructions())
+
     # --- Channel verification (when hypotheses have channel tags) ---
     if has_channel_tags:
         parts.append("\n\n## CHANNEL VERIFICATION\n")
@@ -254,6 +265,7 @@ def build_elimination_prompt(
     parts.append(_elimination_output_schema(
         has_channel_tags=has_channel_tags,
         has_sector_appendices=bool(sector_appendices),
+        has_falsifier_lifecycle=has_falsifier_lifecycle,
     ))
 
     return "\n".join(parts)
@@ -458,9 +470,65 @@ RULES:
 - Every hypothesis gets the full audit. No exceptions."""
 
 
+def _falsifier_lifecycle_instructions() -> str:
+    """Falsifier lifecycle section for the elimination prompt (v7).
+
+    Instructs the evaluator on staleness interpretation, emergent risk
+    assessment, and UNTESTABLE counter awareness.  Injected when the
+    run includes hypothesis threads with lifecycle metadata.
+    """
+    return """--- FALSIFIER LIFECYCLE INSTRUCTIONS ---
+
+For each hypothesis, you receive the falsifier set with lifecycle metadata.
+In addition to the standard falsifier audit, apply these checks:
+
+STALENESS INTERPRETATION:
+  Falsifiers flagged STALE by the mechanical staleness gate have had
+  the market move more than 2x past their threshold distance from the
+  generation-time level. For each STALE falsifier, classify the consequence:
+
+  - STALE: The threshold is structurally irrelevant. Treat as UNTESTABLE
+    for scoring (no credit for passing, no penalty for failing).
+  - TRIGGERED_BY_PASSAGE: The market has blown past this threshold in a way
+    that directly undermines the hypothesis's load-bearing mechanism.
+    State the specific causal chain. Treat as TRIGGERED at registered severity.
+
+  You may NOT classify a mechanically STALE falsifier as CLEAR. The mechanical
+  detection is authoritative on whether the threshold has become irrelevant.
+  Your judgment is on the consequence: irrelevant (STALE) or adversely
+  significant (TRIGGERED_BY_PASSAGE).
+
+EMERGENT RISK ASSESSMENT:
+  For each hypothesis, assess whether a SPECIFIC adverse development has
+  emerged since the hypothesis was generated (or last evaluated) that
+  threatens its load-bearing mechanism.
+
+  The emergent risk slot is EMPTY by default. Fill it ONLY if you can name:
+    1. The specific development (a dated, named event or data release -- not
+       "trade war risks" or "geopolitical uncertainty")
+    2. The causal chain to the load-bearing mechanism (how this development
+       specifically threatens the channel through which this hypothesis resolves)
+    3. A severity assessment (minor / medium / major)
+
+  If you cannot name a specific development AND trace its causal chain,
+  leave the slot empty. An empty slot is the correct outcome for most
+  hypotheses in most runs.
+
+UNTESTABLE COUNTERS:
+  Falsifiers marked with untestable_consecutive > 0 have been UNTESTABLE
+  for that many consecutive passes. This is informational for your audit.
+  At count >= 3, the system will mechanically escalate the falsifier.
+  Consider whether a hypothesis with multiple high-count UNTESTABLE
+  falsifiers has genuinely survived adversarial testing, or has survived
+  vacuously because it could not be tested.
+
+--- END FALSIFIER LIFECYCLE INSTRUCTIONS ---"""
+
+
 def _elimination_output_schema(
     has_channel_tags: bool = False,
     has_sector_appendices: bool = False,
+    has_falsifier_lifecycle: bool = False,
 ) -> str:
     channel_block = ""
     if has_channel_tags:
@@ -495,6 +563,28 @@ def _elimination_output_schema(
             '    ],\n'
         )
 
+    # v7 falsifier lifecycle additions to the output schema
+    lifecycle_block = ""
+    if has_falsifier_lifecycle:
+        lifecycle_block = (
+            '    "soft_falsifiers": [\n'
+            '      {\n'
+            '        "name": "falsifier name",\n'
+            '        "severity": "minor | medium | major",\n'
+            '        "status": "CLEAR | TRIGGERED | UNTESTABLE | STALE",\n'
+            '        "staleness_classification": "STALE | TRIGGERED_BY_PASSAGE | null",\n'
+            '        "staleness_reasoning": "required if TRIGGERED_BY_PASSAGE, else null",\n'
+            '        "metric": "data field",\n'
+            '        "threshold": "value"\n'
+            '      }\n'
+            '    ],\n'
+            '    "emergent_risk": {\n'
+            '      "condition": "specific named development",\n'
+            '      "severity": "minor | medium | major",\n'
+            '      "causal_chain": "how it threatens the load-bearing mechanism"\n'
+            '    },\n'
+        )
+
     return (
         "Output a JSON array. For each hypothesis (in the same order as input), provide:\n\n"
         "```json\n"
@@ -516,6 +606,7 @@ def _elimination_output_schema(
         '      "close_to_triggering": ["list approaching threshold"],\n'
         '      "details": "Explanation"\n'
         '    },\n'
+        + lifecycle_block
         + sector_block +
         '    "cross_theory_attack": {\n'
         '      "contradictions_found": false,\n'
@@ -544,7 +635,14 @@ def _elimination_output_schema(
         "```\n\n"
         "IMPORTANT: Output ONLY the JSON array. No commentary before or after.\n"
         "For KILLED hypotheses, conviction_inputs should all be 0.0.\n"
-        "For WOUNDED hypotheses, reduce the relevant conviction_input dimensions to reflect the wounds."
+        "For WOUNDED hypotheses, reduce the relevant conviction_input dimensions to reflect the wounds.\n"
+        + (
+            "For emergent_risk: set to null if no specific adverse development identified. "
+            "Do NOT fill with vague risks.\n"
+            "For soft_falsifiers: include staleness_classification only for falsifiers "
+            "flagged STALE in the input. Set to null for non-STALE falsifiers.\n"
+            if has_falsifier_lifecycle else ""
+        )
     )
 
 

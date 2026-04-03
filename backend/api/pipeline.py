@@ -533,6 +533,11 @@ def get_elimination_prompt(db: Session = Depends(get_db)):
         for h in hyps
     ]
 
+    # v7: Enrich hypothesis falsifiers with lifecycle metadata (staleness, untestable counters)
+    has_falsifier_lifecycle = any(h.thread_id for h in hyps)
+    if has_falsifier_lifecycle:
+        _enrich_elimination_falsifiers(hypothesis_dicts, briefing)
+
     # Check if any hypothesis has a channel tag
     has_channel_tags = any(h.resolution_channel for h in hyps)
 
@@ -551,6 +556,7 @@ def get_elimination_prompt(db: Session = Depends(get_db)):
         briefing=briefing_data,
         has_channel_tags=has_channel_tags,
         sector_appendices=selected_appendices,
+        has_falsifier_lifecycle=has_falsifier_lifecycle,
     )
 
     return {"prompt": prompt, "run_id": latest_run.id, "sector_appendices_loaded": sector_ids}
@@ -1304,6 +1310,45 @@ def _inherit_falsifier_counters(h_data: dict, prior: HypothesisModel) -> None:
                 sf.setdefault("generation_market_value", gmv)
 
     h_data["soft_falsifiers"] = json.dumps(new_sf)
+
+
+def _enrich_elimination_falsifiers(
+    hypothesis_dicts: list[dict[str, Any]],
+    briefing: BriefingPacket,
+) -> None:
+    """Enrich hypothesis soft falsifiers with lifecycle metadata for the elimination prompt.
+
+    For each hypothesis, runs the staleness gate on its soft falsifiers using
+    current briefing data, then annotates each falsifier with staleness_flag
+    and current_market_value.  The untestable_consecutive counter is already
+    present from generation import (via _inherit_falsifier_counters).
+
+    Mutates hypothesis_dicts in place.
+    """
+    for h in hypothesis_dicts:
+        soft_falsifiers = h.get("soft_falsifiers", [])
+        if not soft_falsifiers:
+            continue
+
+        # Build current market values for staleness gate
+        current_market_values: dict[str, float] = {}
+        for sf in soft_falsifiers:
+            metric = sf.get("metric", "")
+            if metric:
+                val = briefing.get_field(metric)
+                if val is not None:
+                    current_market_values[metric] = val
+
+        # Run staleness gate
+        enriched = compute_thread_staleness(soft_falsifiers, current_market_values)
+
+        # Annotate with current market value for evaluator context
+        for sf in enriched:
+            metric = sf.get("metric", "")
+            if metric and metric in current_market_values:
+                sf["current_market_value"] = current_market_values[metric]
+
+        h["soft_falsifiers"] = enriched
 
 
 def _build_thread_summaries_for_prompt(
