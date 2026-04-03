@@ -82,6 +82,17 @@ export function resolveFromSnapshot(path) {
     return path === '/api/runs' ? [r] : r
   }
 
+  // Walk-forward (must match before generic run detail)
+  const wfMatch = path.match(/^\/api\/runs\/(.+)\/walkforward$/)
+  if (wfMatch) {
+    return snap.walkforward || { run_id: wfMatch[1], run_date: null, price_snapshot_date: null, rows: [], outcome_counts: {} }
+  }
+
+  // Run archive
+  if (path === '/api/runs/archive') {
+    return snap.archive || { runs: [], outcome_counts: {} }
+  }
+
   // Run detail
   const runMatch = path.match(/^\/api\/runs\/(.+)$/)
   if (runMatch) {
@@ -94,6 +105,18 @@ export function resolveFromSnapshot(path) {
       elimination_output: [],
       hypotheses: snap.hypotheses || [],
     }
+  }
+
+  // Threads list (v7)
+  if (path === '/api/threads') {
+    return snap.threads || []
+  }
+
+  // Thread detail (v7)
+  const threadMatch = path.match(/^\/api\/threads\/(.+)$/)
+  if (threadMatch) {
+    const tid = threadMatch[1]
+    return (snap.thread_details || {})[tid] || null
   }
 
   // Delta

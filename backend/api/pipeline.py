@@ -1110,6 +1110,81 @@ def get_snapshot(db: Session = Depends(get_db)):
             "hypothesis_status_at_entry": t.hypothesis_status_at_entry,
         })
 
+    # Threads — for thread-centered Observatory (v7)
+    from backend.api.threads import (
+        _thread_to_dict,
+        _instance_to_detail,
+        _instance_to_summary,
+    )
+
+    threads_data = []
+    thread_details_data = {}
+    all_threads = db.query(HypothesisThread).all()
+    for thread in all_threads:
+        all_instances = (
+            db.query(HypothesisModel)
+            .filter(HypothesisModel.thread_id == thread.thread_id)
+            .order_by(desc(HypothesisModel.generated_date), desc(HypothesisModel.run_id))
+            .all()
+        )
+        if not all_instances:
+            continue
+        latest_inst = all_instances[0]
+
+        threads_data.append(_thread_to_dict(thread, latest_inst, db))
+
+        # Full thread detail for ThreadDetail overlay
+        try:
+            created = date.fromisoformat(thread.created_date)
+            thread_age_days = (date.today() - created).days
+        except (ValueError, TypeError):
+            thread_age_days = 0
+
+        conviction_history = [
+            inst.conviction for inst in reversed(all_instances) if inst.conviction is not None
+        ]
+
+        from backend.engine.prompt_builder import THEORY_LABEL_MAP
+        source_theory_label = THEORY_LABEL_MAP.get(thread.source_theory, thread.source_theory)
+
+        thread_details_data[thread.thread_id] = {
+            "thread_id": thread.thread_id,
+            "thread_status": thread.status,
+            "source_theory": thread.source_theory,
+            "source_theory_label": source_theory_label,
+            "created_date": thread.created_date,
+            "thread_age_days": thread_age_days,
+            "confirmation_count": thread.confirmation_count or 0,
+            "total_instances": thread.total_instances or 1,
+            "renewed_from": thread.renewed_from,
+            "payoff_band_lower": thread.payoff_band_lower,
+            "payoff_band_upper": thread.payoff_band_upper,
+            "timeframe_end_date": thread.timeframe_end_date,
+            "latest": _instance_to_detail(latest_inst, db, for_snapshot=True),
+            "conviction_history": conviction_history,
+            "instances": [_instance_to_summary(inst) for inst in all_instances],
+        }
+
+    # Sort threads: ACTIVE first (by conviction desc), then RETIRED
+    threads_data.sort(key=lambda t: (
+        0 if t["thread_status"] == "ACTIVE" else 1,
+        -(t["conviction"] or 0),
+    ))
+
+    # Walk-forward for latest run (v7 audit columns)
+    walkforward_data = None
+    if latest_run:
+        try:
+            walkforward_data = get_run_walkforward(latest_run.id, db)
+        except Exception:
+            walkforward_data = None
+
+    # Archive (runs list for Pipeline archive panel)
+    try:
+        archive_data = get_run_archive(db)
+    except Exception:
+        archive_data = {"runs": [], "outcome_counts": {}}
+
     return {
         "snapshot_timestamp": datetime.now().isoformat(),
         "run": run_data,
@@ -1120,6 +1195,10 @@ def get_snapshot(db: Session = Depends(get_db)):
         "theories": theory_summaries,
         "newsletters": newsletters,
         "trades": trades,
+        "threads": threads_data,
+        "thread_details": thread_details_data,
+        "walkforward": walkforward_data,
+        "archive": archive_data,
     }
 
 

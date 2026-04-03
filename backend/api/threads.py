@@ -175,7 +175,7 @@ def list_threads(
     return results
 
 
-def _instance_to_detail(h: HypothesisModel, db: Session) -> dict:
+def _instance_to_detail(h: HypothesisModel, db: Session, *, for_snapshot: bool = False) -> dict:
     """Full instance dict for ThreadDetail overlay (same depth as hypotheses/_model_to_dict)."""
     hard_f = json.loads(h.hard_falsifiers) if h.hard_falsifiers else []
     soft_f = json.loads(h.soft_falsifiers) if h.soft_falsifiers else []
@@ -186,31 +186,37 @@ def _instance_to_detail(h: HypothesisModel, db: Session) -> dict:
 
     triggered = sum(1 for sf in soft_f if sf.get("status") == "TRIGGERED")
 
-    # Research notes (inbox items linked to this instance)
-    notes = db.query(InboxItem).filter(InboxItem.hypothesis_id == h.id).all()
-    research_notes = [
-        {"id": n.id, "date": n.date, "type": n.type, "content": n.content, "source": n.source or ""}
-        for n in notes
-    ]
-
-    # Sector falsifier audit
     from backend.api.hypotheses import _FALSIFIER_CONDITIONS, SECTOR_DISPLAY_NAMES
-    sector_audit = [
-        {
-            "id": a.id,
-            "sector_id": a.sector_id,
-            "falsifier_id": a.falsifier_id,
-            "condition": _FALSIFIER_CONDITIONS.get(a.falsifier_id, a.falsifier_id),
-            "metric_value_found": a.metric_value_found or "",
-            "triggered": a.triggered,
-            "relevant": a.relevant,
-            "reasoning": a.reasoning or "",
-            "severity_applied": a.severity_applied or "NONE",
-        }
-        for a in db.query(SectorFalsifierAudit)
-        .filter(SectorFalsifierAudit.hypothesis_id == h.id)
-        .all()
-    ]
+
+    # Research notes + sector audit skipped in snapshot mode (saves DB queries + payload size)
+    if for_snapshot:
+        research_notes = []
+        sector_audit = []
+    else:
+        # Research notes (inbox items linked to this instance)
+        notes = db.query(InboxItem).filter(InboxItem.hypothesis_id == h.id).all()
+        research_notes = [
+            {"id": n.id, "date": n.date, "type": n.type, "content": n.content, "source": n.source or ""}
+            for n in notes
+        ]
+
+        # Sector falsifier audit
+        sector_audit = [
+            {
+                "id": a.id,
+                "sector_id": a.sector_id,
+                "falsifier_id": a.falsifier_id,
+                "condition": _FALSIFIER_CONDITIONS.get(a.falsifier_id, a.falsifier_id),
+                "metric_value_found": a.metric_value_found or "",
+                "triggered": a.triggered,
+                "relevant": a.relevant,
+                "reasoning": a.reasoning or "",
+                "severity_applied": a.severity_applied or "NONE",
+            }
+            for a in db.query(SectorFalsifierAudit)
+            .filter(SectorFalsifierAudit.hypothesis_id == h.id)
+            .all()
+        ]
 
     from backend.engine.prompt_builder import THEORY_LABEL_MAP
     source_theory_label = THEORY_LABEL_MAP.get(h.source_theory, h.source_theory)
