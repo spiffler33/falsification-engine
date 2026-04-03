@@ -89,6 +89,16 @@ FIELD_ALIASES: dict[str, list[str]] = {
         "justification", "continuation_reason", "continuation_rationale",
         "why_continuation", "new_information",
     ],
+    # v7 lifecycle fields
+    "lifecycle_action": [
+        "action", "thread_action", "hypothesis_action", "lifecycle",
+    ],
+    "lifecycle_reasoning": [
+        "action_reasoning", "thread_reasoning", "lifecycle_reason",
+    ],
+    "thread_id": [
+        "thread", "hypothesis_thread", "thread_ref",
+    ],
 }
 
 
@@ -115,8 +125,14 @@ def parse_generation_output(
 
     Maximally tolerant: normalizes field names, derives missing fields,
     and only skips a hypothesis if it has literally no identifiable name.
+
+    Supports two formats:
+    - v6 flat array: all hypotheses treated as lifecycle_action=NEW
+    - v7 structured: { thread_actions: [...], new_hypotheses: [...] }
+      Thread actions carry lifecycle_action (CONFIRM/UPDATE/RENEW/RETIRE)
+      and thread_id for linking to existing threads.
     """
-    data = _extract_json_array(raw_json)
+    data = _extract_generation_items(raw_json)
     if not data:
         raise ParseError(
             "Expected a JSON array of hypothesis objects. Got empty or non-array input.",
@@ -146,20 +162,38 @@ def parse_generation_output(
         # Normalize all field names
         _normalize_fields(item)
 
+        # RETIRE-only items from v7 structured format — pass through as metadata
+        if item.get("_retire_only"):
+            hypotheses.append({
+                "_retire_only": True,
+                "lifecycle_action": "RETIRE",
+                "lifecycle_reasoning": item.get("lifecycle_reasoning"),
+                "_thread_id_ref": item.get("thread_id"),
+            })
+            continue
+
         # Must have SOME name — this is the one hard requirement
         name = item.get("short_name", "")
         if not name:
-            # Last resort: generate a name from theory_id
-            theory = item.get("theory_id", "")
-            if theory:
-                name = f"Hypothesis from {theory}"
+            # For CONFIRM/UPDATE, thread_id alone is enough — the import layer
+            # will look up the prior instance's name
+            action = (item.get("lifecycle_action") or "").upper()
+            tid = item.get("thread_id", "")
+            if action in ("CONFIRM", "UPDATE") and tid:
+                name = f"[{action}] {tid}"
                 item["short_name"] = name
             else:
-                field_errors.append(
-                    f"Hypothesis {i+1}: No identifiable name (tried: short_name, name, title, hypothesis). "
-                    f"Keys present: {', '.join(sorted(item.keys()))}"
-                )
-                continue
+                # Last resort: generate a name from theory_id
+                theory = item.get("theory_id", "")
+                if theory:
+                    name = f"Hypothesis from {theory}"
+                    item["short_name"] = name
+                else:
+                    field_errors.append(
+                        f"Hypothesis {i+1}: No identifiable name (tried: short_name, name, title, hypothesis). "
+                        f"Keys present: {', '.join(sorted(item.keys()))}"
+                    )
+                    continue
 
         # Generate hypothesis ID
         run_ts = run_id.replace("R-", "") if run_id.startswith("R-") else run_id
@@ -209,6 +243,15 @@ def parse_generation_output(
         hypothesis["continuation_of"] = continuation.get("continuation_of")
         hypothesis["continuation_generation"] = continuation.get("continuation_generation", 1)
         hypothesis["continuation_justification"] = continuation.get("continuation_justification")
+
+        # Extract v7 lifecycle fields
+        lifecycle = _extract_lifecycle(item)
+        hypothesis["lifecycle_action"] = lifecycle["lifecycle_action"]
+        hypothesis["lifecycle_reasoning"] = lifecycle["lifecycle_reasoning"]
+        hypothesis["_thread_id_ref"] = lifecycle["thread_id"]  # thread_id for linking (not stored directly)
+        hypothesis["_revised_timeframe_end_date"] = lifecycle.get("revised_timeframe_end_date")
+        hypothesis["_revised_short_name"] = lifecycle.get("revised_short_name")
+        hypothesis["_revised_full_statement"] = lifecycle.get("revised_full_statement")
 
         # Validate payoff band if all three fields are present
         if (hypothesis["predicted_magnitude_lower"] is not None
@@ -374,6 +417,109 @@ def _extract_continuation(item: dict) -> dict:
     result["continuation_justification"] = item.get("continuation_justification") or None
 
     return result
+
+
+def _extract_lifecycle(item: dict) -> dict:
+    """Extract v7 lifecycle fields from a hypothesis item.
+
+    Returns a dict with keys: lifecycle_action, lifecycle_reasoning, thread_id,
+    and optional revised_* fields for UPDATE actions.
+    Defaults lifecycle_action to "NEW" if not present (backwards-compatible with v6).
+    """
+    result = {
+        "lifecycle_action": "NEW",
+        "lifecycle_reasoning": None,
+        "thread_id": None,
+        "revised_timeframe_end_date": None,
+        "revised_short_name": None,
+        "revised_full_statement": None,
+    }
+
+    action = item.get("lifecycle_action", "")
+    if isinstance(action, str) and action.upper() in (
+        "CONFIRM", "UPDATE", "RENEW", "RETIRE", "NEW",
+    ):
+        result["lifecycle_action"] = action.upper()
+
+    result["lifecycle_reasoning"] = item.get("lifecycle_reasoning") or None
+    result["thread_id"] = item.get("thread_id") or None
+
+    # UPDATE-specific revised fields
+    result["revised_timeframe_end_date"] = item.get("revised_timeframe_end_date") or None
+    result["revised_short_name"] = item.get("revised_short_name") or None
+    result["revised_full_statement"] = item.get("revised_full_statement") or None
+
+    return result
+
+
+def _extract_generation_items(raw_json: str) -> list[dict] | None:
+    """Extract hypothesis items from generation output, supporting both formats.
+
+    v6 format: flat JSON array of hypothesis objects.
+    v7 format: { "thread_actions": [...], "new_hypotheses": [...] }
+
+    For v7 format, thread_actions items are tagged with their lifecycle_action
+    and merged with new_hypotheses into a single flat list for processing.
+    RETIRE actions are included (they carry lifecycle_action=RETIRE and thread_id
+    but no hypothesis fields — the import endpoint handles them).
+    """
+    raw = raw_json.strip()
+
+    # Try parsing as a JSON object first (v7 structured format)
+    parsed = None
+    try:
+        parsed = json.loads(raw)
+    except json.JSONDecodeError:
+        # Try code block extraction
+        code_block = re.search(r"```(?:json)?\s*\n?(.*?)\n?```", raw, re.DOTALL)
+        if code_block:
+            try:
+                parsed = json.loads(code_block.group(1).strip())
+            except json.JSONDecodeError:
+                pass
+
+    if isinstance(parsed, dict):
+        thread_actions = parsed.get("thread_actions", [])
+        new_hypotheses = parsed.get("new_hypotheses", [])
+
+        if isinstance(thread_actions, list) and (thread_actions or new_hypotheses):
+            items = []
+            for ta in thread_actions:
+                if not isinstance(ta, dict):
+                    continue
+                action = (ta.get("lifecycle_action") or "").upper()
+                # For RENEW, the full hypothesis spec is nested
+                if action == "RENEW" and "renewed_hypothesis" in ta:
+                    h = ta["renewed_hypothesis"]
+                    if isinstance(h, dict):
+                        h["lifecycle_action"] = "RENEW"
+                        h["lifecycle_reasoning"] = ta.get("lifecycle_reasoning")
+                        h["thread_id"] = ta.get("thread_id")
+                        items.append(h)
+                elif action == "RETIRE":
+                    # RETIRE has no hypothesis body — pass through as a minimal item
+                    items.append({
+                        "lifecycle_action": "RETIRE",
+                        "lifecycle_reasoning": ta.get("lifecycle_reasoning"),
+                        "thread_id": ta.get("thread_id"),
+                        "short_name": f"[RETIRE] {ta.get('thread_id', '')}",
+                        "_retire_only": True,
+                    })
+                elif action in ("CONFIRM", "UPDATE"):
+                    # CONFIRM/UPDATE may carry revised fields but use the
+                    # prior instance's core data. Tag them for the import layer.
+                    ta.setdefault("lifecycle_action", action)
+                    items.append(ta)
+
+            for nh in new_hypotheses:
+                if isinstance(nh, dict):
+                    nh.setdefault("lifecycle_action", "NEW")
+                    items.append(nh)
+
+            return items if items else None
+
+    # Fall back to flat array extraction (v6 format)
+    return _extract_json_array(raw_json)
 
 
 def _to_int(val, default: int = 1) -> int:

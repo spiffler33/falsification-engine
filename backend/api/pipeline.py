@@ -15,7 +15,7 @@ from sqlalchemy.orm import Session
 
 from backend.db.database import get_db
 from backend.db.models import Hypothesis as HypothesisModel
-from backend.db.models import InboxItem, Run, RunPriceSnapshot, SectorFalsifierAudit
+from backend.db.models import HypothesisThread, InboxItem, Run, RunPriceSnapshot, SectorFalsifierAudit
 from backend.engine import activation, conviction, regime, theory_parser
 from backend.engine.output_parser import ParseError, parse_elimination_output, parse_generation_output, parse_sector_falsifier_audits
 from backend.engine.prompt_builder import build_elimination_prompt, build_generation_prompt
@@ -551,7 +551,15 @@ def get_elimination_prompt(db: Session = Depends(get_db)):
 
 @router.post("/pipeline/import/generation")
 def import_generation(payload: dict = Body(...), db: Session = Depends(get_db)):
-    """Import generation output JSON. Creates hypotheses in the database."""
+    """Import generation output JSON. Creates hypotheses and manages thread lifecycle.
+
+    Handles five lifecycle actions:
+    - NEW: Create thread + instance, capture entry prices and payoff band
+    - CONFIRM: Link instance to existing thread, increment counters, inherit falsifier counters
+    - UPDATE: Link instance to existing thread, reset confirmation_count, update timeframe if revised
+    - RENEW: RETIRE old thread, create new thread with renewed_from link, new instance
+    - RETIRE: Set thread status=RETIRED (no new instance)
+    """
     raw_json = payload.get("json_text", "")
     if not raw_json:
         raise HTTPException(status_code=400, detail="Missing 'json_text' field in request body")
@@ -572,19 +580,144 @@ def import_generation(payload: dict = Body(...), db: Session = Depends(get_db)):
             detail={"message": e.message, "field_errors": e.field_errors, "raw_preview": e.raw_input},
         )
 
-    # Store in database
+    # Load current price snapshot for entry prices on NEW/RENEW threads
+    price_snapshot = _get_current_prices_for_threads(db, run)
+
+    # Process lifecycle actions and store in database
     created = []
+    retired_threads = []
+    thread_actions_log = []
+
     for h_data in hypotheses:
+        # Pop internal/transient fields before DB insert
         conv_inputs = h_data.pop("_conviction_inputs", {})
+        thread_id_ref = h_data.pop("_thread_id_ref", None)
+        retire_only = h_data.pop("_retire_only", False)
+        revised_timeframe = h_data.pop("_revised_timeframe_end_date", None)
+        revised_short_name = h_data.pop("_revised_short_name", None)
+        revised_full_statement = h_data.pop("_revised_full_statement", None)
+
+        action = h_data.get("lifecycle_action", "NEW")
+
+        # --- RETIRE: no instance, just update thread status ---
+        if retire_only or action == "RETIRE":
+            if thread_id_ref:
+                thread = db.query(HypothesisThread).filter(
+                    HypothesisThread.thread_id == thread_id_ref
+                ).first()
+                if thread:
+                    thread.status = "RETIRED"
+                    retired_threads.append(thread_id_ref)
+                    thread_actions_log.append({
+                        "action": "RETIRE",
+                        "thread_id": thread_id_ref,
+                    })
+            continue
+
+        # --- CONFIRM: existing thread, new instance, increment counters ---
+        if action == "CONFIRM" and thread_id_ref:
+            thread = db.query(HypothesisThread).filter(
+                HypothesisThread.thread_id == thread_id_ref
+            ).first()
+            if thread:
+                h_data = _apply_thread_to_instance(h_data, thread, db)
+                thread.confirmation_count += 1
+                thread.total_instances += 1
+                h_data["thread_id"] = thread.thread_id
+                h = HypothesisModel(**h_data)
+                db.add(h)
+                created.append({**h_data, "_conviction_inputs": conv_inputs})
+                thread_actions_log.append({
+                    "action": "CONFIRM",
+                    "thread_id": thread.thread_id,
+                    "instance_id": h_data["id"],
+                })
+                continue
+
+        # --- UPDATE: existing thread, new instance, reset confirmation_count ---
+        if action == "UPDATE" and thread_id_ref:
+            thread = db.query(HypothesisThread).filter(
+                HypothesisThread.thread_id == thread_id_ref
+            ).first()
+            if thread:
+                h_data = _apply_thread_to_instance(h_data, thread, db)
+                thread.confirmation_count = 0
+                thread.total_instances += 1
+                # Apply revised fields if provided
+                if revised_timeframe:
+                    thread.timeframe_end_date = revised_timeframe
+                if revised_short_name:
+                    h_data["short_name"] = revised_short_name
+                if revised_full_statement:
+                    h_data["full_statement"] = revised_full_statement
+                h_data["thread_id"] = thread.thread_id
+                h = HypothesisModel(**h_data)
+                db.add(h)
+                created.append({**h_data, "_conviction_inputs": conv_inputs})
+                thread_actions_log.append({
+                    "action": "UPDATE",
+                    "thread_id": thread.thread_id,
+                    "instance_id": h_data["id"],
+                })
+                continue
+
+        # --- RENEW: retire old thread, create new thread + instance ---
+        if action == "RENEW" and thread_id_ref:
+            old_thread = db.query(HypothesisThread).filter(
+                HypothesisThread.thread_id == thread_id_ref
+            ).first()
+            if old_thread:
+                old_thread.status = "RETIRED"
+                retired_threads.append(thread_id_ref)
+
+            # Create the instance first (thread needs originating_instance_id)
+            h = HypothesisModel(**h_data)
+            db.add(h)
+            db.flush()  # Ensure h.id is available for FK
+
+            # Create new thread with renewed_from link
+            new_thread = _create_thread_for_instance(h_data, run, price_snapshot, renewed_from=thread_id_ref)
+            db.add(new_thread)
+            db.flush()  # Thread must exist before hypothesis can reference it
+            h.thread_id = new_thread.thread_id
+            h_data["thread_id"] = new_thread.thread_id
+            created.append({**h_data, "_conviction_inputs": conv_inputs})
+            thread_actions_log.append({
+                "action": "RENEW",
+                "old_thread_id": thread_id_ref,
+                "new_thread_id": new_thread.thread_id,
+                "instance_id": h_data["id"],
+            })
+            continue
+
+        # --- NEW (default): create thread + instance ---
         h = HypothesisModel(**h_data)
         db.add(h)
+        db.flush()  # Ensure h.id is available for FK
+
+        new_thread = _create_thread_for_instance(h_data, run, price_snapshot)
+        db.add(new_thread)
+        db.flush()  # Thread must exist before hypothesis can reference it
+        h.thread_id = new_thread.thread_id
+        h_data["thread_id"] = new_thread.thread_id
         created.append({**h_data, "_conviction_inputs": conv_inputs})
+        thread_actions_log.append({
+            "action": "NEW",
+            "thread_id": new_thread.thread_id,
+            "instance_id": h_data["id"],
+        })
 
     # Update run with raw generation output
     run.generation_output = raw_json
     db.commit()
 
-    return {"run_id": run.id, "hypotheses_created": len(created), "hypotheses": created}
+    return {
+        "run_id": run.id,
+        "hypotheses_created": len(created),
+        "hypotheses": created,
+        "thread_actions": thread_actions_log,
+        "retired_threads": retired_threads,
+    }
 
 
 @router.post("/pipeline/import/elimination")
@@ -1026,6 +1159,165 @@ def _capture_price_snapshots(db: Session, run: Run, hypotheses: list[dict]):
             ))
 
     run.price_snapshot_date = today
+
+
+# ---------------------------------------------------------------------------
+# Thread lifecycle helpers (v7)
+# ---------------------------------------------------------------------------
+
+def _create_thread_for_instance(
+    h_data: dict,
+    run: Run,
+    price_snapshot: dict[str, float],
+    renewed_from: str | None = None,
+) -> HypothesisThread:
+    """Create a new HypothesisThread for a NEW or RENEW action.
+
+    Entry prices are captured from the current run's price snapshot.
+    Payoff band and timeframe come from the hypothesis data.
+    """
+    run_ts = run.id.replace("R-", "") if run.id.startswith("R-") else run.id
+
+    # Derive sequence number from hypothesis ID
+    h_id = h_data.get("id", "")
+    seq = h_id.split("-")[-1] if h_id else "01"
+    thread_id = f"T-{run_ts}-{seq}"
+
+    # Build entry prices for the tickers in this hypothesis
+    predicted_assets = json.loads(h_data.get("predicted_assets", "[]"))
+    entry_prices = {}
+    for ticker in predicted_assets:
+        if ticker in price_snapshot:
+            entry_prices[ticker] = price_snapshot[ticker]
+
+    return HypothesisThread(
+        thread_id=thread_id,
+        status="ACTIVE",
+        originating_instance_id=h_data["id"],
+        originating_run_id=run.id,
+        entry_prices=json.dumps(entry_prices) if entry_prices else None,
+        payoff_band_lower=h_data.get("predicted_magnitude_lower"),
+        payoff_band_upper=h_data.get("predicted_magnitude_upper"),
+        timeframe_end_date=h_data.get("timeframe_end_date"),
+        renewed_from=renewed_from,
+        source_theory=h_data.get("source_theory", "unknown"),
+        created_date=date.today().isoformat(),
+        confirmation_count=0,
+        total_instances=1,
+    )
+
+
+def _apply_thread_to_instance(
+    h_data: dict,
+    thread: HypothesisThread,
+    db: Session,
+) -> dict:
+    """Apply thread context to a CONFIRM or UPDATE instance.
+
+    For CONFIRM/UPDATE, the instance inherits the originating thread's
+    realization anchor (entry prices, payoff band). If the LLM provided
+    only a thread reference without full hypothesis fields, we carry
+    forward fields from the prior instance in the thread.
+    """
+    # Find the most recent prior instance in this thread
+    prior = (
+        db.query(HypothesisModel)
+        .filter(HypothesisModel.thread_id == thread.thread_id)
+        .order_by(HypothesisModel.generated_date.desc())
+        .first()
+    )
+
+    if prior:
+        # Carry forward core fields if missing on the new instance
+        _inherit_field(h_data, prior, "source_theory")
+        _inherit_field(h_data, prior, "source_theories")
+        _inherit_field(h_data, prior, "full_statement")
+        _inherit_field(h_data, prior, "predicted_assets")
+        _inherit_field(h_data, prior, "asset_direction")
+        _inherit_field(h_data, prior, "timeframe")
+        _inherit_field(h_data, prior, "resolution_channel")
+        _inherit_field(h_data, prior, "hard_falsifiers")
+        _inherit_field(h_data, prior, "predicted_magnitude_lower")
+        _inherit_field(h_data, prior, "predicted_magnitude_upper")
+        _inherit_field(h_data, prior, "timeframe_end_date")
+
+        # Inherit soft falsifiers with accumulated untestable_consecutive counters
+        if not h_data.get("soft_falsifiers") or h_data["soft_falsifiers"] == "[]":
+            h_data["soft_falsifiers"] = prior.soft_falsifiers or "[]"
+        else:
+            _inherit_falsifier_counters(h_data, prior)
+
+        # Fix placeholder short_name from parser (e.g. "[CONFIRM] T-xxx-01")
+        if h_data.get("short_name", "").startswith("[CONFIRM]") or h_data.get("short_name", "").startswith("[UPDATE]"):
+            h_data["short_name"] = prior.short_name
+
+    return h_data
+
+
+def _inherit_field(h_data: dict, prior: HypothesisModel, field: str) -> None:
+    """Copy a field from the prior instance if the new instance has no value."""
+    current = h_data.get(field)
+    # Treat empty string, None, "unknown", and "[]" as missing
+    if not current or current in ("unknown", "[]", "{}"):
+        prior_val = getattr(prior, field, None)
+        if prior_val is not None:
+            h_data[field] = prior_val
+
+
+def _inherit_falsifier_counters(h_data: dict, prior: HypothesisModel) -> None:
+    """Carry forward untestable_consecutive counters from the prior instance.
+
+    For each soft falsifier on the new instance that matches a prior falsifier
+    by name, inherit the untestable_consecutive counter. This preserves the
+    accumulation that feeds into ESCALATED_UNTESTABLE detection.
+    """
+    try:
+        new_sf = json.loads(h_data.get("soft_falsifiers", "[]"))
+        prior_sf = json.loads(prior.soft_falsifiers or "[]")
+    except (json.JSONDecodeError, TypeError):
+        return
+
+    # Build lookup by falsifier name
+    prior_by_name = {}
+    for sf in prior_sf:
+        name = sf.get("name", "").lower().strip()
+        if name:
+            prior_by_name[name] = sf
+
+    for sf in new_sf:
+        name = sf.get("name", "").lower().strip()
+        if name and name in prior_by_name:
+            prior_counter = prior_by_name[name].get("untestable_consecutive", 0)
+            sf.setdefault("untestable_consecutive", prior_counter)
+            # Inherit generation_market_value for staleness gate
+            gmv = prior_by_name[name].get("generation_market_value")
+            if gmv is not None:
+                sf.setdefault("generation_market_value", gmv)
+
+    h_data["soft_falsifiers"] = json.dumps(new_sf)
+
+
+def _get_current_prices_for_threads(db: Session, run: Run) -> dict[str, float]:
+    """Get current price snapshot for thread entry prices.
+
+    Uses existing RunPriceSnapshot if available, otherwise returns empty dict.
+    The full price capture happens later during elimination import.
+    """
+    # Check if this run already has price snapshots (from a prior step)
+    snapshots = db.query(RunPriceSnapshot).filter(RunPriceSnapshot.run_id == run.id).all()
+    if snapshots:
+        return {s.ticker: s.price for s in snapshots}
+
+    # Try loading from briefing packet market data as fallback
+    briefing = _load_briefing()
+    markets = briefing.get("markets", {})
+    prices = {}
+    for ticker, data in markets.items():
+        if isinstance(data, dict) and "price" in data:
+            prices[ticker] = data["price"]
+        elif isinstance(data, (int, float)):
+            prices[ticker] = float(data)
+    return prices
 
 
 def _get_or_create_active_run(db: Session, activation_results=None) -> Run:
