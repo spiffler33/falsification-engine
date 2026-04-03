@@ -1052,6 +1052,11 @@ Each phase is independently implementable and testable. Context can be cleared b
   - No changes to conviction.py or schemas — emergent risk is just another entry in triggered_soft_falsifiers
   - 12 new tests in test_conviction_emergent_risk.py (7 engine + 5 pipeline assembly), 455 total passing
 - Task 10: DONE — Conviction pipeline: ESCALATED_UNTESTABLE in D_u
-- Task 11: PENDING — Conviction pipeline: TRIGGERED_BY_PASSAGE in D_f
+- Task 11: DONE — Conviction pipeline: TRIGGERED_BY_PASSAGE in D_f
+  - One-line change in pipeline.py:880 — added `or sf.get("staleness_classification") == "TRIGGERED_BY_PASSAGE"` to triggered_sf list comprehension
+  - TRIGGERED_BY_PASSAGE falsifiers enter D_f at registered severity, same as regular TRIGGERED
+  - STALE falsifiers without TRIGGERED_BY_PASSAGE classification produce no D_f impact
+  - No changes to conviction.py — engine is agnostic about routing source
+  - 12 new tests in test_conviction_triggered_by_passage.py (5 engine + 7 pipeline assembly), 477 total passing
 
 ### Phase 4: PENDING (Tasks 12-15) — Frontend
