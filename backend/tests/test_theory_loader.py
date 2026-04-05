@@ -11,6 +11,7 @@ from backend.engine.theory_loader import (
     load_all_theory_packages,
     load_theory_package,
     parse_activation_table,
+    parse_context_flags,
     parse_deep_falsifiers,
     parse_falsifier_severity,
 )
@@ -1234,3 +1235,239 @@ class TestParseActivationTableSynthetic:
         entries = parse_activation_table(text)
         assert len(entries) == 1
         assert entries[0]["indicator_name"] == "Vol level"
+
+
+# ---------------------------------------------------------------------------
+# parse_context_flags — Unit 7
+# ---------------------------------------------------------------------------
+
+_VALID_CTX_OWNERSHIPS = {"qualitative", "web-search"}
+
+
+class TestParseContextFlagsLive:
+    """Tests against the real ACTIVATION.md files in the repo."""
+
+    @pytest.fixture()
+    def all_activation_texts(self):
+        dirs = discover_theory_dirs()
+        return {
+            load_theory_package(d).theory_id: load_theory_package(d).activation
+            for d in dirs
+        }
+
+    def test_all_eight_parse_successfully(self, all_activation_texts):
+        for theory_id, text in all_activation_texts.items():
+            entries = parse_context_flags(text)
+            assert len(entries) >= 2, f"{theory_id}: expected at least 2 context flags"
+
+    def test_each_entry_has_nonempty_flag_name(self, all_activation_texts):
+        for theory_id, text in all_activation_texts.items():
+            for entry in parse_context_flags(text):
+                assert entry["flag_name"], (
+                    f"{theory_id}: empty flag_name"
+                )
+
+    def test_each_entry_has_nonempty_description(self, all_activation_texts):
+        for theory_id, text in all_activation_texts.items():
+            for entry in parse_context_flags(text):
+                assert entry["description"] or entry["usage"], (
+                    f"{theory_id} flag {entry['flag_name']!r}: "
+                    f"both description and usage empty"
+                )
+
+    def test_data_ownership_values_valid(self, all_activation_texts):
+        for theory_id, text in all_activation_texts.items():
+            for entry in parse_context_flags(text):
+                assert entry["data_ownership"] in _VALID_CTX_OWNERSHIPS, (
+                    f"{theory_id} flag {entry['flag_name']!r}: "
+                    f"bad data_ownership {entry['data_ownership']!r}"
+                )
+
+    def test_all_entries_have_required_keys(self, all_activation_texts):
+        required = {"flag_name", "source", "data_ownership", "description", "usage"}
+        for theory_id, text in all_activation_texts.items():
+            for entry in parse_context_flags(text):
+                assert set(entry.keys()) == required, (
+                    f"{theory_id}: unexpected keys {set(entry.keys())}"
+                )
+
+    # --- Theory-specific structural assertions ---
+
+    def test_structural_fragility_has_usage(self, all_activation_texts):
+        """structural_fragility: has Usage column populated."""
+        entries = parse_context_flags(all_activation_texts["structural_fragility"])
+        for entry in entries:
+            assert entry["usage"], (
+                f"structural_fragility flag {entry['flag_name']!r}: expected non-empty usage"
+            )
+
+    def test_capital_flows_no_source_column(self, all_activation_texts):
+        """capital_flows: different schema — source empty, description from Description col."""
+        entries = parse_context_flags(all_activation_texts["capital_flows"])
+        assert len(entries) == 4, f"Expected 4 capital_flows flags, got {len(entries)}"
+        for entry in entries:
+            assert entry["description"], (
+                f"capital_flows flag {entry['flag_name']!r}: expected description"
+            )
+
+    def test_monetary_architecture_hybrid_ownership(self, all_activation_texts):
+        """monetary_architecture: 'web-search / computed-mechanical' → 'web-search'."""
+        entries = parse_context_flags(all_activation_texts["monetary_architecture"])
+        plumbing = [e for e in entries if "plumbing" in e["flag_name"].lower()]
+        assert len(plumbing) == 1, "Expected 'Plumbing state' flag"
+        assert plumbing[0]["data_ownership"] == "web-search"
+
+    def test_fiscal_dominance_liquidity_three_flags(self, all_activation_texts):
+        """fiscal_dominance_liquidity: exactly 3 context flags."""
+        entries = parse_context_flags(all_activation_texts["fiscal_dominance_liquidity"])
+        assert len(entries) == 3
+
+    def test_debt_cycle_short_defaults_qualitative(self, all_activation_texts):
+        """debt_cycle_short: no Data Ownership column → all default to qualitative."""
+        entries = parse_context_flags(all_activation_texts["debt_cycle_short"])
+        for entry in entries:
+            assert entry["data_ownership"] == "qualitative", (
+                f"debt_cycle_short {entry['flag_name']!r}: expected qualitative default"
+            )
+
+
+class TestParseContextFlagsSynthetic:
+    """Tests against synthetic ACTIVATION.md content for edge cases."""
+
+    def test_standard_four_column_table(self):
+        text = (
+            "## context_flags\n\n"
+            "| Flag | Source | Data Ownership | What to Look For |\n"
+            "|------|--------|----------------|------------------|\n"
+            "| Narrative shift | Financial media | `qualitative` | Sentiment change |\n"
+            "| Auction stress | Treasury data | `web-search` | Declining bid-to-cover |\n"
+        )
+        entries = parse_context_flags(text)
+        assert len(entries) == 2
+        assert entries[0]["flag_name"] == "Narrative shift"
+        assert entries[0]["source"] == "Financial media"
+        assert entries[0]["data_ownership"] == "qualitative"
+        assert entries[0]["description"] == "Sentiment change"
+        assert entries[0]["usage"] == ""
+        assert entries[1]["data_ownership"] == "web-search"
+
+    def test_five_column_with_usage(self):
+        text = (
+            "## context_flags\n\n"
+            "Preamble text.\n\n"
+            "| Flag | Source | Data Ownership | What to Look For | Usage |\n"
+            "|------|--------|----------------|-------------------|-------|\n"
+            "| Flag A | Source A | `qualitative` | Description A | Usage A |\n"
+        )
+        entries = parse_context_flags(text)
+        assert len(entries) == 1
+        assert entries[0]["usage"] == "Usage A"
+
+    def test_capital_flows_schema(self):
+        """capital_flows pattern: Flag | Description | Why Context, Not Scored."""
+        text = (
+            "## context_flags\n\n"
+            "| Flag | Description | Why Context, Not Scored |\n"
+            "|------|-------------|-------------------------|\n"
+            "| EM catalyst | Composite check | Overlaps with scored |\n"
+            "| Geopolitical risk | US-China relations | Inherently qualitative |\n"
+        )
+        entries = parse_context_flags(text)
+        assert len(entries) == 2
+        assert entries[0]["flag_name"] == "EM catalyst"
+        assert entries[0]["description"] == "Composite check"
+        assert entries[0]["usage"] == "Overlaps with scored"
+        assert entries[0]["source"] == ""
+        assert entries[0]["data_ownership"] == "qualitative"
+
+    def test_swapped_columns(self):
+        """fiscal_dominance_liquidity pattern: Data Ownership before Source."""
+        text = (
+            "## context_flags\n\n"
+            "| Flag | Data Ownership | Source | What to Look For |\n"
+            "|------|----------------|--------|------------------|\n"
+            "| Bipartisan expansion | `web-search` | CBO reports | Neither party reducing deficit |\n"
+        )
+        entries = parse_context_flags(text)
+        assert len(entries) == 1
+        assert entries[0]["data_ownership"] == "web-search"
+        assert entries[0]["source"] == "CBO reports"
+
+    def test_no_data_ownership_column_defaults_qualitative(self):
+        """debt_cycle_short pattern: no Data Ownership column."""
+        text = (
+            "## context_flags\n\n"
+            "| Flag | Source | What to Look For | Usage |\n"
+            "|------|--------|-------------------|-------|\n"
+            "| Cycle maturity | ISM trajectory | Late cycle signals | Generator context |\n"
+        )
+        entries = parse_context_flags(text)
+        assert len(entries) == 1
+        assert entries[0]["data_ownership"] == "qualitative"
+        assert entries[0]["source"] == "ISM trajectory"
+
+    def test_hybrid_ownership_extracts_web_search(self):
+        """monetary_architecture pattern: 'web-search / computed-mechanical'."""
+        text = (
+            "## context_flags\n\n"
+            "| Flag | Source | Data Ownership | What to Look For |\n"
+            "|------|--------|----------------|------------------|\n"
+            "| Plumbing state | Basis levels | `web-search / computed-mechanical` | Binary calm/stressed |\n"
+        )
+        entries = parse_context_flags(text)
+        assert len(entries) == 1
+        assert entries[0]["data_ownership"] == "web-search"
+
+    def test_missing_section_raises(self):
+        with pytest.raises(ValueError, match="no ## context_flags"):
+            parse_context_flags("## activation_table\n| a | b |\n")
+
+    def test_empty_table_raises(self):
+        text = (
+            "## context_flags\n\n"
+            "No table here, just prose.\n\n"
+            "## next_section\n"
+        )
+        with pytest.raises(ValueError, match="no parseable table rows"):
+            parse_context_flags(text)
+
+    def test_invalid_data_ownership_raises(self):
+        text = (
+            "## context_flags\n\n"
+            "| Flag | Source | Data Ownership | What to Look For |\n"
+            "|------|--------|----------------|------------------|\n"
+            "| Bad flag | source | `mechanical` | Description |\n"
+        )
+        with pytest.raises(ValueError, match="invalid data_ownership"):
+            parse_context_flags(text)
+
+    def test_section_ends_at_next_h2(self):
+        """Parser should stop at the next ## header."""
+        text = (
+            "## context_flags\n\n"
+            "| Flag | Source | Data Ownership | What to Look For |\n"
+            "|------|--------|----------------|------------------|\n"
+            "| Flag A | source | `qualitative` | Desc A |\n"
+            "\n"
+            "## falsifier_severity_assignments\n\n"
+            "| ID | Classification |\n"
+            "|----|---------|\n"
+            "| H1 | hard |\n"
+        )
+        entries = parse_context_flags(text)
+        assert len(entries) == 1
+        assert entries[0]["flag_name"] == "Flag A"
+
+    def test_weight_column_ignored(self):
+        """Extra columns (like weight) should not break parsing."""
+        text = (
+            "## context_flags\n\n"
+            "| Flag | Source | Data Ownership | What to Look For | Weight |\n"
+            "|------|--------|----------------|-------------------|--------|\n"
+            "| Flag A | source | `qualitative` | Description | 0.15 |\n"
+        )
+        entries = parse_context_flags(text)
+        assert len(entries) == 1
+        assert entries[0]["flag_name"] == "Flag A"
+        # Weight should not appear in output
+        assert "weight" not in entries[0]

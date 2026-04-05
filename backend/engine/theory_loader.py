@@ -723,3 +723,164 @@ def parse_activation_table(activation_text: str) -> list[dict]:
             )
 
     return entries
+
+
+# ---------------------------------------------------------------------------
+# Unit 7: ACTIVATION.md context_flags parser
+# ---------------------------------------------------------------------------
+
+_CONTEXT_FLAG_SECTION_RE = re.compile(
+    r"^##\s+context_flags\s*$", re.IGNORECASE,
+)
+
+_VALID_CTX_OWNERSHIP = {"qualitative", "web-search"}
+
+
+def _map_context_flag_columns(header_cells: list[str]) -> dict[str, int]:
+    """Map context flag table column roles to indices from a header row.
+
+    Handles all observed column name variations across the 8 theories.
+    """
+    m: dict[str, int] = {}
+    for i, c in enumerate(header_cells):
+        lo = c.lower().strip()
+        if lo == "flag":
+            m.setdefault("flag_name", i)
+        elif lo == "source":
+            m.setdefault("source", i)
+        elif lo == "data ownership":
+            m.setdefault("data_ownership", i)
+        elif lo in ("what to look for", "description"):
+            m.setdefault("description", i)
+        elif lo in ("usage", "why context, not scored"):
+            m.setdefault("usage", i)
+    return m
+
+
+def _extract_ctx_ownership(raw: str) -> str:
+    """Extract a valid data_ownership keyword from raw cell text.
+
+    Handles backtick-wrapped values and compound entries like
+    ``web-search / computed-mechanical`` → ``'web-search'``.
+    """
+    lo = raw.lower().strip().strip("`").strip()
+    for kw in ("web-search", "qualitative"):
+        if kw in lo:
+            return kw
+    return lo  # return as-is; validation will catch invalid values
+
+
+def parse_context_flags(activation_text: str) -> list[dict]:
+    """Parse ``## context_flags`` section from ACTIVATION.md.
+
+    Returns list of dicts with keys:
+
+    * ``flag_name`` — human-readable flag label
+    * ``source`` — data source description (empty if column absent)
+    * ``data_ownership`` — ``"qualitative"`` or ``"web-search"``
+    * ``description`` — what to look for / flag description
+    * ``usage`` — how the flag is used (empty if column absent)
+
+    Handles column variations across all 8 theories:
+
+    * Most: ``| Flag | Source | Data Ownership | What to Look For |``
+    * structural_fragility: adds ``| Usage |`` column
+    * fiscal_dominance_liquidity: swaps Source / Data Ownership order
+    * debt_cycle_short: no Data Ownership column (defaults to ``qualitative``)
+    * capital_flows: ``| Flag | Description | Why Context, Not Scored |``
+
+    Context flags have NO weight. Weight columns are ignored.
+
+    Raises ``ValueError`` if:
+
+    * No ``## context_flags`` section found.
+    * No parseable table rows.
+    * Any entry has ``data_ownership`` not in {``qualitative``, ``web-search``}.
+    """
+    lines = activation_text.split("\n")
+
+    # Find ## context_flags section
+    section_start = None
+    for i, line in enumerate(lines):
+        if _CONTEXT_FLAG_SECTION_RE.match(line.strip()):
+            section_start = i + 1
+            break
+
+    if section_start is None:
+        raise ValueError("ACTIVATION.md has no ## context_flags section")
+
+    # Section ends at next ## header (not ###) or EOF
+    section_end = len(lines)
+    for i in range(section_start, len(lines)):
+        stripped = lines[i].strip()
+        if stripped.startswith("## ") and not stripped.startswith("### "):
+            section_end = i
+            break
+
+    entries: list[dict] = []
+    col_map: dict[str, int] = {}
+    in_table = False
+
+    for i in range(section_start, section_end):
+        stripped = lines[i].strip()
+
+        if not stripped.startswith("|"):
+            if in_table:
+                in_table = False
+                col_map = {}
+            continue
+
+        cells = [c.strip() for c in stripped.split("|")]
+        cells = [c for c in cells if c]
+
+        if len(cells) < 2:
+            continue
+
+        # Skip separator rows
+        if all(_SEPARATOR_CELL_RE.match(c) for c in cells):
+            continue
+
+        # First non-separator row is the header
+        if not in_table:
+            col_map = _map_context_flag_columns(cells)
+            in_table = True
+            continue
+
+        # --- Data row ---
+        def _cell(key: str, default: str = "") -> str:
+            idx = col_map.get(key)
+            if idx is not None and idx < len(cells):
+                return cells[idx]
+            return default
+
+        flag_name = _cell("flag_name") or cells[0]
+        source = _cell("source")
+        description = _cell("description")
+        usage = _cell("usage")
+
+        # Data ownership: extract from column, or default to qualitative
+        if "data_ownership" in col_map:
+            data_ownership = _extract_ctx_ownership(_cell("data_ownership"))
+        else:
+            data_ownership = "qualitative"
+
+        entries.append({
+            "flag_name": flag_name,
+            "source": source,
+            "data_ownership": data_ownership,
+            "description": description,
+            "usage": usage,
+        })
+
+    if not entries:
+        raise ValueError("context_flags section contains no parseable table rows")
+
+    # Validate data_ownership values
+    for entry in entries:
+        if entry["data_ownership"] not in _VALID_CTX_OWNERSHIP:
+            raise ValueError(
+                f"Context flag {entry['flag_name']!r} has invalid data_ownership "
+                f"{entry['data_ownership']!r} — must be 'qualitative' or 'web-search'"
+            )
+
+    return entries

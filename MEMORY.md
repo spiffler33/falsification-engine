@@ -1,9 +1,9 @@
 # v8 Implementation State
 
 ## Current Phase: Phase 1 (Loader + Parsers)
-## Current Task: Unit 5 complete — Falsifier registry join logic + orphan validation
-## Last Completed: Unit 5 (build_falsifier_registry in theory_loader.py — 67 cumulative tests)
-## Last Commit: v8 Unit 5
+## Current Task: Unit 7 complete — ACTIVATION.md context_flags parser
+## Last Completed: Unit 7 (parse_context_flags in theory_loader.py — 109 cumulative tests)
+## Last Commit: v8 Unit 7
 
 ## Phase Status
 - [ ] Phase 1: Loader + Parsers (Components 1-5)
@@ -12,8 +12,8 @@
   - [x] Unit 3: CORE.md deep_falsifiers parser (12 tests — 5 live, 7 synthetic)
   - [x] Unit 4: ACTIVATION.md falsifier_severity_assignments parser (22 tests — 14 live, 8 synthetic)
   - [x] Unit 5: Falsifier registry join logic + orphan validation (17 tests — 10 live, 7 synthetic)
-  - [ ] Unit 6: ACTIVATION.md activation_table parser with data_ownership column
-  - [ ] Unit 7: ACTIVATION.md context_flags parser + qualitative exclusion validation
+  - [x] Unit 6: ACTIVATION.md activation_table parser with data_ownership column (21 tests — 12 live, 9 synthetic)
+  - [x] Unit 7: ACTIVATION.md context_flags parser + data_ownership validation (21 tests — 10 live, 11 synthetic)
   - [ ] Unit 8: INTERACTION_MATRIX.md parser (pairwise table + shared upstream cause warnings)
   - [ ] Unit 9: INTERACTION_MATRIX filtering by activation status
   - [ ] Unit 10: Adapter layer (TheoryPackage → monolithic format for parallel validation)
