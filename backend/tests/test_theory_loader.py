@@ -1,4 +1,4 @@
-# test_theory_loader.py — Tests for v8 theory package loader (Units 2-5).
+# test_theory_loader.py — Tests for v8 theory package loader (Units 2-8, 9 filter).
 import re
 from pathlib import Path
 
@@ -8,6 +8,7 @@ from backend.config import THEORIES_DIR
 from backend.engine.theory_loader import (
     build_falsifier_registry,
     discover_theory_dirs,
+    filter_interaction_matrix,
     load_all_theory_packages,
     load_theory_package,
     parse_activation_table,
@@ -1741,3 +1742,116 @@ class TestParseInteractionMatrix:
         result = parse_interaction_matrix(text)
         assert len(result["pairwise"]) == 1
         assert len(result["shared_upstream_warnings"]) == 1
+
+
+# ---------------------------------------------------------------------------
+# Unit 9: filter_interaction_matrix
+# ---------------------------------------------------------------------------
+
+
+def _make_matrix_data():
+    """Minimal matrix data for filter tests."""
+    return {
+        "pairwise": [
+            {"theory_a": "T1", "theory_b": "T2", "relationship": "amplifies",
+             "invariant_logic": "logic1", "expression_detail_location": ""},
+            {"theory_a": "T2", "theory_b": "T3", "relationship": "contradicts",
+             "invariant_logic": "logic2", "expression_detail_location": ""},
+            {"theory_a": "T3", "theory_b": "T4", "relationship": "independent",
+             "invariant_logic": "logic3", "expression_detail_location": ""},
+            {"theory_a": "T1", "theory_b": "T4", "relationship": "triggers",
+             "invariant_logic": "logic4", "expression_detail_location": ""},
+        ],
+        "shared_upstream_warnings": [
+            {"shared_cause": "Fed policy", "theories_affected": ["T1", "T2", "T3"],
+             "discounting_note": "discount convergence"},
+            {"shared_cause": "Dollar cycle", "theories_affected": ["T3", "T4"],
+             "discounting_note": "check independence"},
+            {"shared_cause": "Fiscal", "theories_affected": ["T1", "T5"],
+             "discounting_note": "minor overlap"},
+        ],
+    }
+
+
+class TestFilterInteractionMatrix:
+
+    def test_active_x_active_kept(self):
+        data = _make_matrix_data()
+        result = filter_interaction_matrix(data, {"T1", "T2"})
+        # T1×T2 kept (both active), T2×T3 kept (T2 active), T1×T4 kept (T1 active)
+        theory_pairs = [(e["theory_a"], e["theory_b"]) for e in result["pairwise"]]
+        assert ("T1", "T2") in theory_pairs
+        assert ("T2", "T3") in theory_pairs
+        assert ("T1", "T4") in theory_pairs
+
+    def test_inactive_x_inactive_excluded(self):
+        data = _make_matrix_data()
+        result = filter_interaction_matrix(data, {"T1"})
+        # T3×T4 has neither active — must be excluded
+        theory_pairs = [(e["theory_a"], e["theory_b"]) for e in result["pairwise"]]
+        assert ("T3", "T4") not in theory_pairs
+
+    def test_active_x_adjacent_kept(self):
+        """Active × non-active rows survive (the filter uses active set only)."""
+        data = _make_matrix_data()
+        result = filter_interaction_matrix(data, {"T2"})
+        # T1×T2 kept (T2 active), T2×T3 kept (T2 active)
+        theory_pairs = [(e["theory_a"], e["theory_b"]) for e in result["pairwise"]]
+        assert ("T1", "T2") in theory_pairs
+        assert ("T2", "T3") in theory_pairs
+
+    def test_no_active_returns_empty(self):
+        data = _make_matrix_data()
+        result = filter_interaction_matrix(data, set())
+        assert result["pairwise"] == []
+        assert result["shared_upstream_warnings"] == []
+
+    def test_all_active_returns_all(self):
+        data = _make_matrix_data()
+        result = filter_interaction_matrix(data, {"T1", "T2", "T3", "T4"})
+        assert len(result["pairwise"]) == 4
+
+    def test_shared_upstream_needs_two_active(self):
+        data = _make_matrix_data()
+        # Only T1 active: "Fed policy" has T1 (1 active) — not enough
+        result = filter_interaction_matrix(data, {"T1"})
+        causes = [e["shared_cause"] for e in result["shared_upstream_warnings"]]
+        assert "Fed policy" not in causes
+
+    def test_shared_upstream_two_active_kept(self):
+        data = _make_matrix_data()
+        # T1 + T2 active: "Fed policy" has T1,T2,T3 — 2 active → kept
+        result = filter_interaction_matrix(data, {"T1", "T2"})
+        causes = [e["shared_cause"] for e in result["shared_upstream_warnings"]]
+        assert "Fed policy" in causes
+
+    def test_shared_upstream_three_active_kept(self):
+        data = _make_matrix_data()
+        result = filter_interaction_matrix(data, {"T1", "T2", "T3"})
+        causes = [e["shared_cause"] for e in result["shared_upstream_warnings"]]
+        assert "Fed policy" in causes
+
+    def test_shared_upstream_one_each_excluded(self):
+        data = _make_matrix_data()
+        # T1 + T5 active: "Fiscal" has [T1, T5] — both active → kept
+        # "Dollar cycle" has [T3, T4] — 0 active → excluded
+        result = filter_interaction_matrix(data, {"T1", "T5"})
+        causes = [e["shared_cause"] for e in result["shared_upstream_warnings"]]
+        assert "Fiscal" in causes
+        assert "Dollar cycle" not in causes
+
+    def test_empty_matrix_data(self):
+        result = filter_interaction_matrix(
+            {"pairwise": [], "shared_upstream_warnings": []}, {"T1"},
+        )
+        assert result["pairwise"] == []
+        assert result["shared_upstream_warnings"] == []
+
+    def test_preserves_entry_structure(self):
+        data = _make_matrix_data()
+        result = filter_interaction_matrix(data, {"T1", "T2"})
+        entry = result["pairwise"][0]
+        assert "theory_a" in entry
+        assert "theory_b" in entry
+        assert "relationship" in entry
+        assert "invariant_logic" in entry

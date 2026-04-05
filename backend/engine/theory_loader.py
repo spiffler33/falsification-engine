@@ -1160,3 +1160,40 @@ def parse_interaction_matrix(
         "pairwise": pairwise,
         "shared_upstream_warnings": warnings,
     }
+
+
+# ---------------------------------------------------------------------------
+# Unit 9: Interaction matrix filtering by activation status
+# ---------------------------------------------------------------------------
+
+
+def filter_interaction_matrix(
+    matrix_data: dict,
+    active_theory_ids: set[str],
+) -> dict:
+    """Filter parsed interaction matrix to rows relevant to active theories.
+
+    Pairwise rows: kept when at least one theory is Active.
+    Shared upstream warnings: kept when at least two affected theories are Active.
+
+    Accepts *active_theory_ids* (not ActivationResult) so theory_loader
+    stays independent of the activation schema.
+    """
+    pairwise = matrix_data.get("pairwise", [])
+    warnings = matrix_data.get("shared_upstream_warnings", [])
+
+    filtered_pairwise = [
+        entry for entry in pairwise
+        if entry["theory_a"] in active_theory_ids
+        or entry["theory_b"] in active_theory_ids
+    ]
+
+    filtered_warnings = [
+        entry for entry in warnings
+        if sum(1 for t in entry["theories_affected"] if t in active_theory_ids) >= 2
+    ]
+
+    return {
+        "pairwise": filtered_pairwise,
+        "shared_upstream_warnings": filtered_warnings,
+    }

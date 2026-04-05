@@ -11,7 +11,12 @@ from __future__ import annotations
 import json
 from typing import Any
 
-from backend.schemas.theory import ActivationResult, ActivationTier, TheoryModule
+from backend.schemas.theory import (
+    ActivationResult,
+    ActivationTier,
+    TheoryModule,
+    TheoryPackage,
+)
 
 
 THEORY_LABEL_MAP = {
@@ -180,6 +185,242 @@ def build_generation_prompt(
         parts.append(_generation_output_schema_legacy())
 
     return "\n".join(parts)
+
+
+# ---------------------------------------------------------------------------
+# v8 prompt composition — TheoryPackage-based
+# ---------------------------------------------------------------------------
+
+
+def build_generation_prompt_v8(
+    packages: list[TheoryPackage],
+    activation_results: list[ActivationResult],
+    briefing: dict[str, Any],
+    inbox_items: list[dict[str, Any]],
+    interaction_matrix: dict | None = None,
+    max_adjacent: int = 1,
+    active_regime_flags: list[dict[str, Any]] | None = None,
+    prior_hypotheses: list[dict[str, Any]] | None = None,
+    active_threads: list[dict[str, Any]] | None = None,
+) -> str:
+    """Build the generation prompt for Pass 2 using v8 theory packages.
+
+    Replaces monolithic raw_markdown injection with per-file composition:
+    CORE.md + TACTICAL.md + PLAYBOOK.md per Active/Adjacent theory, plus
+    filtered INTERACTION_MATRIX as composition guidance and context_flags
+    as supplementary qualitative information.
+
+    All other prompt sections (system instructions, threads, regime flags,
+    inbox items, output schema) are identical to the v7 prompt.
+    """
+    has_threads = bool(active_threads)
+
+    active_theories: list[str] = []
+    adjacent_theories: list[str] = []
+    activation_map: dict[str, ActivationResult] = {}
+
+    for ar in activation_results:
+        tier = ar.tier if not ar.is_two_phase else ar.effective_tier
+        activation_map[ar.theory_id] = ar
+        if tier == ActivationTier.ACTIVE:
+            active_theories.append(ar.theory_id)
+        elif tier == ActivationTier.ADJACENT:
+            adjacent_theories.append(ar.theory_id)
+
+    pkg_map = {p.theory_id: p for p in packages}
+
+    # --- System instructions ---
+    parts: list[str] = []
+    parts.append(_generation_system_instructions(has_threads=has_threads))
+
+    # --- v7 Thread context ---
+    if has_threads:
+        parts.append("\n\n## ACTIVE THREADS (from prior run)\n")
+        parts.append(_thread_context_section(active_threads))
+        parts.append("\n\n## LIFECYCLE CONTRACT\n")
+        parts.append(_thread_lifecycle_contract())
+
+    # --- Active theories (CORE + TACTICAL + PLAYBOOK per theory) ---
+    parts.append("\n\n## ACTIVE THEORIES\n")
+    for tid in active_theories:
+        pkg = pkg_map.get(tid)
+        ar = activation_map.get(tid)
+        if pkg:
+            score = ar.score if ar and not ar.is_two_phase else None
+            phase = ar.effective_phase if ar and ar.is_two_phase else None
+            phase_score = None
+            if ar and ar.is_two_phase and ar.phase_scores and phase:
+                phase_score = ar.phase_scores.get(phase)
+            label = THEORY_LABEL_MAP.get(tid, tid)
+            score_display = phase_score if phase_score is not None else (score if score is not None else 0)
+            phase_display = f" (Phase: {phase})" if phase else ""
+            parts.append(f"\n### {label}{phase_display} -- Activation: {score_display:.0%}\n")
+            parts.append(f"\n--- CORE.md ---\n{pkg.core}")
+            parts.append(f"\n--- TACTICAL.md ---\n{pkg.tactical}")
+            parts.append(f"\n--- PLAYBOOK.md ---\n{pkg.playbook}")
+            if pkg.context_flags:
+                parts.append(_format_context_flags(pkg.context_flags))
+
+    # --- Adjacent wildcard ---
+    if adjacent_theories:
+        selected = adjacent_theories[:max_adjacent]
+        parts.append("\n\n## ADJACENT THEORY (WILDCARD -- use at most 1)\n")
+        for tid in selected:
+            pkg = pkg_map.get(tid)
+            ar = activation_map.get(tid)
+            if pkg:
+                label = THEORY_LABEL_MAP.get(tid, tid)
+                parts.append(f"\n### {label}\n")
+                parts.append(f"\n--- CORE.md ---\n{pkg.core}")
+                parts.append(f"\n--- TACTICAL.md ---\n{pkg.tactical}")
+                parts.append(f"\n--- PLAYBOOK.md ---\n{pkg.playbook}")
+                if pkg.context_flags:
+                    parts.append(_format_context_flags(pkg.context_flags))
+
+    # --- Interaction matrix (composition guidance) ---
+    if interaction_matrix:
+        matrix_section = _format_interaction_matrix_for_generation(interaction_matrix)
+        if matrix_section:
+            parts.append(matrix_section)
+
+    # --- Inbox items ---
+    if inbox_items:
+        parts.append("\n\n## INBOX ITEMS (new since last run)\n")
+        for item in inbox_items:
+            date = item.get("date", "")
+            content = item.get("content", "")
+            source = item.get("source", "")
+            theories_tagged = item.get("theories", [])
+            tags = f" [{', '.join(theories_tagged)}]" if theories_tagged else ""
+            parts.append(f"- [{date}] {content}")
+            if source:
+                parts.append(f"  Source: {source}")
+            if tags:
+                parts.append(f"  Tags: {tags}")
+            parts.append("")
+
+    # --- Regime flags (Pass 1.5 context) ---
+    if active_regime_flags:
+        active_or_adjacent = set(active_theories + adjacent_theories[:max_adjacent])
+        parts.append("\n\n## REGIME FLAGS\n")
+        parts.append(
+            "The following regime flags are active based on current theory activation states.\n"
+            "Use the channel context below when constructing hypotheses for the affected theories.\n"
+        )
+        for flag in active_regime_flags:
+            parts.append(f"REGIME FLAG: {flag['flag_id']}")
+            parts.append(f"Triggered by: {flag['flag_id'].replace('_active', '').replace('_', ' ')} is Active\n")
+            parts.append("Channel context for affected theories:")
+            for module_id, context in flag.get("channel_context", {}).items():
+                if module_id in active_or_adjacent:
+                    label = THEORY_LABEL_MAP.get(module_id, module_id)
+                    parts.append(f"  - {label}: {context}")
+            parts.append("")
+
+    # --- v7 NEW hypothesis section ---
+    if has_threads:
+        represented_theories = {t.get("source_theory") for t in active_threads}
+        active_scores: dict[str, float] = {}
+        for tid in active_theories:
+            ar = activation_map.get(tid)
+            if ar:
+                if ar.is_two_phase and ar.phase_scores and ar.effective_phase:
+                    active_scores[tid] = ar.phase_scores.get(ar.effective_phase, 0.0)
+                else:
+                    active_scores[tid] = ar.score if ar.score is not None else 0.0
+        parts.append("\n\n## NEW HYPOTHESIS GENERATION\n")
+        parts.append(_new_hypothesis_section(
+            active_theories=active_theories,
+            active_scores=active_scores,
+            represented_theories=represented_theories,
+            adjacent_theories=adjacent_theories[:max_adjacent] if adjacent_theories else None,
+        ))
+
+    # --- Legacy: Prior hypotheses (pre-v7 backward compat) ---
+    if not has_threads and prior_hypotheses:
+        parts.append("\n\n## PRIOR HYPOTHESES (from previous runs)\n")
+        parts.append(_prior_hypotheses_section(prior_hypotheses))
+        parts.append("\n\n## CONTINUATION CONTRACT\n")
+        parts.append(_continuation_contract_instructions())
+
+    # --- Resolution channel requirement ---
+    parts.append("\n\n## RESOLUTION CHANNEL REQUIREMENT\n")
+    parts.append(_resolution_channel_instructions())
+
+    # --- Data briefing ---
+    parts.append("\n\n## DATA BRIEFING\n")
+    parts.append("```json")
+    parts.append(json.dumps(briefing, indent=2, default=str))
+    parts.append("```")
+
+    # --- Output schema ---
+    parts.append("\n\n## OUTPUT FORMAT\n")
+    if has_threads:
+        parts.append(_generation_output_schema_v7())
+    else:
+        parts.append(_generation_output_schema_legacy())
+
+    return "\n".join(parts)
+
+
+def _format_context_flags(context_flags: list) -> str:
+    """Format context flags for injection into a theory's prompt section."""
+    lines = ["\n**Context Flags (qualitative -- not scored):**"]
+    for cf in context_flags:
+        flag_name = cf.flag_name if hasattr(cf, "flag_name") else cf.get("flag_name", "")
+        description = cf.description if hasattr(cf, "description") else cf.get("description", "")
+        lines.append(f"- {flag_name}: {description}")
+    return "\n".join(lines)
+
+
+def _format_interaction_matrix_for_generation(matrix_data: dict) -> str:
+    """Format filtered interaction matrix as composition guidance for Pass 2."""
+    pairwise = matrix_data.get("pairwise", [])
+    warnings = matrix_data.get("shared_upstream_warnings", [])
+
+    if not pairwise and not warnings:
+        return ""
+
+    lines = ["\n\n## COMPOSITION GUIDANCE (from Interaction Matrix)\n"]
+    lines.append(
+        "The following theory interactions are relevant to your active theories. "
+        "Use this to guide how you combine theories in composite hypotheses.\n"
+    )
+
+    if pairwise:
+        lines.append("### Pairwise Interactions\n")
+        for entry in pairwise:
+            a = entry["theory_a"]
+            b = entry["theory_b"]
+            rel = entry["relationship"]
+            logic = entry["invariant_logic"]
+            a_label = THEORY_LABEL_MAP.get(a, a)
+            b_label = THEORY_LABEL_MAP.get(b, b)
+            lines.append(f"- {a_label} x {b_label}: {rel}")
+            lines.append(f"  Logic: {logic}")
+            loc = entry.get("expression_detail_location", "")
+            if loc:
+                lines.append(f"  Detail: {loc}")
+            lines.append("")
+
+    if warnings:
+        lines.append("### Shared Upstream Cause Warnings\n")
+        lines.append(
+            "The following shared causes affect multiple active theories. "
+            "Do not double-count convergence when these theories align.\n"
+        )
+        for entry in warnings:
+            cause = entry["shared_cause"]
+            affected = ", ".join(
+                THEORY_LABEL_MAP.get(t, t) for t in entry["theories_affected"]
+            )
+            note = entry["discounting_note"]
+            lines.append(f"- {cause}")
+            lines.append(f"  Affects: {affected}")
+            lines.append(f"  Note: {note}")
+            lines.append("")
+
+    return "\n".join(lines)
 
 
 def build_elimination_prompt(
