@@ -14,6 +14,9 @@ from backend.engine.theory_loader import (
     parse_context_flags,
     parse_deep_falsifiers,
     parse_falsifier_severity,
+    parse_interaction_matrix,
+    parse_interaction_pairwise,
+    parse_shared_upstream_warnings,
 )
 from backend.schemas.theory import FalsifierEntry
 
@@ -1471,3 +1474,270 @@ class TestParseContextFlagsSynthetic:
         assert entries[0]["flag_name"] == "Flag A"
         # Weight should not appear in output
         assert "weight" not in entries[0]
+
+
+# ---------------------------------------------------------------------------
+# Unit 8: INTERACTION_MATRIX.md parser
+# ---------------------------------------------------------------------------
+
+INTERACTION_MATRIX_PATH = THEORIES_DIR / "INTERACTION_MATRIX.md"
+
+
+class TestParseInteractionPairwise:
+
+    def test_real_matrix_parses(self):
+        """Real INTERACTION_MATRIX.md parses without error."""
+        text = INTERACTION_MATRIX_PATH.read_text(encoding="utf-8")
+        entries = parse_interaction_pairwise(text)
+        assert len(entries) > 0
+
+    def test_real_matrix_row_count(self):
+        """The real matrix has 22 pairwise entries."""
+        text = INTERACTION_MATRIX_PATH.read_text(encoding="utf-8")
+        entries = parse_interaction_pairwise(text)
+        assert len(entries) == 22
+
+    def test_real_matrix_keys(self):
+        """Each entry has all required keys."""
+        text = INTERACTION_MATRIX_PATH.read_text(encoding="utf-8")
+        entries = parse_interaction_pairwise(text)
+        expected_keys = {
+            "theory_a", "theory_a_phase", "theory_b", "theory_b_phase",
+            "relationship", "invariant_logic", "expression_detail_location",
+        }
+        for entry in entries:
+            assert set(entry.keys()) == expected_keys
+
+    def test_real_matrix_all_theory_ids_valid(self):
+        """Every theory_id in the pairwise table is a known theory."""
+        text = INTERACTION_MATRIX_PATH.read_text(encoding="utf-8")
+        entries = parse_interaction_pairwise(text)
+        for entry in entries:
+            assert entry["theory_a"] in EXPECTED_THEORY_IDS, (
+                f"Unknown theory_a: {entry['theory_a']}"
+            )
+            assert entry["theory_b"] in EXPECTED_THEORY_IDS, (
+                f"Unknown theory_b: {entry['theory_b']}"
+            )
+
+    def test_phase_annotations_stripped(self):
+        """Phase annotations like (Building) are parsed into separate field."""
+        text = INTERACTION_MATRIX_PATH.read_text(encoding="utf-8")
+        entries = parse_interaction_pairwise(text)
+        # structural_fragility (Building) should appear in the first row
+        first = entries[0]
+        assert first["theory_a"] == "structural_fragility"
+        assert first["theory_a_phase"] == "Building"
+
+    def test_no_bold_markers_in_relationship(self):
+        """Bold ** markers should be stripped from relationship text."""
+        text = INTERACTION_MATRIX_PATH.read_text(encoding="utf-8")
+        entries = parse_interaction_pairwise(text)
+        for entry in entries:
+            assert "**" not in entry["relationship"]
+
+    def test_invariant_logic_not_empty(self):
+        """Every row has non-empty invariant logic."""
+        text = INTERACTION_MATRIX_PATH.read_text(encoding="utf-8")
+        entries = parse_interaction_pairwise(text)
+        for entry in entries:
+            assert len(entry["invariant_logic"]) > 10
+
+    def test_synthetic_basic(self):
+        """Minimal synthetic table parses correctly."""
+        text = (
+            "## Pairwise Interaction Table\n\n"
+            "| Theory A | Theory B | Relationship | Invariant Logic | Expression Detail Location |\n"
+            "|----------|----------|-------------|-----------------|---------------------------|\n"
+            "| alpha | beta | **A triggers B** | Alpha causes beta | alpha/TACTICAL.md |\n"
+        )
+        entries = parse_interaction_pairwise(text)
+        assert len(entries) == 1
+        assert entries[0]["theory_a"] == "alpha"
+        assert entries[0]["theory_a_phase"] is None
+        assert entries[0]["theory_b"] == "beta"
+        assert entries[0]["relationship"] == "A triggers B"
+
+    def test_synthetic_with_phase_annotations(self):
+        """Phase annotations in both columns parse correctly."""
+        text = (
+            "## Pairwise Interaction Table\n\n"
+            "| Theory A | Theory B | Relationship | Invariant Logic | Expression Detail Location |\n"
+            "|----------|----------|-------------|-----------------|---------------------------|\n"
+            "| alpha (Building) | beta (Contraction) | **A modifies B** | Logic here | paths |\n"
+        )
+        entries = parse_interaction_pairwise(text)
+        assert entries[0]["theory_a"] == "alpha"
+        assert entries[0]["theory_a_phase"] == "Building"
+        assert entries[0]["theory_b"] == "beta"
+        assert entries[0]["theory_b_phase"] == "Contraction"
+
+    def test_missing_section_raises(self):
+        """Missing section header raises ValueError."""
+        with pytest.raises(ValueError, match="Pairwise Interaction Table"):
+            parse_interaction_pairwise("## Notes\nSome text\n")
+
+    def test_empty_table_raises(self):
+        """Section with no data rows raises ValueError."""
+        text = (
+            "## Pairwise Interaction Table\n\n"
+            "| Theory A | Theory B | Relationship | Invariant Logic | Expression Detail Location |\n"
+            "|----------|----------|-------------|-----------------|---------------------------|\n"
+        )
+        with pytest.raises(ValueError, match="no parseable rows"):
+            parse_interaction_pairwise(text)
+
+    def test_section_ends_at_next_h2(self):
+        """Parser stops at the next ## header."""
+        text = (
+            "## Pairwise Interaction Table\n\n"
+            "| Theory A | Theory B | Relationship | Invariant Logic | Expression Detail Location |\n"
+            "|----------|----------|-------------|-----------------|---------------------------|\n"
+            "| alpha | beta | **A triggers B** | Logic | paths |\n"
+            "\n"
+            "## Shared Upstream Cause Warnings\n\n"
+            "| Shared Cause | Theories Affected | Discounting Note |\n"
+            "|-------------|-------------------|------------------|\n"
+            "| Cause X | alpha, beta | Note |\n"
+        )
+        entries = parse_interaction_pairwise(text)
+        assert len(entries) == 1
+
+
+class TestParseSharedUpstreamWarnings:
+
+    def test_real_matrix_parses(self):
+        """Real shared upstream warnings parse without error."""
+        text = INTERACTION_MATRIX_PATH.read_text(encoding="utf-8")
+        entries = parse_shared_upstream_warnings(text)
+        assert len(entries) > 0
+
+    def test_real_matrix_warning_count(self):
+        """The real matrix has 6 shared upstream warnings."""
+        text = INTERACTION_MATRIX_PATH.read_text(encoding="utf-8")
+        entries = parse_shared_upstream_warnings(text)
+        assert len(entries) == 6
+
+    def test_real_matrix_keys(self):
+        """Each warning has all required keys."""
+        text = INTERACTION_MATRIX_PATH.read_text(encoding="utf-8")
+        entries = parse_shared_upstream_warnings(text)
+        expected_keys = {"shared_cause", "theories_affected", "discounting_note"}
+        for entry in entries:
+            assert set(entry.keys()) == expected_keys
+
+    def test_real_matrix_theories_are_lists(self):
+        """theories_affected is a list of strings."""
+        text = INTERACTION_MATRIX_PATH.read_text(encoding="utf-8")
+        entries = parse_shared_upstream_warnings(text)
+        for entry in entries:
+            assert isinstance(entry["theories_affected"], list)
+            assert all(isinstance(t, str) for t in entry["theories_affected"])
+            assert len(entry["theories_affected"]) >= 2
+
+    def test_real_matrix_all_theory_ids_valid(self):
+        """Every theory_id in warnings is a known theory."""
+        text = INTERACTION_MATRIX_PATH.read_text(encoding="utf-8")
+        entries = parse_shared_upstream_warnings(text)
+        for entry in entries:
+            for tid in entry["theories_affected"]:
+                assert tid in EXPECTED_THEORY_IDS, (
+                    f"Unknown theory in warnings: {tid}"
+                )
+
+    def test_synthetic_basic(self):
+        """Minimal synthetic warnings table parses correctly."""
+        text = (
+            "## Shared Upstream Cause Warnings\n\n"
+            "| Shared Cause | Theories Affected | Discounting Note |\n"
+            "|-------------|-------------------|------------------|\n"
+            "| Low rates | alpha (indicator), beta (mechanism) | Do not double count |\n"
+        )
+        entries = parse_shared_upstream_warnings(text)
+        assert len(entries) == 1
+        assert entries[0]["shared_cause"] == "Low rates"
+        assert entries[0]["theories_affected"] == ["alpha", "beta"]
+        assert "double count" in entries[0]["discounting_note"]
+
+    def test_missing_section_raises(self):
+        """Missing section header raises ValueError."""
+        with pytest.raises(ValueError, match="Shared Upstream Cause Warnings"):
+            parse_shared_upstream_warnings("## Notes\nSome text\n")
+
+    def test_empty_table_raises(self):
+        """Section with no data rows raises ValueError."""
+        text = (
+            "## Shared Upstream Cause Warnings\n\n"
+            "| Shared Cause | Theories Affected | Discounting Note |\n"
+            "|-------------|-------------------|------------------|\n"
+        )
+        with pytest.raises(ValueError, match="no parseable rows"):
+            parse_shared_upstream_warnings(text)
+
+
+class TestParseInteractionMatrix:
+
+    def test_real_matrix_full_parse(self):
+        """Full parse of real INTERACTION_MATRIX.md succeeds."""
+        text = INTERACTION_MATRIX_PATH.read_text(encoding="utf-8")
+        result = parse_interaction_matrix(text, known_theory_ids=EXPECTED_THEORY_IDS)
+        assert len(result["pairwise"]) == 22
+        assert len(result["shared_upstream_warnings"]) == 6
+
+    def test_real_matrix_validation_passes(self):
+        """All theory_ids in real matrix pass validation against known set."""
+        text = INTERACTION_MATRIX_PATH.read_text(encoding="utf-8")
+        # Should not raise
+        parse_interaction_matrix(text, known_theory_ids=EXPECTED_THEORY_IDS)
+
+    def test_unknown_theory_id_raises(self):
+        """Unknown theory_id in pairwise table raises ValueError."""
+        text = (
+            "## Pairwise Interaction Table\n\n"
+            "| Theory A | Theory B | Relationship | Invariant Logic | Expression Detail Location |\n"
+            "|----------|----------|-------------|-----------------|---------------------------|\n"
+            "| alpha | beta | **A triggers B** | Logic | paths |\n"
+            "\n"
+            "## Shared Upstream Cause Warnings\n\n"
+            "| Shared Cause | Theories Affected | Discounting Note |\n"
+            "|-------------|-------------------|------------------|\n"
+            "| Cause | alpha, beta | Note |\n"
+        )
+        with pytest.raises(ValueError, match="unknown theory_ids"):
+            parse_interaction_matrix(text, known_theory_ids={"alpha"})
+
+    def test_unknown_theory_in_warnings_raises(self):
+        """Unknown theory_id in warnings table raises ValueError."""
+        text = (
+            "## Pairwise Interaction Table\n\n"
+            "| Theory A | Theory B | Relationship | Invariant Logic | Expression Detail Location |\n"
+            "|----------|----------|-------------|-----------------|---------------------------|\n"
+            "| alpha | beta | **A triggers B** | Logic | paths |\n"
+            "\n"
+            "## Shared Upstream Cause Warnings\n\n"
+            "| Shared Cause | Theories Affected | Discounting Note |\n"
+            "|-------------|-------------------|------------------|\n"
+            "| Cause | alpha, gamma | Note |\n"
+        )
+        with pytest.raises(ValueError, match="unknown theory_ids"):
+            parse_interaction_matrix(
+                text, known_theory_ids={"alpha", "beta"},
+            )
+
+    def test_no_validation_when_none(self):
+        """When known_theory_ids is None, no validation occurs."""
+        text = (
+            "## Pairwise Interaction Table\n\n"
+            "| Theory A | Theory B | Relationship | Invariant Logic | Expression Detail Location |\n"
+            "|----------|----------|-------------|-----------------|---------------------------|\n"
+            "| unknown_a | unknown_b | **A triggers B** | Logic | paths |\n"
+            "\n"
+            "## Shared Upstream Cause Warnings\n\n"
+            "| Shared Cause | Theories Affected | Discounting Note |\n"
+            "|-------------|-------------------|------------------|\n"
+            "| Cause | unknown_x, unknown_y | Note |\n"
+        )
+        # Should not raise
+        result = parse_interaction_matrix(text)
+        assert len(result["pairwise"]) == 1
+        assert len(result["shared_upstream_warnings"]) == 1

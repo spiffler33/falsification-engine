@@ -884,3 +884,279 @@ def parse_context_flags(activation_text: str) -> list[dict]:
             )
 
     return entries
+
+
+# ---------------------------------------------------------------------------
+# Unit 8: INTERACTION_MATRIX.md parser
+# ---------------------------------------------------------------------------
+
+_PAIRWISE_SECTION_RE = re.compile(
+    r"^##\s+Pairwise\s+Interaction\s+Table\s*$", re.IGNORECASE,
+)
+_SHARED_UPSTREAM_SECTION_RE = re.compile(
+    r"^##\s+Shared\s+Upstream\s+Cause\s+Warnings?\s*$", re.IGNORECASE,
+)
+
+
+def _strip_phase_annotation(theory_ref: str) -> tuple[str, str | None]:
+    """Strip phase annotation from a theory reference.
+
+    Returns (theory_id, phase_annotation_or_None).
+    E.g. "structural_fragility (Building)" -> ("structural_fragility", "Building")
+    """
+    m = re.search(r"\(([^)]+)\)\s*$", theory_ref.strip())
+    if m:
+        phase = m.group(1).strip()
+        theory_id = theory_ref[:m.start()].strip()
+        return theory_id, phase
+    return theory_ref.strip(), None
+
+
+def _extract_theory_ids_from_ref(theory_ref: str) -> list[str]:
+    """Extract all theory_ids from a theories-affected cell.
+
+    Splits on commas that are outside parentheses (descriptions can
+    contain commas, e.g. "fiscal_dominance_liquidity (reserve injection, flow)").
+
+    Returns list of snake_case theory_id strings.
+    """
+    # Split respecting parentheses — only split on commas at depth 0
+    parts: list[str] = []
+    depth = 0
+    current: list[str] = []
+    for ch in theory_ref:
+        if ch == "(":
+            depth += 1
+            current.append(ch)
+        elif ch == ")":
+            depth = max(0, depth - 1)
+            current.append(ch)
+        elif ch == "," and depth == 0:
+            parts.append("".join(current).strip())
+            current = []
+        else:
+            current.append(ch)
+    if current:
+        parts.append("".join(current).strip())
+
+    ids: list[str] = []
+    for part in parts:
+        if not part:
+            continue
+        m = re.match(r"([a-z][a-z0-9_]+)", part.strip())
+        if m:
+            ids.append(m.group(1))
+    return ids
+
+
+def parse_interaction_pairwise(matrix_text: str) -> list[dict]:
+    """Parse the ## Pairwise Interaction Table from INTERACTION_MATRIX.md.
+
+    Returns list of dicts with keys:
+    * ``theory_a`` — theory_id (without phase annotation)
+    * ``theory_a_phase`` — phase annotation or None
+    * ``theory_b`` — theory_id (without phase annotation)
+    * ``theory_b_phase`` — phase annotation or None
+    * ``relationship`` — relationship description (e.g. "A triggers B")
+    * ``invariant_logic`` — the causal relationship text
+    * ``expression_detail_location`` — file path references
+    """
+    lines = matrix_text.split("\n")
+
+    # Find section start
+    section_start = None
+    for i, line in enumerate(lines):
+        if _PAIRWISE_SECTION_RE.match(line.strip()):
+            section_start = i + 1
+            break
+
+    if section_start is None:
+        raise ValueError(
+            "INTERACTION_MATRIX.md has no ## Pairwise Interaction Table section"
+        )
+
+    # Section ends at next ## header or EOF
+    section_end = len(lines)
+    for i in range(section_start, len(lines)):
+        stripped = lines[i].strip()
+        if stripped.startswith("## ") and not stripped.startswith("### "):
+            if not _PAIRWISE_SECTION_RE.match(stripped):
+                section_end = i
+                break
+
+    entries: list[dict] = []
+    in_table = False
+
+    for i in range(section_start, section_end):
+        stripped = lines[i].strip()
+
+        if not stripped.startswith("|"):
+            if in_table:
+                in_table = False
+            continue
+
+        cells = [c.strip() for c in stripped.split("|")]
+        cells = [c for c in cells if c]
+
+        if len(cells) < 5:
+            continue
+
+        # Skip separator rows
+        if all(_SEPARATOR_CELL_RE.match(c) for c in cells):
+            continue
+
+        # First non-separator row is the header — skip it
+        if not in_table:
+            in_table = True
+            continue
+
+        # --- Data row ---
+        theory_a_raw = cells[0]
+        theory_b_raw = cells[1]
+        relationship = cells[2]
+        invariant_logic = cells[3]
+        expression_detail_location = cells[4] if len(cells) > 4 else ""
+
+        theory_a, theory_a_phase = _strip_phase_annotation(theory_a_raw)
+        theory_b, theory_b_phase = _strip_phase_annotation(theory_b_raw)
+
+        # Strip bold markers from relationship
+        relationship = relationship.replace("**", "").strip()
+
+        entries.append({
+            "theory_a": theory_a,
+            "theory_a_phase": theory_a_phase,
+            "theory_b": theory_b,
+            "theory_b_phase": theory_b_phase,
+            "relationship": relationship,
+            "invariant_logic": invariant_logic,
+            "expression_detail_location": expression_detail_location,
+        })
+
+    if not entries:
+        raise ValueError(
+            "Pairwise Interaction Table contains no parseable rows"
+        )
+
+    return entries
+
+
+def parse_shared_upstream_warnings(matrix_text: str) -> list[dict]:
+    """Parse the ## Shared Upstream Cause Warnings from INTERACTION_MATRIX.md.
+
+    Returns list of dicts with keys:
+    * ``shared_cause`` — description of the shared upstream cause
+    * ``theories_affected`` — list of theory_id strings
+    * ``discounting_note`` — guidance on how to handle double-counting
+    """
+    lines = matrix_text.split("\n")
+
+    # Find section start
+    section_start = None
+    for i, line in enumerate(lines):
+        if _SHARED_UPSTREAM_SECTION_RE.match(line.strip()):
+            section_start = i + 1
+            break
+
+    if section_start is None:
+        raise ValueError(
+            "INTERACTION_MATRIX.md has no ## Shared Upstream Cause Warnings section"
+        )
+
+    # Section ends at next ## header or EOF
+    section_end = len(lines)
+    for i in range(section_start, len(lines)):
+        stripped = lines[i].strip()
+        if stripped.startswith("## ") and not stripped.startswith("### "):
+            if not _SHARED_UPSTREAM_SECTION_RE.match(stripped):
+                section_end = i
+                break
+
+    entries: list[dict] = []
+    in_table = False
+
+    for i in range(section_start, section_end):
+        stripped = lines[i].strip()
+
+        if not stripped.startswith("|"):
+            if in_table:
+                in_table = False
+            continue
+
+        cells = [c.strip() for c in stripped.split("|")]
+        cells = [c for c in cells if c]
+
+        if len(cells) < 3:
+            continue
+
+        # Skip separator rows
+        if all(_SEPARATOR_CELL_RE.match(c) for c in cells):
+            continue
+
+        # First non-separator row is the header — skip it
+        if not in_table:
+            in_table = True
+            continue
+
+        # --- Data row ---
+        shared_cause = cells[0]
+        theories_affected_raw = cells[1]
+        discounting_note = cells[2]
+
+        theories_affected = _extract_theory_ids_from_ref(theories_affected_raw)
+
+        entries.append({
+            "shared_cause": shared_cause,
+            "theories_affected": theories_affected,
+            "discounting_note": discounting_note,
+        })
+
+    if not entries:
+        raise ValueError(
+            "Shared Upstream Cause Warnings contains no parseable rows"
+        )
+
+    return entries
+
+
+def parse_interaction_matrix(
+    matrix_text: str,
+    known_theory_ids: set[str] | None = None,
+) -> dict:
+    """Parse INTERACTION_MATRIX.md into structured data.
+
+    Returns dict with keys:
+    * ``pairwise`` — list of pairwise interaction entries
+    * ``shared_upstream_warnings`` — list of shared upstream cause warnings
+
+    If *known_theory_ids* is provided, validates that every theory_id
+    referenced in both tables exists in the set. Raises ValueError on
+    unknown IDs.
+    """
+    pairwise = parse_interaction_pairwise(matrix_text)
+    warnings = parse_shared_upstream_warnings(matrix_text)
+
+    if known_theory_ids is not None:
+        unknown: set[str] = set()
+
+        for entry in pairwise:
+            if entry["theory_a"] not in known_theory_ids:
+                unknown.add(entry["theory_a"])
+            if entry["theory_b"] not in known_theory_ids:
+                unknown.add(entry["theory_b"])
+
+        for entry in warnings:
+            for tid in entry["theories_affected"]:
+                if tid not in known_theory_ids:
+                    unknown.add(tid)
+
+        if unknown:
+            raise ValueError(
+                f"INTERACTION_MATRIX references unknown theory_ids: "
+                f"{sorted(unknown)}"
+            )
+
+    return {
+        "pairwise": pairwise,
+        "shared_upstream_warnings": warnings,
+    }
