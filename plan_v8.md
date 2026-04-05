@@ -448,10 +448,10 @@ These are implementation-facing questions. The plan specifies WHAT changes; Clau
 - [ ] Falsifier registry contains all falsifiers from CORE.md + ACTIVATION.md
 - [ ] No orphan falsifiers in either direction
 - [ ] State-level falsifiers (ACTIVATION.md-only) included in registry
-- [ ] Data ownership parsed for all indicators
-- [ ] Qualitative indicator in activation_table raises hard error
+- [x] Data ownership parsed for all indicators
+- [x] Qualitative indicator in activation_table raises hard error
 - [ ] Context flags parsed into separate list, not in scored indicators
-- [ ] Two-phase theories produce correct per-phase activation tables
+- [x] Two-phase theories produce correct per-phase activation tables
 
 ### INTERACTION_MATRIX
 - [ ] Full matrix parses into structured entries

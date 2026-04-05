@@ -554,3 +554,172 @@ def build_falsifier_registry(
         ))
 
     return registry
+
+
+# ---------------------------------------------------------------------------
+# Unit 6: ACTIVATION.md activation_table parser with data_ownership
+# ---------------------------------------------------------------------------
+
+_OWNERSHIP_KW_RE = re.compile(
+    r"(computed-mechanical|web-search|mechanical|qualitative)", re.IGNORECASE,
+)
+
+_PHASE_SUBSECTION_RE = re.compile(
+    r"^###\s+(Phase\s+[AB]:\s*.+)", re.IGNORECASE,
+)
+
+_ACTIVATION_TABLE_RE = re.compile(
+    r"^##\s+activation_table(?:\s*[—–\-]+\s*(.+))?$", re.IGNORECASE,
+)
+
+_WEIGHT_NUM_RE = re.compile(r"[\d.]+")
+
+
+def _parse_activation_rows(
+    lines: list[str], start: int, end: int, header_phase: str | None,
+) -> list[dict]:
+    """Parse indicator rows from an activation_table section.
+
+    *header_phase* overrides phase for all rows (debt_cycle_short pattern).
+    Within the section, ``### Phase A/B:`` subsections update the current phase
+    (structural_fragility / capital_flows pattern).
+    """
+    entries: list[dict] = []
+    current_phase = header_phase
+    in_table = False
+
+    for i in range(start, end):
+        stripped = lines[i].strip()
+
+        # Track ### Phase subsections
+        pm = _PHASE_SUBSECTION_RE.match(stripped)
+        if pm:
+            current_phase = pm.group(1).strip()
+            in_table = False
+            continue
+
+        # Non-table line resets table state
+        if not stripped.startswith("|"):
+            if in_table:
+                in_table = False
+            continue
+
+        cells = [c.strip() for c in stripped.split("|")]
+        cells = [c for c in cells if c]
+
+        if len(cells) < 6:
+            continue
+
+        # Skip separator rows
+        if all(_SEPARATOR_CELL_RE.match(c) for c in cells):
+            continue
+
+        # First non-separator table row is the header — skip it
+        if not in_table:
+            in_table = True
+            continue
+
+        # --- Data row ---
+        # Columns: Indicator | Metric Source | Data Ownership | Threshold
+        #          | Direction | Weight | Calibration Rationale
+        indicator_name = cells[0]
+        metric_source = cells[1]
+        ownership_raw = cells[2]
+        threshold = cells[3]
+        direction = cells[4]
+        weight_str = cells[5]
+
+        # Extract data ownership keyword
+        om = _OWNERSHIP_KW_RE.search(ownership_raw)
+        if om:
+            data_ownership = om.group(1).lower()
+        else:
+            # Fallback: strip backticks and take first token
+            stripped_own = ownership_raw.strip("`").strip()
+            data_ownership = stripped_own.split()[0].lower() if stripped_own else ""
+
+        # Parse weight (may have annotations like `[CALIBRATION]`)
+        wm = _WEIGHT_NUM_RE.search(weight_str)
+        if not wm:
+            continue  # Not a data row
+        weight = float(wm.group())
+
+        entries.append({
+            "indicator_name": indicator_name,
+            "metric_source": metric_source,
+            "threshold": threshold,
+            "direction": direction,
+            "weight": weight,
+            "data_ownership": data_ownership,
+            "phase": current_phase,
+        })
+
+    return entries
+
+
+def parse_activation_table(activation_text: str) -> list[dict]:
+    """Parse ``## activation_table`` section(s) from ACTIVATION.md.
+
+    Returns list of dicts with keys:
+
+    * ``indicator_name`` — human-readable indicator label
+    * ``metric_source`` — data source or computed expression
+    * ``threshold`` — trigger condition text
+    * ``direction`` — above / below / rising / falling etc.
+    * ``weight`` — float, scoring weight (0.0–1.0)
+    * ``data_ownership`` — ``"mechanical"`` | ``"computed-mechanical"`` | ``"web-search"``
+    * ``phase`` — ``None`` for single-phase, or e.g. ``"Phase A: Expansion"``
+
+    Handles both two-phase heading formats:
+
+    * ``## activation_table`` with ``### Phase A/B:`` subsections
+      (structural_fragility, capital_flows)
+    * ``## activation_table — Phase A/B: ...`` as separate headings
+      (debt_cycle_short)
+
+    Raises ``ValueError`` if:
+
+    * No ``## activation_table`` section found.
+    * No parseable indicator rows.
+    * Any indicator has ``data_ownership`` ``"qualitative"``
+      (must be in ``context_flags``, not ``activation_table``).
+    """
+    lines = activation_text.split("\n")
+
+    # Collect section ranges: (start_line, end_line, phase_from_heading | None)
+    ranges: list[tuple[int, int, str | None]] = []
+    for i, line in enumerate(lines):
+        m = _ACTIVATION_TABLE_RE.match(line.strip())
+        if m:
+            phase = m.group(1).strip() if m.group(1) else None
+            # Section ends at next ## heading (not ###)
+            end = len(lines)
+            for j in range(i + 1, len(lines)):
+                s = lines[j].strip()
+                if s.startswith("## ") and not s.startswith("### "):
+                    end = j
+                    break
+            ranges.append((i + 1, end, phase))
+
+    if not ranges:
+        raise ValueError("ACTIVATION.md has no ## activation_table section")
+
+    entries: list[dict] = []
+    for start, end, header_phase in ranges:
+        entries.extend(_parse_activation_rows(lines, start, end, header_phase))
+
+    if not entries:
+        raise ValueError(
+            "activation_table section(s) contain no parseable indicator rows"
+        )
+
+    # Validate: qualitative indicators must not appear in activation_table
+    for entry in entries:
+        if entry["data_ownership"] == "qualitative":
+            raise ValueError(
+                f"Qualitative indicator {entry['indicator_name']!r} found in "
+                f"activation_table — qualitative indicators must be in "
+                f"context_flags, not activation_table"
+            )
+
+    return entries

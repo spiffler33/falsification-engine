@@ -10,6 +10,7 @@ from backend.engine.theory_loader import (
     discover_theory_dirs,
     load_all_theory_packages,
     load_theory_package,
+    parse_activation_table,
     parse_deep_falsifiers,
     parse_falsifier_severity,
 )
@@ -918,3 +919,318 @@ class TestBuildFalsifierRegistrySynthetic:
         )
         with pytest.raises(ValueError, match="no ## deep_falsifiers"):
             build_falsifier_registry(core, activation)
+
+
+# ---------------------------------------------------------------------------
+# parse_activation_table — Unit 6
+# ---------------------------------------------------------------------------
+
+_VALID_OWNERSHIPS = {"mechanical", "computed-mechanical", "web-search"}
+_TWO_PHASE_THEORIES = {"structural_fragility", "debt_cycle_short", "capital_flows"}
+_SINGLE_PHASE_THEORIES = EXPECTED_THEORY_IDS - _TWO_PHASE_THEORIES
+
+
+class TestParseActivationTableLive:
+    """Tests against the real ACTIVATION.md files in the repo."""
+
+    @pytest.fixture()
+    def all_activation_texts(self):
+        dirs = discover_theory_dirs()
+        return {
+            load_theory_package(d).theory_id: load_theory_package(d).activation
+            for d in dirs
+        }
+
+    def test_all_eight_parse_successfully(self, all_activation_texts):
+        for theory_id, text in all_activation_texts.items():
+            entries = parse_activation_table(text)
+            assert len(entries) >= 3, f"{theory_id}: expected at least 3 indicators"
+
+    def test_each_entry_has_nonempty_fields(self, all_activation_texts):
+        for theory_id, text in all_activation_texts.items():
+            for entry in parse_activation_table(text):
+                assert entry["indicator_name"], (
+                    f"{theory_id}: empty indicator_name"
+                )
+                assert entry["metric_source"], (
+                    f"{theory_id}: empty metric_source"
+                )
+                assert entry["threshold"], (
+                    f"{theory_id}: empty threshold"
+                )
+                assert entry["direction"], (
+                    f"{theory_id}: empty direction"
+                )
+
+    def test_data_ownership_values_valid(self, all_activation_texts):
+        for theory_id, text in all_activation_texts.items():
+            for entry in parse_activation_table(text):
+                assert entry["data_ownership"] in _VALID_OWNERSHIPS, (
+                    f"{theory_id} indicator {entry['indicator_name']!r}: "
+                    f"bad data_ownership {entry['data_ownership']!r}"
+                )
+
+    def test_no_qualitative_in_activation_table(self, all_activation_texts):
+        """All 8 files should parse without qualitative error."""
+        for theory_id, text in all_activation_texts.items():
+            entries = parse_activation_table(text)
+            for entry in entries:
+                assert entry["data_ownership"] != "qualitative", (
+                    f"{theory_id}: qualitative indicator in activation_table"
+                )
+
+    def test_weights_are_positive_floats(self, all_activation_texts):
+        for theory_id, text in all_activation_texts.items():
+            for entry in parse_activation_table(text):
+                w = entry["weight"]
+                assert isinstance(w, float), (
+                    f"{theory_id}: weight is {type(w)}, not float"
+                )
+                assert 0 < w <= 1.0, (
+                    f"{theory_id}: weight {w} out of (0, 1.0] range"
+                )
+
+    def test_two_phase_theories_have_phases(self, all_activation_texts):
+        for theory_id in _TWO_PHASE_THEORIES:
+            entries = parse_activation_table(all_activation_texts[theory_id])
+            phases = {e["phase"] for e in entries}
+            assert all(p is not None for p in phases), (
+                f"{theory_id}: two-phase theory has None phase"
+            )
+            assert len(phases) == 2, (
+                f"{theory_id}: expected 2 phases, got {phases}"
+            )
+
+    def test_single_phase_theories_have_no_phase(self, all_activation_texts):
+        for theory_id in _SINGLE_PHASE_THEORIES:
+            entries = parse_activation_table(all_activation_texts[theory_id])
+            for entry in entries:
+                assert entry["phase"] is None, (
+                    f"{theory_id}: single-phase theory has phase={entry['phase']!r}"
+                )
+
+    # --- Theory-specific structural assertions ---
+
+    def test_structural_fragility_phases(self, all_activation_texts):
+        """structural_fragility: ### Phase A/B subsection pattern."""
+        entries = parse_activation_table(all_activation_texts["structural_fragility"])
+        phases = {e["phase"] for e in entries}
+        assert any("Building" in p for p in phases), "Expected 'Building' in phase name"
+        assert any("Resolving" in p for p in phases), "Expected 'Resolving' in phase name"
+        phase_a = [e for e in entries if "Building" in (e["phase"] or "")]
+        phase_b = [e for e in entries if "Resolving" in (e["phase"] or "")]
+        assert len(phase_a) == 8, f"Expected 8 Phase A indicators, got {len(phase_a)}"
+        assert len(phase_b) == 4, f"Expected 4 Phase B indicators, got {len(phase_b)}"
+
+    def test_debt_cycle_short_phases(self, all_activation_texts):
+        """debt_cycle_short: separate ## activation_table — Phase A/B headings."""
+        entries = parse_activation_table(all_activation_texts["debt_cycle_short"])
+        phases = {e["phase"] for e in entries}
+        assert any("Expansion" in p for p in phases), "Expected 'Expansion' in phase name"
+        assert any("Contraction" in p for p in phases), "Expected 'Contraction' in phase name"
+        phase_a = [e for e in entries if "Expansion" in (e["phase"] or "")]
+        phase_b = [e for e in entries if "Contraction" in (e["phase"] or "")]
+        assert len(phase_a) == 8, f"Expected 8 Expansion indicators, got {len(phase_a)}"
+        assert len(phase_b) == 7, f"Expected 7 Contraction indicators, got {len(phase_b)}"
+
+    def test_capital_flows_weight_with_calibration(self, all_activation_texts):
+        """capital_flows: weight cells have `[CALIBRATION]` annotations."""
+        entries = parse_activation_table(all_activation_texts["capital_flows"])
+        weights = [e["weight"] for e in entries]
+        assert all(isinstance(w, float) for w in weights)
+        # Phase A weights include 0.33, 0.27 etc. — non-standard values
+        assert any(w > 0.25 for w in weights), "Expected weights > 0.25 (capital_flows)"
+
+    def test_fiscal_dominance_liquidity_single_phase(self, all_activation_texts):
+        entries = parse_activation_table(
+            all_activation_texts["fiscal_dominance_liquidity"],
+        )
+        assert len(entries) == 7
+        assert all(e["phase"] is None for e in entries)
+
+
+class TestParseActivationTableSynthetic:
+    """Synthetic markdown tests for parser edge cases."""
+
+    def test_basic_single_phase(self):
+        text = (
+            "## activation_table\n\n"
+            "| Indicator | Metric Source | Data Ownership | Threshold "
+            "| Direction | Weight | Rationale |\n"
+            "|-----------|--------------|----------------|-----------|"
+            "-----------|--------|-----------|\n"
+            "| Spread level | credit.hy_spread | mechanical "
+            "| Below 300bp | below | 0.30 | Tight spreads |\n"
+            "| Vol level | ^VIX | mechanical "
+            "| Below 14 | below | 0.20 | Complacency |\n\n"
+            "## activation_thresholds\n"
+        )
+        entries = parse_activation_table(text)
+        assert len(entries) == 2
+        assert entries[0]["indicator_name"] == "Spread level"
+        assert entries[0]["metric_source"] == "credit.hy_spread"
+        assert entries[0]["data_ownership"] == "mechanical"
+        assert entries[0]["threshold"] == "Below 300bp"
+        assert entries[0]["direction"] == "below"
+        assert entries[0]["weight"] == 0.30
+        assert entries[0]["phase"] is None
+        assert entries[1]["indicator_name"] == "Vol level"
+
+    def test_two_phase_subsections(self):
+        """### Phase A/B subsection pattern (structural_fragility style)."""
+        text = (
+            "## activation_table\n\n"
+            "### Phase A: Building\n\n"
+            "| Indicator | Metric Source | Data Ownership | Threshold "
+            "| Direction | Weight | Rationale |\n"
+            "|-----------|--------------|----------------|-----------|"
+            "-----------|--------|-----------|\n"
+            "| Spread A | source_a | mechanical | Below 300 "
+            "| below | 0.50 | Note |\n\n"
+            "### Phase B: Resolving\n\n"
+            "| Indicator | Metric Source | Data Ownership | Threshold "
+            "| Direction | Weight | Rationale |\n"
+            "|-----------|--------------|----------------|-----------|"
+            "-----------|--------|-----------|\n"
+            "| Spread B | source_b | mechanical | Above 600 "
+            "| above | 0.40 | Note |\n\n"
+            "## activation_thresholds\n"
+        )
+        entries = parse_activation_table(text)
+        assert len(entries) == 2
+        assert entries[0]["phase"] == "Phase A: Building"
+        assert entries[1]["phase"] == "Phase B: Resolving"
+        assert entries[0]["indicator_name"] == "Spread A"
+        assert entries[1]["indicator_name"] == "Spread B"
+
+    def test_two_phase_separate_headings(self):
+        """Separate ## activation_table — Phase A/B headings (debt_cycle_short style)."""
+        text = (
+            "## activation_table — Phase A: Expansion\n\n"
+            "| Indicator | Metric Source | Data Ownership | Threshold "
+            "| Direction | Weight | Rationale |\n"
+            "|-----------|--------------|----------------|-----------|"
+            "-----------|--------|-----------|\n"
+            "| ISM proxy | growth.ism_proxy | mechanical | Above 50 "
+            "| above | 0.15 | Expansion |\n\n"
+            "## activation_table — Phase B: Contraction\n\n"
+            "| Indicator | Metric Source | Data Ownership | Threshold "
+            "| Direction | Weight | Rationale |\n"
+            "|-----------|--------------|----------------|-----------|"
+            "-----------|--------|-----------|\n"
+            "| ISM proxy below | growth.ism_proxy | mechanical | Below 48 "
+            "| below | 0.20 | Contraction |\n\n"
+            "## quadrant_classification\n"
+        )
+        entries = parse_activation_table(text)
+        assert len(entries) == 2
+        assert entries[0]["phase"] == "Phase A: Expansion"
+        assert entries[1]["phase"] == "Phase B: Contraction"
+
+    def test_qualitative_raises_error(self):
+        """Qualitative indicator in activation_table is a hard error."""
+        text = (
+            "## activation_table\n\n"
+            "| Indicator | Metric Source | Data Ownership | Threshold "
+            "| Direction | Weight | Rationale |\n"
+            "|-----------|--------------|----------------|-----------|"
+            "-----------|--------|-----------|\n"
+            "| Good indicator | api_source | mechanical | Above 50 "
+            "| above | 0.30 | Fine |\n"
+            "| Bad indicator | expert judgment | qualitative | Subjective "
+            "| above | 0.20 | Should fail |\n"
+        )
+        with pytest.raises(ValueError, match="[Qq]ualitative.*activation_table"):
+            parse_activation_table(text)
+
+    def test_no_section_raises(self):
+        text = "## phases\n\nSome content.\n\n## context_flags\n"
+        with pytest.raises(ValueError, match="no.*activation_table"):
+            parse_activation_table(text)
+
+    def test_empty_table_raises(self):
+        text = (
+            "## activation_table\n\n"
+            "No table here, just prose.\n\n"
+            "## activation_thresholds\n"
+        )
+        with pytest.raises(ValueError, match="no parseable indicator rows"):
+            parse_activation_table(text)
+
+    def test_data_ownership_backticks_stripped(self):
+        """Data ownership values may be wrapped in backticks."""
+        text = (
+            "## activation_table\n\n"
+            "| Indicator | Metric Source | Data Ownership | Threshold "
+            "| Direction | Weight | Rationale |\n"
+            "|-----------|--------------|----------------|-----------|"
+            "-----------|--------|-----------|\n"
+            "| Ind A | source | `mechanical` | Above 10 "
+            "| above | 0.30 | Note |\n"
+            "| Ind B | source | `computed-mechanical` \u00b7 Dependencies: x, y "
+            "| Above 20 | above | 0.25 | Note |\n"
+            "| Ind C | source | `web-search` \u2014 preferred source: multpl.com "
+            "| Above 30 | above | 0.20 | Note |\n"
+        )
+        entries = parse_activation_table(text)
+        assert len(entries) == 3
+        assert entries[0]["data_ownership"] == "mechanical"
+        assert entries[1]["data_ownership"] == "computed-mechanical"
+        assert entries[2]["data_ownership"] == "web-search"
+
+    def test_weight_with_annotation(self):
+        """Weight cells may have [CALIBRATION] annotations (capital_flows pattern)."""
+        text = (
+            "## activation_table\n\n"
+            "| Indicator | Metric Source | Data Ownership | Threshold "
+            "| Direction | Weight | Rationale |\n"
+            "|-----------|--------------|----------------|-----------|"
+            "-----------|--------|-----------|\n"
+            "| PE gap | MSCI EM PE | web-search | Above 40% "
+            "| above | 0.33 `[CALIBRATION]` | Note |\n"
+        )
+        entries = parse_activation_table(text)
+        assert len(entries) == 1
+        assert entries[0]["weight"] == 0.33
+
+    def test_subsection_tables_ignored(self):
+        """Non-activation sub-tables (e.g., activation_thresholds) are skipped."""
+        text = (
+            "## activation_table\n\n"
+            "| Indicator | Metric Source | Data Ownership | Threshold "
+            "| Direction | Weight | Rationale |\n"
+            "|-----------|--------------|----------------|-----------|"
+            "-----------|--------|-----------|\n"
+            "| Vol level | ^VIX | mechanical | Below 14 "
+            "| below | 0.20 | Complacency |\n\n"
+            "### Activation thresholds\n\n"
+            "| Score Range | Status |\n"
+            "|-------------|--------|\n"
+            "| >= 0.60 | Active |\n\n"
+            "## context_flags\n"
+        )
+        entries = parse_activation_table(text)
+        assert len(entries) == 1
+        assert entries[0]["indicator_name"] == "Vol level"
+
+    def test_section_stops_at_next_h2(self):
+        """Parser does not include rows from the next ## section."""
+        text = (
+            "## activation_table\n\n"
+            "| Indicator | Metric Source | Data Ownership | Threshold "
+            "| Direction | Weight | Rationale |\n"
+            "|-----------|--------------|----------------|-----------|"
+            "-----------|--------|-----------|\n"
+            "| Vol level | ^VIX | mechanical | Below 14 "
+            "| below | 0.20 | Note |\n\n"
+            "## context_flags\n\n"
+            "| Flag | Source | Data Ownership | What to Look For "
+            "| Extra | Extra2 | Extra3 |\n"
+            "|------|--------|----------------|-------------------|"
+            "-------|--------|--------|\n"
+            "| Narrative shift | media | qualitative | Sentiment change "
+            "| x | 0.10 | y |\n"
+        )
+        entries = parse_activation_table(text)
+        assert len(entries) == 1
+        assert entries[0]["indicator_name"] == "Vol level"
