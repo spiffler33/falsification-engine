@@ -471,11 +471,11 @@ These are implementation-facing questions. The plan specifies WHAT changes; Clau
 - [ ] Pass 1 prompt contains ACTIVATION.md content per theory
 - [ ] Pass 2 prompt contains CORE + TACTICAL + PLAYBOOK per Active/Adjacent theory
 - [ ] Pass 2 prompt contains filtered INTERACTION_MATRIX
-- [ ] Pass 3 prompt contains all four files per invoked theory
-- [ ] Pass 3 prompt contains falsifier registry block
-- [ ] Pass 3 prompt contains filtered INTERACTION_MATRIX with Shared Upstream Cause Warnings
-- [ ] No Inactive theory content in any prompt
-- [ ] Falsifier registry block in Pass 3 contains both condition (from CORE) and severity (from ACTIVATION)
+- [x] Pass 3 prompt contains all four files per invoked theory
+- [x] Pass 3 prompt contains falsifier registry block
+- [x] Pass 3 prompt contains filtered INTERACTION_MATRIX with Shared Upstream Cause Warnings
+- [x] No Inactive theory content in any prompt
+- [x] Falsifier registry block in Pass 3 contains both condition (from CORE) and severity (from ACTIVATION)
 
 ### Conviction Pipeline
 - [ ] Severity discounts read from FalsifierEntry objects

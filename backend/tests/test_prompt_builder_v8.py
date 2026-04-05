@@ -10,13 +10,18 @@ import pytest
 from backend.engine.prompt_builder import (
     THEORY_LABEL_MAP,
     _format_context_flags,
+    _format_falsifier_registry_block,
+    _format_interaction_matrix_for_elimination,
     _format_interaction_matrix_for_generation,
+    build_elimination_prompt_v8,
     build_generation_prompt_v8,
 )
 from backend.schemas.theory import (
     ActivationResult,
     ActivationTier,
     ContextFlag,
+    FalsifierEntry,
+    Severity,
     TheoryPackage,
 )
 
@@ -29,17 +34,20 @@ from backend.schemas.theory import (
 def _make_package(
     theory_id: str,
     core: str = "# CORE content",
+    activation: str = "# ACTIVATION content",
     tactical: str = "# TACTICAL content",
     playbook: str = "# PLAYBOOK content",
     context_flags: list | None = None,
+    falsifier_registry: list | None = None,
 ) -> TheoryPackage:
     return TheoryPackage(
         theory_id=theory_id,
         core=core,
-        activation="# ACTIVATION content",
+        activation=activation,
         tactical=tactical,
         playbook=playbook,
         context_flags=context_flags or [],
+        falsifier_registry=falsifier_registry or [],
     )
 
 
@@ -402,3 +410,460 @@ class TestGenerationPromptV8TwoPhase:
         prompt = build_generation_prompt_v8([pkg], [ar], _basic_briefing(), [])
         assert "(Phase: Resolving)" in prompt
         assert "75%" in prompt
+
+
+# ===========================================================================
+# build_elimination_prompt_v8 tests (Unit 10)
+# ===========================================================================
+
+
+def _sample_falsifier_registry() -> list[FalsifierEntry]:
+    return [
+        FalsifierEntry(
+            falsifier_id="H1",
+            condition="Fed raises rates 75bp+",
+            logic="Contractionary shock kills reflation thesis",
+            classification="hard",
+            severity=None,
+            discount=None,
+        ),
+        FalsifierEntry(
+            falsifier_id="S1",
+            condition="Credit spreads narrow below 100bp",
+            logic="Risk appetite contradicts fragility thesis",
+            classification="soft",
+            severity=Severity.MEDIUM,
+            discount=0.25,
+        ),
+        FalsifierEntry(
+            falsifier_id="S2",
+            condition="VIX sustains below 15 for 30 days",
+            logic="Volatility collapse weakens positioning",
+            classification="soft",
+            severity=Severity.MINOR,
+            discount=0.10,
+        ),
+    ]
+
+
+def _sample_hypotheses(source_theory: str = "structural_fragility") -> list[dict]:
+    return [
+        {
+            "source_theory": source_theory,
+            "source_theories": [source_theory],
+            "short_name": "Credit stress rising",
+            "prediction": "HYG -10% through Q3",
+        },
+    ]
+
+
+def _composite_hypotheses() -> list[dict]:
+    """Multi-theory hypothesis for composition integrity tests."""
+    return [
+        {
+            "source_theory": "structural_fragility",
+            "source_theories": ["structural_fragility", "fiscal_dominance_liquidity"],
+            "short_name": "Fragility triggers liquidity repricing",
+            "prediction": "TLT +15% as flight to quality",
+        },
+    ]
+
+
+# ---------------------------------------------------------------------------
+# _format_falsifier_registry_block
+# ---------------------------------------------------------------------------
+
+
+class TestFormatFalsifierRegistryBlock:
+
+    def test_formats_hard_and_soft_falsifiers(self):
+        registry = _sample_falsifier_registry()
+        result = _format_falsifier_registry_block(registry)
+        assert "Falsifier Registry (pre-joined)" in result
+        assert "Hard Falsifiers:" in result
+        assert "[H1]" in result
+        assert "Fed raises rates 75bp+" in result
+        assert "Soft Falsifiers:" in result
+        assert "[S1]" in result
+        assert "(medium)" in result
+        assert "Credit spreads narrow below 100bp" in result
+
+    def test_includes_logic_lines(self):
+        registry = _sample_falsifier_registry()
+        result = _format_falsifier_registry_block(registry)
+        assert "Logic: Contractionary shock kills reflation thesis" in result
+        assert "Logic: Risk appetite contradicts fragility thesis" in result
+
+    def test_hard_only_registry(self):
+        registry = [
+            FalsifierEntry(
+                falsifier_id="H1", condition="Rate hike", logic="Kills thesis",
+                classification="hard", severity=None, discount=None,
+            ),
+        ]
+        result = _format_falsifier_registry_block(registry)
+        assert "Hard Falsifiers:" in result
+        assert "Soft Falsifiers:" not in result
+
+    def test_soft_only_registry(self):
+        registry = [
+            FalsifierEntry(
+                falsifier_id="S1", condition="Spreads narrow", logic="Weakens",
+                classification="soft", severity=Severity.MAJOR, discount=0.45,
+            ),
+        ]
+        result = _format_falsifier_registry_block(registry)
+        assert "Soft Falsifiers:" in result
+        assert "Hard Falsifiers:" not in result
+        assert "(major)" in result
+
+    def test_empty_registry_returns_empty(self):
+        result = _format_falsifier_registry_block([])
+        assert result == ""
+
+    def test_handles_dict_entries(self):
+        registry = [
+            {
+                "falsifier_id": "H1",
+                "condition": "Rate hike",
+                "logic": "Kills thesis",
+                "classification": "hard",
+            },
+        ]
+        result = _format_falsifier_registry_block(registry)
+        assert "[H1]" in result
+        assert "Rate hike" in result
+
+
+# ---------------------------------------------------------------------------
+# _format_interaction_matrix_for_elimination
+# ---------------------------------------------------------------------------
+
+
+class TestFormatInteractionMatrixForElimination:
+
+    def test_formats_pairwise_as_composition_validation(self):
+        matrix = {
+            "pairwise": [
+                {
+                    "theory_a": "structural_fragility",
+                    "theory_b": "fiscal_dominance_liquidity",
+                    "relationship": "A triggers B",
+                    "invariant_logic": "Fragility forces response",
+                    "expression_detail_location": "TACTICAL.md",
+                },
+            ],
+            "shared_upstream_warnings": [],
+        }
+        result = _format_interaction_matrix_for_elimination(matrix)
+        assert "COMPOSITION VALIDATION" in result
+        assert "COMPOSITION GUIDANCE" not in result  # That's the generation framing
+        assert "Structural Fragility" in result
+        assert "A triggers B" in result
+
+    def test_includes_shared_upstream_warnings(self):
+        matrix = {
+            "pairwise": [],
+            "shared_upstream_warnings": [
+                {
+                    "shared_cause": "Fed balance sheet",
+                    "theories_affected": ["fiscal_dominance_liquidity", "monetary_architecture"],
+                    "discounting_note": "Discount convergence by 50%",
+                },
+            ],
+        }
+        result = _format_interaction_matrix_for_elimination(matrix)
+        assert "Shared Upstream Cause Warnings" in result
+        assert "Fed balance sheet" in result
+        assert "double-counting" in result
+        assert "Discount convergence" in result
+
+    def test_empty_matrix_returns_empty(self):
+        result = _format_interaction_matrix_for_elimination(
+            {"pairwise": [], "shared_upstream_warnings": []}
+        )
+        assert result == ""
+
+
+# ---------------------------------------------------------------------------
+# build_elimination_prompt_v8 — file inclusion
+# ---------------------------------------------------------------------------
+
+
+class TestEliminationPromptV8FileInclusion:
+
+    def test_invoked_theory_includes_all_four_files(self):
+        pkg = _make_package(
+            "structural_fragility",
+            core="CORE_SF_ELIM",
+            activation="ACTIV_SF_ELIM",
+            tactical="TAC_SF_ELIM",
+            playbook="PLAY_SF_ELIM",
+        )
+        ar = _make_activation("structural_fragility", ActivationTier.ACTIVE)
+        hypotheses = _sample_hypotheses("structural_fragility")
+        prompt = build_elimination_prompt_v8(hypotheses, [pkg], [ar], _basic_briefing())
+        assert "--- CORE.md ---" in prompt
+        assert "CORE_SF_ELIM" in prompt
+        assert "--- ACTIVATION.md ---" in prompt
+        assert "ACTIV_SF_ELIM" in prompt
+        assert "--- TACTICAL.md ---" in prompt
+        assert "TAC_SF_ELIM" in prompt
+        assert "--- PLAYBOOK.md ---" in prompt
+        assert "PLAY_SF_ELIM" in prompt
+
+    def test_non_invoked_theory_excluded(self):
+        pkg_invoked = _make_package("structural_fragility", core="CORE_SF")
+        pkg_other = _make_package("debt_cycle_long", core="CORE_DCL_SHOULD_NOT_APPEAR")
+        ar_invoked = _make_activation("structural_fragility", ActivationTier.ACTIVE)
+        ar_other = _make_activation("debt_cycle_long", ActivationTier.ACTIVE)
+        hypotheses = _sample_hypotheses("structural_fragility")
+        prompt = build_elimination_prompt_v8(
+            hypotheses, [pkg_invoked, pkg_other], [ar_invoked, ar_other], _basic_briefing(),
+        )
+        assert "CORE_SF" in prompt
+        assert "CORE_DCL_SHOULD_NOT_APPEAR" not in prompt
+
+    def test_composite_hypothesis_includes_both_theories(self):
+        pkg_sf = _make_package("structural_fragility", core="CORE_SF_COMP")
+        pkg_fdl = _make_package("fiscal_dominance_liquidity", core="CORE_FDL_COMP")
+        ar_sf = _make_activation("structural_fragility", ActivationTier.ACTIVE)
+        ar_fdl = _make_activation("fiscal_dominance_liquidity", ActivationTier.ACTIVE)
+        hypotheses = _composite_hypotheses()
+        prompt = build_elimination_prompt_v8(
+            hypotheses, [pkg_sf, pkg_fdl], [ar_sf, ar_fdl], _basic_briefing(),
+        )
+        assert "CORE_SF_COMP" in prompt
+        assert "CORE_FDL_COMP" in prompt
+
+    def test_theory_label_used_in_header(self):
+        pkg = _make_package("structural_fragility")
+        ar = _make_activation("structural_fragility", ActivationTier.ACTIVE)
+        hypotheses = _sample_hypotheses("structural_fragility")
+        prompt = build_elimination_prompt_v8(hypotheses, [pkg], [ar], _basic_briefing())
+        assert "### Structural Fragility" in prompt
+
+
+# ---------------------------------------------------------------------------
+# build_elimination_prompt_v8 — falsifier registry
+# ---------------------------------------------------------------------------
+
+
+class TestEliminationPromptV8FalsifierRegistry:
+
+    def test_registry_block_included_when_present(self):
+        registry = _sample_falsifier_registry()
+        pkg = _make_package("structural_fragility", falsifier_registry=registry)
+        ar = _make_activation("structural_fragility", ActivationTier.ACTIVE)
+        hypotheses = _sample_hypotheses("structural_fragility")
+        prompt = build_elimination_prompt_v8(hypotheses, [pkg], [ar], _basic_briefing())
+        assert "Falsifier Registry (pre-joined)" in prompt
+        assert "[H1]" in prompt
+        assert "[S1]" in prompt
+        assert "(medium)" in prompt
+
+    def test_no_registry_no_block(self):
+        pkg = _make_package("structural_fragility", falsifier_registry=[])
+        ar = _make_activation("structural_fragility", ActivationTier.ACTIVE)
+        hypotheses = _sample_hypotheses("structural_fragility")
+        prompt = build_elimination_prompt_v8(hypotheses, [pkg], [ar], _basic_briefing())
+        assert "Falsifier Registry" not in prompt
+
+
+# ---------------------------------------------------------------------------
+# build_elimination_prompt_v8 — interaction matrix
+# ---------------------------------------------------------------------------
+
+
+class TestEliminationPromptV8InteractionMatrix:
+
+    def test_matrix_included_as_composition_validation(self):
+        pkg = _make_package("structural_fragility")
+        ar = _make_activation("structural_fragility", ActivationTier.ACTIVE)
+        hypotheses = _sample_hypotheses("structural_fragility")
+        matrix = {
+            "pairwise": [
+                {
+                    "theory_a": "structural_fragility",
+                    "theory_b": "fiscal_dominance_liquidity",
+                    "relationship": "A triggers B",
+                    "invariant_logic": "Fragility forces response",
+                    "expression_detail_location": "",
+                },
+            ],
+            "shared_upstream_warnings": [],
+        }
+        prompt = build_elimination_prompt_v8(
+            hypotheses, [pkg], [ar], _basic_briefing(), interaction_matrix=matrix,
+        )
+        assert "COMPOSITION VALIDATION" in prompt
+        assert "A triggers B" in prompt
+
+    def test_no_matrix_no_section(self):
+        pkg = _make_package("structural_fragility")
+        ar = _make_activation("structural_fragility", ActivationTier.ACTIVE)
+        hypotheses = _sample_hypotheses("structural_fragility")
+        prompt = build_elimination_prompt_v8(hypotheses, [pkg], [ar], _basic_briefing())
+        assert "COMPOSITION VALIDATION" not in prompt
+
+    def test_empty_matrix_no_section(self):
+        pkg = _make_package("structural_fragility")
+        ar = _make_activation("structural_fragility", ActivationTier.ACTIVE)
+        hypotheses = _sample_hypotheses("structural_fragility")
+        matrix = {"pairwise": [], "shared_upstream_warnings": []}
+        prompt = build_elimination_prompt_v8(
+            hypotheses, [pkg], [ar], _basic_briefing(), interaction_matrix=matrix,
+        )
+        assert "COMPOSITION VALIDATION" not in prompt
+
+
+# ---------------------------------------------------------------------------
+# build_elimination_prompt_v8 — preserved sections
+# ---------------------------------------------------------------------------
+
+
+class TestEliminationPromptV8PreservedSections:
+
+    def test_system_instructions_present(self):
+        pkg = _make_package("structural_fragility")
+        ar = _make_activation("structural_fragility", ActivationTier.ACTIVE)
+        hypotheses = _sample_hypotheses("structural_fragility")
+        prompt = build_elimination_prompt_v8(hypotheses, [pkg], [ar], _basic_briefing())
+        assert "SYSTEM:" in prompt
+        assert "Elimination Pass" in prompt
+
+    def test_hypotheses_included_as_json(self):
+        pkg = _make_package("structural_fragility")
+        ar = _make_activation("structural_fragility", ActivationTier.ACTIVE)
+        hypotheses = _sample_hypotheses("structural_fragility")
+        prompt = build_elimination_prompt_v8(hypotheses, [pkg], [ar], _basic_briefing())
+        assert "HYPOTHESES TO ATTACK" in prompt
+        assert "Credit stress rising" in prompt
+
+    def test_activation_state_present(self):
+        pkg = _make_package("structural_fragility")
+        ar = _make_activation("structural_fragility", ActivationTier.ACTIVE)
+        hypotheses = _sample_hypotheses("structural_fragility")
+        prompt = build_elimination_prompt_v8(hypotheses, [pkg], [ar], _basic_briefing())
+        assert "CURRENT ACTIVATION STATE" in prompt
+        assert "Structural Fragility" in prompt
+        assert "Active" in prompt
+
+    def test_briefing_packet_included(self):
+        pkg = _make_package("structural_fragility")
+        ar = _make_activation("structural_fragility", ActivationTier.ACTIVE)
+        briefing = {"growth": {"gdp_yoy": 2.1}}
+        hypotheses = _sample_hypotheses("structural_fragility")
+        prompt = build_elimination_prompt_v8(hypotheses, [pkg], [ar], briefing)
+        assert "DATA BRIEFING" in prompt
+        assert "gdp_yoy" in prompt
+
+    def test_output_format_present(self):
+        pkg = _make_package("structural_fragility")
+        ar = _make_activation("structural_fragility", ActivationTier.ACTIVE)
+        hypotheses = _sample_hypotheses("structural_fragility")
+        prompt = build_elimination_prompt_v8(hypotheses, [pkg], [ar], _basic_briefing())
+        assert "OUTPUT FORMAT" in prompt
+
+
+# ---------------------------------------------------------------------------
+# build_elimination_prompt_v8 — optional sections
+# ---------------------------------------------------------------------------
+
+
+class TestEliminationPromptV8OptionalSections:
+
+    def test_channel_verification_when_enabled(self):
+        pkg = _make_package("structural_fragility")
+        ar = _make_activation("structural_fragility", ActivationTier.ACTIVE)
+        hypotheses = _sample_hypotheses("structural_fragility")
+        prompt = build_elimination_prompt_v8(
+            hypotheses, [pkg], [ar], _basic_briefing(), has_channel_tags=True,
+        )
+        assert "CHANNEL VERIFICATION" in prompt
+
+    def test_no_channel_verification_when_disabled(self):
+        pkg = _make_package("structural_fragility")
+        ar = _make_activation("structural_fragility", ActivationTier.ACTIVE)
+        hypotheses = _sample_hypotheses("structural_fragility")
+        prompt = build_elimination_prompt_v8(
+            hypotheses, [pkg], [ar], _basic_briefing(), has_channel_tags=False,
+        )
+        assert "CHANNEL VERIFICATION" not in prompt
+
+    def test_sector_appendices_when_provided(self):
+        pkg = _make_package("structural_fragility")
+        ar = _make_activation("structural_fragility", ActivationTier.ACTIVE)
+        hypotheses = _sample_hypotheses("structural_fragility")
+        appendices = [
+            {
+                "sector_id": "tech",
+                "display_name": "Technology",
+                "ticker_triggers": ["QQQ"],
+                "mechanical_falsifiers": [
+                    {
+                        "falsifier_id": "tech_sf_01",
+                        "condition": "AI capex growth decelerates",
+                        "metric": "tech_capex_growth_yoy",
+                        "threshold": "15",
+                        "direction": "below",
+                        "severity": "medium",
+                        "data_source": "earnings reports",
+                    },
+                ],
+                "evaluator_attack_vectors": [
+                    {
+                        "vector_id": "tech_av_01",
+                        "question": "Are margins compressing?",
+                        "what_to_search": "tech sector margin data",
+                        "kill_condition": "Margins down 500bp+",
+                    },
+                ],
+            },
+        ]
+        prompt = build_elimination_prompt_v8(
+            hypotheses, [pkg], [ar], _basic_briefing(), sector_appendices=appendices,
+        )
+        assert "SECTOR FALSIFIER APPENDICES" in prompt
+        assert "Technology" in prompt
+
+    def test_falsifier_lifecycle_when_enabled(self):
+        pkg = _make_package("structural_fragility")
+        ar = _make_activation("structural_fragility", ActivationTier.ACTIVE)
+        hypotheses = _sample_hypotheses("structural_fragility")
+        prompt = build_elimination_prompt_v8(
+            hypotheses, [pkg], [ar], _basic_briefing(), has_falsifier_lifecycle=True,
+        )
+        assert "FALSIFIER LIFECYCLE INSTRUCTIONS" in prompt
+        assert "STALENESS INTERPRETATION" in prompt
+        assert "EMERGENT RISK ASSESSMENT" in prompt
+
+    def test_no_lifecycle_when_disabled(self):
+        pkg = _make_package("structural_fragility")
+        ar = _make_activation("structural_fragility", ActivationTier.ACTIVE)
+        hypotheses = _sample_hypotheses("structural_fragility")
+        prompt = build_elimination_prompt_v8(
+            hypotheses, [pkg], [ar], _basic_briefing(), has_falsifier_lifecycle=False,
+        )
+        assert "FALSIFIER LIFECYCLE INSTRUCTIONS" not in prompt
+
+
+# ---------------------------------------------------------------------------
+# build_elimination_prompt_v8 — two-phase theory in activation state
+# ---------------------------------------------------------------------------
+
+
+class TestEliminationPromptV8TwoPhase:
+
+    def test_two_phase_shows_phase_in_activation_state(self):
+        pkg = _make_package("structural_fragility")
+        ar = _make_activation(
+            "structural_fragility",
+            ActivationTier.ACTIVE,
+            is_two_phase=True,
+            effective_phase="Resolving",
+            phase_scores={"Building": 0.30, "Resolving": 0.75},
+        )
+        hypotheses = _sample_hypotheses("structural_fragility")
+        prompt = build_elimination_prompt_v8(hypotheses, [pkg], [ar], _basic_briefing())
+        assert "(Resolving)" in prompt

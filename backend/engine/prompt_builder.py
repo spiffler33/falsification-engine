@@ -512,6 +512,198 @@ def build_elimination_prompt(
     return "\n".join(parts)
 
 
+def _format_falsifier_registry_block(registry: list) -> str:
+    """Format the pre-joined falsifier registry as a structured block.
+
+    The evaluator uses condition and logic fields for attack reasoning.
+    Severity rides along for audit completeness but the evaluator does not
+    use it in reasoning -- the evaluator's job is status assignment
+    (CLEAR / TRIGGERED / UNTESTABLE), not discount application.
+    """
+    hard = [
+        f for f in registry
+        if (f.classification if hasattr(f, "classification") else f.get("classification")) == "hard"
+    ]
+    soft = [
+        f for f in registry
+        if (f.classification if hasattr(f, "classification") else f.get("classification")) == "soft"
+    ]
+
+    lines = ["\n**Falsifier Registry (pre-joined):**"]
+
+    if hard:
+        lines.append("\nHard Falsifiers:")
+        for f in hard:
+            fid = f.falsifier_id if hasattr(f, "falsifier_id") else f.get("falsifier_id", "")
+            condition = f.condition if hasattr(f, "condition") else f.get("condition", "")
+            logic = f.logic if hasattr(f, "logic") else f.get("logic", "")
+            lines.append(f"- [{fid}] {condition}")
+            if logic:
+                lines.append(f"  Logic: {logic}")
+
+    if soft:
+        lines.append("\nSoft Falsifiers:")
+        for f in soft:
+            fid = f.falsifier_id if hasattr(f, "falsifier_id") else f.get("falsifier_id", "")
+            condition = f.condition if hasattr(f, "condition") else f.get("condition", "")
+            logic = f.logic if hasattr(f, "logic") else f.get("logic", "")
+            severity = f.severity if hasattr(f, "severity") else f.get("severity", "")
+            sev_display = severity.value if hasattr(severity, "value") else str(severity)
+            lines.append(f"- [{fid}] ({sev_display}) {condition}")
+            if logic:
+                lines.append(f"  Logic: {logic}")
+
+    return "\n".join(lines) if len(lines) > 1 else ""
+
+
+def _format_interaction_matrix_for_elimination(matrix_data: dict) -> str:
+    """Format filtered interaction matrix for Pass 3 (composition validation)."""
+    pairwise = matrix_data.get("pairwise", [])
+    warnings = matrix_data.get("shared_upstream_warnings", [])
+
+    if not pairwise and not warnings:
+        return ""
+
+    lines = ["\n\n## COMPOSITION VALIDATION (from Interaction Matrix)\n"]
+    lines.append(
+        "Use the following theory interactions to validate composition integrity "
+        "of multi-theory hypotheses. Check whether theory combinations narrow "
+        "predictions and increase falsifiability, or amount to narrative padding.\n"
+    )
+
+    if pairwise:
+        lines.append("### Pairwise Interactions\n")
+        for entry in pairwise:
+            a = entry["theory_a"]
+            b = entry["theory_b"]
+            rel = entry["relationship"]
+            logic = entry["invariant_logic"]
+            a_label = THEORY_LABEL_MAP.get(a, a)
+            b_label = THEORY_LABEL_MAP.get(b, b)
+            lines.append(f"- {a_label} x {b_label}: {rel}")
+            lines.append(f"  Logic: {logic}")
+            loc = entry.get("expression_detail_location", "")
+            if loc:
+                lines.append(f"  Detail: {loc}")
+            lines.append("")
+
+    if warnings:
+        lines.append("### Shared Upstream Cause Warnings\n")
+        lines.append(
+            "The following shared causes affect multiple theories invoked by "
+            "hypotheses. Flag any double-counting of convergence.\n"
+        )
+        for entry in warnings:
+            cause = entry["shared_cause"]
+            affected = ", ".join(
+                THEORY_LABEL_MAP.get(t, t) for t in entry["theories_affected"]
+            )
+            note = entry["discounting_note"]
+            lines.append(f"- {cause}")
+            lines.append(f"  Affects: {affected}")
+            lines.append(f"  Note: {note}")
+            lines.append("")
+
+    return "\n".join(lines)
+
+
+def build_elimination_prompt_v8(
+    hypotheses: list[dict[str, Any]],
+    packages: list[TheoryPackage],
+    activation_results: list[ActivationResult],
+    briefing: dict[str, Any],
+    interaction_matrix: dict | None = None,
+    has_channel_tags: bool = False,
+    sector_appendices: list[dict[str, Any]] | None = None,
+    has_falsifier_lifecycle: bool = False,
+) -> str:
+    """Build the elimination prompt for Pass 3 using v8 theory packages.
+
+    Replaces monolithic _extract_falsifier_section injection with per-file
+    composition: CORE.md + ACTIVATION.md + TACTICAL.md + PLAYBOOK.md per
+    invoked theory, plus the pre-joined falsifier_registry as a structured
+    block, plus filtered INTERACTION_MATRIX with Shared Upstream Cause Warnings.
+
+    All other prompt sections (system instructions, falsifier lifecycle,
+    channel verification, sector appendices, output schema) are identical
+    to the v7 prompt.
+    """
+    pkg_map = {p.theory_id: p for p in packages}
+
+    parts: list[str] = []
+    parts.append(_elimination_system_instructions())
+
+    # --- Hypotheses to attack ---
+    parts.append("\n\n## HYPOTHESES TO ATTACK\n")
+    parts.append("```json")
+    parts.append(json.dumps(hypotheses, indent=2, default=str))
+    parts.append("```")
+
+    # --- Invoked theory packages (all four files + falsifier registry per theory) ---
+    invoked_theories: set[str] = set()
+    for h in hypotheses:
+        invoked_theories.add(h.get("source_theory", ""))
+        for st in h.get("source_theories", []):
+            invoked_theories.add(st)
+    invoked_theories.discard("")
+
+    parts.append("\n\n## THEORY MODULES (for falsifier reference)\n")
+    for tid in sorted(invoked_theories):
+        pkg = pkg_map.get(tid)
+        if pkg:
+            label = THEORY_LABEL_MAP.get(tid, tid)
+            parts.append(f"\n### {label}\n")
+            parts.append(f"\n--- CORE.md ---\n{pkg.core}")
+            parts.append(f"\n--- ACTIVATION.md ---\n{pkg.activation}")
+            parts.append(f"\n--- TACTICAL.md ---\n{pkg.tactical}")
+            parts.append(f"\n--- PLAYBOOK.md ---\n{pkg.playbook}")
+            if pkg.falsifier_registry:
+                parts.append(_format_falsifier_registry_block(pkg.falsifier_registry))
+
+    # --- Activation state for cross-theory attacks ---
+    parts.append("\n\n## CURRENT ACTIVATION STATE\n")
+    for ar in activation_results:
+        tier = ar.tier if not ar.is_two_phase else ar.effective_tier
+        label = THEORY_LABEL_MAP.get(ar.theory_id, ar.theory_id)
+        phase = f" ({ar.effective_phase})" if ar.is_two_phase and ar.effective_phase else ""
+        parts.append(f"- {label}{phase}: {tier.value if tier else 'Unknown'}")
+
+    # --- Data briefing ---
+    parts.append("\n\n## DATA BRIEFING\n")
+    parts.append("```json")
+    parts.append(json.dumps(briefing, indent=2, default=str))
+    parts.append("```")
+
+    # --- Interaction matrix (composition validation + shared upstream cause warnings) ---
+    if interaction_matrix:
+        matrix_section = _format_interaction_matrix_for_elimination(interaction_matrix)
+        if matrix_section:
+            parts.append(matrix_section)
+
+    # --- Falsifier lifecycle instructions (v7) ---
+    if has_falsifier_lifecycle:
+        parts.append("\n\n" + _falsifier_lifecycle_instructions())
+
+    # --- Channel verification (when hypotheses have channel tags) ---
+    if has_channel_tags:
+        parts.append("\n\n## CHANNEL VERIFICATION\n")
+        parts.append(_channel_verification_instructions())
+
+    # --- Sector falsifier appendices (v4 -- conditional on ticker match) ---
+    if sector_appendices:
+        parts.append("\n\n" + _format_sector_appendices_section(sector_appendices))
+
+    # --- Output schema ---
+    parts.append("\n\n## OUTPUT FORMAT\n")
+    parts.append(_elimination_output_schema(
+        has_channel_tags=has_channel_tags,
+        has_sector_appendices=bool(sector_appendices),
+        has_falsifier_lifecycle=has_falsifier_lifecycle,
+    ))
+
+    return "\n".join(parts)
+
+
 def _generation_system_instructions(has_threads: bool = False) -> str:
     base = """SYSTEM: You are the Generation Pass of a Falsification Engine for global macro analysis.
 
