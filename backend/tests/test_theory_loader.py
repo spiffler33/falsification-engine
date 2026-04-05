@@ -1,4 +1,5 @@
-# test_theory_loader.py — Tests for v8 theory package loader (Unit 2).
+# test_theory_loader.py — Tests for v8 theory package loader (Units 2-3).
+import re
 from pathlib import Path
 
 import pytest
@@ -8,6 +9,7 @@ from backend.engine.theory_loader import (
     discover_theory_dirs,
     load_all_theory_packages,
     load_theory_package,
+    parse_deep_falsifiers,
 )
 
 EXPECTED_THEORY_IDS = {
@@ -179,3 +181,161 @@ class TestLoadAllTheoryPackages:
 
         with pytest.raises(FileNotFoundError):
             load_all_theory_packages(tmp_path)
+
+
+# ---------------------------------------------------------------------------
+# parse_deep_falsifiers — Unit 3
+# ---------------------------------------------------------------------------
+
+# Expected falsifier ID pattern: uppercase letter prefix + digits (H1, S4, DF3, etc.)
+_FALSIFIER_ID_RE = re.compile(r"^[A-Z]+\d+$")
+
+
+class TestParseDeepFalsifiersLive:
+    """Tests against the real CORE.md files in the repo."""
+
+    @pytest.fixture()
+    def all_core_texts(self):
+        """Load core text for all 8 theories."""
+        dirs = discover_theory_dirs()
+        return {
+            load_theory_package(d).theory_id: load_theory_package(d).core
+            for d in dirs
+        }
+
+    def test_all_eight_parse_successfully(self, all_core_texts):
+        for theory_id, core_text in all_core_texts.items():
+            entries = parse_deep_falsifiers(core_text)
+            assert len(entries) >= 2, f"{theory_id}: expected at least 2 falsifiers"
+
+    def test_each_entry_has_nonempty_fields(self, all_core_texts):
+        for theory_id, core_text in all_core_texts.items():
+            for entry in parse_deep_falsifiers(core_text):
+                assert entry["falsifier_id"], f"{theory_id}: empty falsifier_id"
+                assert entry["condition"], f"{theory_id}: empty condition"
+                assert entry["logic"], f"{theory_id}: empty logic"
+
+    def test_falsifier_ids_follow_pattern(self, all_core_texts):
+        for theory_id, core_text in all_core_texts.items():
+            for entry in parse_deep_falsifiers(core_text):
+                fid = entry["falsifier_id"]
+                assert _FALSIFIER_ID_RE.match(fid), (
+                    f"{theory_id}: falsifier_id {fid!r} does not match [HS]\\d+ pattern"
+                )
+
+    def test_monetary_architecture_has_hard_and_soft(self, all_core_texts):
+        """monetary_architecture has both H-prefix and S-prefix entries (two sub-tables)."""
+        entries = parse_deep_falsifiers(all_core_texts["monetary_architecture"])
+        ids = [e["falsifier_id"] for e in entries]
+        hard_ids = [i for i in ids if i.startswith("H")]
+        soft_ids = [i for i in ids if i.startswith("S")]
+        assert len(hard_ids) >= 1, "Expected at least one hard falsifier"
+        assert len(soft_ids) >= 1, "Expected at least one soft falsifier"
+
+    def test_no_duplicate_ids_per_theory(self, all_core_texts):
+        for theory_id, core_text in all_core_texts.items():
+            entries = parse_deep_falsifiers(core_text)
+            ids = [e["falsifier_id"] for e in entries]
+            assert len(ids) == len(set(ids)), (
+                f"{theory_id}: duplicate falsifier_ids: {ids}"
+            )
+
+
+class TestParseDeepFalsifiersSynthetic:
+    """Tests with synthetic markdown to verify parser edge cases."""
+
+    def test_basic_table_hash_header(self):
+        """Standard format with | # | header."""
+        text = (
+            "## deep_falsifiers\n\n"
+            "| # | Condition | Logic |\n"
+            "|---|-----------|-------|\n"
+            "| H1 | Price drops 50% | Market crash invalidates |\n"
+            "| H2 | GDP grows 5% | Growth falsifies |\n"
+            "\n---\n\n## stability_class\n"
+        )
+        entries = parse_deep_falsifiers(text)
+        assert len(entries) == 2
+        assert entries[0] == {
+            "falsifier_id": "H1",
+            "condition": "Price drops 50%",
+            "logic": "Market crash invalidates",
+        }
+        assert entries[1]["falsifier_id"] == "H2"
+
+    def test_basic_table_id_header(self):
+        """Format with | ID | header."""
+        text = (
+            "## deep_falsifiers\n\n"
+            "Some preamble text.\n\n"
+            "| ID | Condition | Logic |\n"
+            "|----|-----------|-------|\n"
+            "| H1 | Condition one | Logic one |\n"
+        )
+        entries = parse_deep_falsifiers(text)
+        assert len(entries) == 1
+        assert entries[0]["falsifier_id"] == "H1"
+
+    def test_multiple_sub_tables(self):
+        """Two sub-tables under ### headers (monetary_architecture pattern)."""
+        text = (
+            "## deep_falsifiers\n\n"
+            "*Severity in ACTIVATION.md.*\n\n"
+            "### Theory-Killing Conditions\n\n"
+            "| ID | Condition | Logic |\n"
+            "|----|-----------|-------|\n"
+            "| H1 | Hard condition | Hard logic |\n\n"
+            "### Theory-Modifying Conditions\n\n"
+            "| ID | Condition | Logic |\n"
+            "|----|-----------|-------|\n"
+            "| S1 | Soft condition | Soft logic |\n"
+            "| S4 | Another soft | More logic |\n\n"
+            "---\n\n## revision_triggers\n"
+        )
+        entries = parse_deep_falsifiers(text)
+        assert len(entries) == 3
+        ids = [e["falsifier_id"] for e in entries]
+        assert ids == ["H1", "S1", "S4"]
+
+    def test_missing_section_raises(self):
+        text = "## core_claim\n\nSome text.\n\n## stability_class\n"
+        with pytest.raises(ValueError, match="no ## deep_falsifiers section"):
+            parse_deep_falsifiers(text)
+
+    def test_empty_table_raises(self):
+        text = (
+            "## deep_falsifiers\n\n"
+            "No table here, just text.\n\n"
+            "## stability_class\n"
+        )
+        with pytest.raises(ValueError, match="no parseable table rows"):
+            parse_deep_falsifiers(text)
+
+    def test_section_stops_at_next_h2(self):
+        """Parser should NOT include tables from the next ## section."""
+        text = (
+            "## deep_falsifiers\n\n"
+            "| # | Condition | Logic |\n"
+            "|---|-----------|-------|\n"
+            "| H1 | Condition A | Logic A |\n\n"
+            "## historical_episodes\n\n"
+            "| Episode | Features | Lesson |\n"
+            "|---------|----------|--------|\n"
+            "| 2008 | Credit | Crash |\n"
+        )
+        entries = parse_deep_falsifiers(text)
+        assert len(entries) == 1
+        assert entries[0]["falsifier_id"] == "H1"
+
+    def test_preamble_text_before_table_ignored(self):
+        """Non-table lines between section header and table are ignored."""
+        text = (
+            "## deep_falsifiers\n\n"
+            "These conditions would kill the theory ITSELF.\n"
+            "Severity is assigned in ACTIVATION.md.\n\n"
+            "| # | Condition | Logic |\n"
+            "|---|-----------|-------|\n"
+            "| H1 | Cond | Log |\n"
+        )
+        entries = parse_deep_falsifiers(text)
+        assert len(entries) == 1

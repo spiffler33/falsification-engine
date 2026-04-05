@@ -1,15 +1,15 @@
 # v8 Implementation State
 
 ## Current Phase: Phase 1 (Loader + Parsers)
-## Current Task: Unit 2 complete — directory discovery + 4-file loading
-## Last Completed: Unit 2 (theory_loader.py — discover, load, extract theory_id)
-## Last Commit: v8 Unit 2
+## Current Task: Unit 3 complete — CORE.md deep_falsifiers parser
+## Last Completed: Unit 3 (parse_deep_falsifiers in theory_loader.py — 28 tests)
+## Last Commit: v8 Unit 3
 
 ## Phase Status
 - [ ] Phase 1: Loader + Parsers (Components 1-5)
   - [x] Unit 1: TheoryPackage + FalsifierEntry data models in backend/schemas/theory.py
   - [x] Unit 2: Directory discovery + 4-file loading + missing file validation (16 tests)
-  - [ ] Unit 3: CORE.md deep_falsifiers parser
+  - [x] Unit 3: CORE.md deep_falsifiers parser (12 tests — 5 live, 7 synthetic)
   - [ ] Unit 4: ACTIVATION.md falsifier_severity_assignments parser (theory-level + state-level)
   - [ ] Unit 5: Falsifier registry join logic + orphan validation
   - [ ] Unit 6: ACTIVATION.md activation_table parser with data_ownership column
@@ -57,6 +57,7 @@ theories/THEORY_MODULE_*.md → theory_parser.load_all_theories() → list[Theor
 ### New v2 file format observations
 - ACTIVATION.md sections: phases, transition_logic, activation_table (has Data Ownership column), activation_thresholds, context_flags, falsifier_severity_assignments (theory-level + state-level), state_falsifiers
 - CORE.md sections: theory_id, core_claim, causal_mechanism, scope_limits, key_assumptions, deep_falsifiers (# | Condition | Logic), stability_class, revision_triggers, historical_episodes
+- CORE.md deep_falsifiers format: first column header is `#` or `ID`. IDs are H-prefix (most theories), S-prefix (monetary_architecture soft), or DF-prefix (fiscal_dominance_liquidity). monetary_architecture has TWO sub-tables under `###` sub-headers within the same `##` section
 - INTERACTION_MATRIX.md: Pairwise Interaction Table + Shared Upstream Cause Warnings
 - Note: state_falsifiers in ACTIVATION.md are self-contained (condition + severity both in ACTIVATION.md)
 - Note: structural_fragility uses different section name "falsifier_severity_assignments → Theory-level falsifiers" and places state-level falsifiers inline; valuation_mean_reversion uses "state_falsifiers" as separate section

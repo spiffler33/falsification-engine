@@ -88,3 +88,85 @@ def load_all_theory_packages(theories_dir: Path | None = None) -> list[TheoryPac
     """Discover and load all theory packages. Raises on any failure — no partial loads."""
     dirs = discover_theory_dirs(theories_dir)
     return [load_theory_package(d) for d in dirs]
+
+
+# ---------------------------------------------------------------------------
+# Unit 3: CORE.md deep_falsifiers parser
+# ---------------------------------------------------------------------------
+
+_SEPARATOR_CELL_RE = re.compile(r"^-+$")
+
+
+def parse_deep_falsifiers(core_text: str) -> list[dict]:
+    """Parse the ## deep_falsifiers section from CORE.md.
+
+    Returns list of dicts with keys: falsifier_id, condition, logic.
+    These are the CORE.md side of the falsifier registry join —
+    classification/severity comes from ACTIVATION.md (Unit 4).
+
+    Handles format variations across the 8 theories:
+    - First column header may be '#' or 'ID'
+    - Section may contain multiple sub-tables under ### sub-headers
+      (e.g., monetary_architecture has Theory-Killing + Theory-Modifying)
+    """
+    lines = core_text.split("\n")
+
+    # Find ## deep_falsifiers section start (line after the header)
+    section_start = None
+    for i, line in enumerate(lines):
+        if re.match(r"^##\s+deep_falsifiers\s*$", line.strip(), re.IGNORECASE):
+            section_start = i + 1
+            break
+
+    if section_start is None:
+        raise ValueError("CORE.md has no ## deep_falsifiers section")
+
+    # Section ends at next ## header (not ### sub-header) or EOF
+    section_end = len(lines)
+    for i in range(section_start, len(lines)):
+        stripped = lines[i].strip()
+        if stripped.startswith("## ") and not stripped.startswith("### "):
+            section_end = i
+            break
+
+    entries: list[dict] = []
+    for line in lines[section_start:section_end]:
+        stripped = line.strip()
+        if not stripped.startswith("|"):
+            continue
+
+        # Split by pipe, drop empty edge cells from leading/trailing |
+        cells = [c.strip() for c in stripped.split("|")]
+        cells = [c for c in cells if c]
+
+        if len(cells) < 3:
+            continue
+
+        # Skip separator rows (e.g., |---|-----------|-------|)
+        if all(_SEPARATOR_CELL_RE.match(c) for c in cells):
+            continue
+
+        # Skip header rows (first cell is '#' or 'ID')
+        if cells[0].lower() in ("#", "id"):
+            continue
+
+        falsifier_id = cells[0]
+        condition = cells[1]
+        logic = cells[2]
+
+        if not falsifier_id or not condition or not logic:
+            raise ValueError(
+                f"deep_falsifiers table row has empty field: "
+                f"id={falsifier_id!r}, condition={condition!r}, logic={logic!r}"
+            )
+
+        entries.append({
+            "falsifier_id": falsifier_id,
+            "condition": condition,
+            "logic": logic,
+        })
+
+    if not entries:
+        raise ValueError("deep_falsifiers section contains no parseable table rows")
+
+    return entries
