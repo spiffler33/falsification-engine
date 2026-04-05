@@ -12,7 +12,7 @@ import re
 from pathlib import Path
 
 from backend.config import THEORIES_DIR
-from backend.schemas.theory import TheoryPackage
+from backend.schemas.theory import FalsifierEntry, Severity, TheoryPackage
 
 REQUIRED_FILES = ("CORE.md", "ACTIVATION.md", "TACTICAL.md", "PLAYBOOK.md")
 
@@ -478,3 +478,79 @@ def parse_falsifier_severity(activation_text: str) -> list[dict]:
         )
 
     return entries
+
+
+# ---------------------------------------------------------------------------
+# Unit 5: Falsifier registry join logic + orphan validation
+# ---------------------------------------------------------------------------
+
+_SEVERITY_DISCOUNT = {"minor": 0.10, "medium": 0.25, "major": 0.45}
+
+
+def build_falsifier_registry(
+    core_text: str, activation_text: str,
+) -> list[FalsifierEntry]:
+    """Pre-join CORE.md deep_falsifiers with ACTIVATION.md severity assignments.
+
+    Core-sourced entries: condition/logic from CORE.md, classification/severity
+    from ACTIVATION.md.  State-level entries: self-contained in ACTIVATION.md.
+
+    Raises ValueError on orphan falsifiers in either direction.
+    """
+    core_entries = parse_deep_falsifiers(core_text)
+    sev_entries = parse_falsifier_severity(activation_text)
+
+    core_by_id = {e["falsifier_id"]: e for e in core_entries}
+    sev_by_id = {e["falsifier_id"]: e for e in sev_entries}
+
+    # --- Orphan validation (core-sourced entries only) ---
+    core_ids = set(core_by_id)
+    activation_core_ids = {
+        e["falsifier_id"] for e in sev_entries if e["source"] == "core"
+    }
+
+    orphans_in_core = core_ids - activation_core_ids
+    if orphans_in_core:
+        raise ValueError(
+            f"CORE.md falsifiers missing from ACTIVATION.md severity assignments: "
+            f"{sorted(orphans_in_core)}"
+        )
+
+    orphans_in_activation = activation_core_ids - core_ids
+    if orphans_in_activation:
+        raise ValueError(
+            f"ACTIVATION.md references CORE.md falsifiers that do not exist: "
+            f"{sorted(orphans_in_activation)}"
+        )
+
+    # --- Build registry ---
+    registry: list[FalsifierEntry] = []
+
+    for sev in sev_entries:
+        fid = sev["falsifier_id"]
+        classification = sev["classification"]
+        severity_str = sev["severity"]
+
+        if sev["source"] == "core":
+            # Join: condition/logic from CORE, classification/severity from ACTIVATION
+            core = core_by_id[fid]
+            condition = core["condition"]
+            logic = core["logic"]
+        else:
+            # State-level: self-contained in ACTIVATION
+            condition = sev.get("condition", "")
+            logic = sev.get("logic", "")
+
+        severity = Severity(severity_str) if severity_str else None
+        discount = _SEVERITY_DISCOUNT.get(severity_str) if severity_str else None
+
+        registry.append(FalsifierEntry(
+            falsifier_id=fid,
+            condition=condition,
+            logic=logic,
+            classification=classification,
+            severity=severity,
+            discount=discount,
+        ))
+
+    return registry

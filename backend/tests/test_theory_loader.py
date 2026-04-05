@@ -1,4 +1,4 @@
-# test_theory_loader.py — Tests for v8 theory package loader (Units 2-3).
+# test_theory_loader.py — Tests for v8 theory package loader (Units 2-5).
 import re
 from pathlib import Path
 
@@ -6,12 +6,14 @@ import pytest
 
 from backend.config import THEORIES_DIR
 from backend.engine.theory_loader import (
+    build_falsifier_registry,
     discover_theory_dirs,
     load_all_theory_packages,
     load_theory_package,
     parse_deep_falsifiers,
     parse_falsifier_severity,
 )
+from backend.schemas.theory import FalsifierEntry
 
 EXPECTED_THEORY_IDS = {
     "capital_flows",
@@ -647,3 +649,272 @@ class TestParseFalsifierSeveritySynthetic:
         assert entries[0]["source"] == "state"
         assert entries[0]["condition"] == "China crisis deepens"
         assert entries[0]["logic"] == "Caps magnitude"
+
+
+# ---------------------------------------------------------------------------
+# build_falsifier_registry — Unit 5
+# ---------------------------------------------------------------------------
+
+
+class TestBuildFalsifierRegistryLive:
+    """Tests against the real CORE.md + ACTIVATION.md files for all 8 theories."""
+
+    @pytest.fixture()
+    def all_packages(self):
+        dirs = discover_theory_dirs()
+        return {
+            load_theory_package(d).theory_id: load_theory_package(d)
+            for d in dirs
+        }
+
+    def test_all_eight_build_successfully(self, all_packages):
+        for theory_id, pkg in all_packages.items():
+            registry = build_falsifier_registry(pkg.core, pkg.activation)
+            assert len(registry) >= 3, (
+                f"{theory_id}: expected at least 3 registry entries"
+            )
+
+    def test_returns_falsifier_entry_objects(self, all_packages):
+        for theory_id, pkg in all_packages.items():
+            registry = build_falsifier_registry(pkg.core, pkg.activation)
+            for entry in registry:
+                assert isinstance(entry, FalsifierEntry), (
+                    f"{theory_id}: expected FalsifierEntry, got {type(entry)}"
+                )
+
+    def test_all_entries_have_condition_and_logic(self, all_packages):
+        for theory_id, pkg in all_packages.items():
+            for entry in build_falsifier_registry(pkg.core, pkg.activation):
+                assert entry.condition, (
+                    f"{theory_id} {entry.falsifier_id}: empty condition"
+                )
+                assert entry.logic, (
+                    f"{theory_id} {entry.falsifier_id}: empty logic"
+                )
+
+    def test_hard_entries_have_no_severity_or_discount(self, all_packages):
+        for theory_id, pkg in all_packages.items():
+            for entry in build_falsifier_registry(pkg.core, pkg.activation):
+                if entry.classification == "hard":
+                    assert entry.severity is None, (
+                        f"{theory_id} {entry.falsifier_id}: hard should have no severity"
+                    )
+                    assert entry.discount is None, (
+                        f"{theory_id} {entry.falsifier_id}: hard should have no discount"
+                    )
+
+    def test_soft_entries_have_severity_and_discount(self, all_packages):
+        for theory_id, pkg in all_packages.items():
+            for entry in build_falsifier_registry(pkg.core, pkg.activation):
+                if entry.classification == "soft":
+                    assert entry.severity is not None, (
+                        f"{theory_id} {entry.falsifier_id}: soft needs severity"
+                    )
+                    assert entry.discount is not None, (
+                        f"{theory_id} {entry.falsifier_id}: soft needs discount"
+                    )
+
+    def test_discount_values_match_severity(self, all_packages):
+        expected = {"minor": 0.10, "medium": 0.25, "major": 0.45}
+        for theory_id, pkg in all_packages.items():
+            for entry in build_falsifier_registry(pkg.core, pkg.activation):
+                if entry.severity:
+                    assert entry.discount == expected[entry.severity.value], (
+                        f"{theory_id} {entry.falsifier_id}: "
+                        f"severity={entry.severity} but discount={entry.discount}"
+                    )
+
+    def test_no_duplicate_ids_per_theory(self, all_packages):
+        for theory_id, pkg in all_packages.items():
+            registry = build_falsifier_registry(pkg.core, pkg.activation)
+            ids = [e.falsifier_id for e in registry]
+            assert len(ids) == len(set(ids)), (
+                f"{theory_id}: duplicate IDs in registry: "
+                f"{[x for x in ids if ids.count(x) > 1]}"
+            )
+
+    def test_registry_covers_all_core_ids(self, all_packages):
+        """Every CORE.md deep_falsifier ID appears in the registry."""
+        for theory_id, pkg in all_packages.items():
+            core_ids = {
+                e["falsifier_id"] for e in parse_deep_falsifiers(pkg.core)
+            }
+            registry_ids = {
+                e.falsifier_id
+                for e in build_falsifier_registry(pkg.core, pkg.activation)
+            }
+            missing = core_ids - registry_ids
+            assert not missing, (
+                f"{theory_id}: CORE.md IDs missing from registry: {missing}"
+            )
+
+    def test_monetary_architecture_has_core_soft(self, all_packages):
+        """monetary_architecture: S1, S4 are soft but sourced from CORE.md."""
+        registry = build_falsifier_registry(
+            all_packages["monetary_architecture"].core,
+            all_packages["monetary_architecture"].activation,
+        )
+        s1 = next(e for e in registry if e.falsifier_id == "S1")
+        s4 = next(e for e in registry if e.falsifier_id == "S4")
+        assert s1.classification == "soft"
+        assert s4.classification == "soft"
+        # These get their condition/logic from CORE.md (non-empty)
+        assert s1.condition
+        assert s4.condition
+
+
+class TestBuildFalsifierRegistrySynthetic:
+    """Synthetic markdown tests for join logic and orphan validation."""
+
+    CORE_TEMPLATE = (
+        "## theory_id\n\n`test_theory`\n\n"
+        "## deep_falsifiers\n\n"
+        "| # | Condition | Logic |\n"
+        "|---|-----------|-------|\n"
+        "{rows}\n\n"
+        "## stability_class\n"
+    )
+
+    SEV_TEMPLATE = (
+        "## falsifier_severity_assignments\n\n"
+        "### Theory-level falsifiers\n\n"
+        "| Falsifier | Severity | Rationale |\n"
+        "|-----------|----------|----------|\n"
+        "{core_rows}\n\n"
+        "### State-level falsifiers\n\n"
+        "| # | Condition | Severity | Implication |\n"
+        "|---|-----------|----------|-------------|\n"
+        "{state_rows}\n"
+    )
+
+    def _make_core(self, *rows):
+        return self.CORE_TEMPLATE.format(rows="\n".join(rows))
+
+    def _make_activation(self, core_rows=(), state_rows=()):
+        return self.SEV_TEMPLATE.format(
+            core_rows="\n".join(core_rows),
+            state_rows="\n".join(state_rows),
+        )
+
+    def test_basic_join(self):
+        core = self._make_core(
+            "| H1 | Price collapses | Kills mean reversion |",
+            "| H2 | Valuation resets | Regime change |",
+        )
+        activation = self._make_activation(
+            core_rows=[
+                "| H1 — Price collapses | **Hard** | Kills theory |",
+                "| H2 — Valuation resets | **Hard** | Also kills |",
+            ],
+            state_rows=[
+                "| S1 | Dollar drops | **medium** (0.25) | Changes path |",
+            ],
+        )
+        registry = build_falsifier_registry(core, activation)
+        assert len(registry) == 3
+
+        h1 = next(e for e in registry if e.falsifier_id == "H1")
+        assert h1.condition == "Price collapses"  # from CORE
+        assert h1.logic == "Kills mean reversion"  # from CORE
+        assert h1.classification == "hard"
+        assert h1.severity is None
+        assert h1.discount is None
+
+        s1 = next(e for e in registry if e.falsifier_id == "S1")
+        assert s1.condition == "Dollar drops"  # from ACTIVATION (state)
+        assert s1.classification == "soft"
+        assert s1.severity.value == "medium"
+        assert s1.discount == 0.25
+
+    def test_discount_minor(self):
+        core = self._make_core("| H1 | Cond | Logic |")
+        activation = self._make_activation(
+            core_rows=["| H1 — Cond | **Hard** | Kills |"],
+            state_rows=["| S1 | Minor thing | **minor** (0.10) | Small |"],
+        )
+        s1 = next(
+            e for e in build_falsifier_registry(core, activation)
+            if e.falsifier_id == "S1"
+        )
+        assert s1.discount == 0.10
+
+    def test_discount_major(self):
+        core = self._make_core("| H1 | Cond | Logic |")
+        activation = self._make_activation(
+            core_rows=["| H1 — Cond | **Hard** | Kills |"],
+            state_rows=["| S1 | Big thing | **major** (0.45) | Severe |"],
+        )
+        s1 = next(
+            e for e in build_falsifier_registry(core, activation)
+            if e.falsifier_id == "S1"
+        )
+        assert s1.discount == 0.45
+
+    def test_orphan_in_core_raises(self):
+        """CORE.md has H2 but ACTIVATION.md only references H1."""
+        core = self._make_core(
+            "| H1 | Cond one | Logic one |",
+            "| H2 | Cond two | Logic two |",
+        )
+        activation = self._make_activation(
+            core_rows=["| H1 — Cond one | **Hard** | Kills |"],
+            state_rows=["| S1 | State cond | **minor** (0.10) | Note |"],
+        )
+        with pytest.raises(ValueError, match="CORE.md falsifiers missing.*H2"):
+            build_falsifier_registry(core, activation)
+
+    def test_orphan_in_activation_raises(self):
+        """ACTIVATION.md references H2 as core-sourced but CORE.md has no H2."""
+        core = self._make_core("| H1 | Cond one | Logic one |")
+        activation = self._make_activation(
+            core_rows=[
+                "| H1 — Cond one | **Hard** | Kills |",
+                "| H2 — Ghost entry | **Hard** | Not in CORE |",
+            ],
+            state_rows=["| S1 | State cond | **minor** (0.10) | Note |"],
+        )
+        with pytest.raises(ValueError, match="do not exist.*H2"):
+            build_falsifier_registry(core, activation)
+
+    def test_state_entries_not_orphan_checked(self):
+        """State-level entries have no CORE.md counterpart — this is normal, not an orphan."""
+        core = self._make_core("| H1 | Cond | Logic |")
+        activation = self._make_activation(
+            core_rows=["| H1 — Cond | **Hard** | Kills |"],
+            state_rows=[
+                "| S1 | State one | **minor** (0.10) | Note |",
+                "| S2 | State two | **medium** (0.25) | Note |",
+                "| S3 | State three | **major** (0.45) | Note |",
+            ],
+        )
+        registry = build_falsifier_registry(core, activation)
+        assert len(registry) == 4  # H1 + S1 + S2 + S3
+
+    def test_soft_core_sourced(self):
+        """Soft falsifiers can be core-sourced (monetary_architecture pattern)."""
+        core = self._make_core(
+            "| H1 | Hard cond | Hard logic |",
+            "| S1 | Soft cond from core | Soft logic from core |",
+        )
+        activation = self._make_activation(
+            core_rows=[
+                "| H1 — Hard cond | **Hard** | Kills |",
+                "| S1 — Soft cond | **soft** minor (0.10) | Modifies |",
+            ],
+        )
+        registry = build_falsifier_registry(core, activation)
+        s1 = next(e for e in registry if e.falsifier_id == "S1")
+        assert s1.classification == "soft"
+        assert s1.severity.value == "minor"
+        assert s1.discount == 0.10
+        assert s1.condition == "Soft cond from core"  # from CORE, not ACTIVATION
+        assert s1.logic == "Soft logic from core"
+
+    def test_empty_core_falsifiers_raises(self):
+        """CORE.md with no deep_falsifiers section is an error upstream."""
+        core = "## core_claim\n\nText.\n\n## stability_class\n"
+        activation = self._make_activation(
+            state_rows=["| S1 | Cond | **minor** (0.10) | Note |"],
+        )
+        with pytest.raises(ValueError, match="no ## deep_falsifiers"):
+            build_falsifier_registry(core, activation)
