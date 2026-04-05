@@ -285,10 +285,12 @@ def _stage2_discounts(inp: ConvictionInput, raw_score: float) -> Stage2Discounts
     convergence bonus (+0.10 each, capped at +0.20).
     """
     # Soft falsifier health discount — multiplicative compounding
-    # Phase 1: Theory-level soft falsifiers (unchanged from v2)
+    # Phase 1: Theory-level soft falsifiers
+    # v8: prefer pre-joined `discount` from FalsifierEntry registry; fall back to SEVERITY_WEIGHTS
     d_f = 1.0
     for f in inp.triggered_soft_falsifiers:
-        weight = SEVERITY_WEIGHTS.get(f.get("severity", "minor"), 0.10)
+        discount = f.get("discount")
+        weight = discount if discount is not None else SEVERITY_WEIGHTS.get(f.get("severity", "minor"), 0.10)
         d_f *= (1.0 - weight)
 
     # Phase 2: Sector-level falsifier discounts (v4)

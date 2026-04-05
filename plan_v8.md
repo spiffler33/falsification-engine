@@ -478,10 +478,10 @@ These are implementation-facing questions. The plan specifies WHAT changes; Clau
 - [x] Falsifier registry block in Pass 3 contains both condition (from CORE) and severity (from ACTIVATION)
 
 ### Conviction Pipeline
-- [ ] Severity discounts read from FalsifierEntry objects
-- [ ] Same discount values as before (minor=0.10, medium=0.25, major=0.45)
+- [x] Severity discounts read from FalsifierEntry objects
+- [x] Same discount values as before (minor=0.10, medium=0.25, major=0.45)
 - [ ] Hard falsifiers still produce override to Inactive
-- [ ] No change to conviction floor (5.0)
+- [x] No change to conviction floor (5.0)
 
 ### End-to-End
 - [ ] Full pipeline run with new loader produces output
@@ -505,4 +505,4 @@ These are implementation-facing questions. The plan specifies WHAT changes; Clau
 
 ---
 
-## Status: Phase 2 in progress — Unit 9 complete (filter_interaction_matrix + build_generation_prompt_v8, 171 cumulative tests)
+## Status: Phase 2 complete — Unit 11 done (conviction scoring source change, 225 cumulative tests). Next: Phase 3 validation.

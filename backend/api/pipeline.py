@@ -24,6 +24,8 @@ from backend.lifecycle import apply_untestable_escalation, compute_thread_stalen
 from backend.realization import compute_freshness_label
 from backend.schemas.briefing import BriefingPacket
 from backend.schemas.scoring import ConvictionInput
+from backend.engine.theory_loader import build_falsifier_registry, load_all_theory_packages
+from backend.schemas.theory import FalsifierEntry
 
 router = APIRouter(tags=["pipeline"])
 
@@ -38,6 +40,53 @@ def _activation_status_dict(activation_results) -> dict[str, str]:
         if tier:
             status[ar_dict["theory_id"]] = tier if isinstance(tier, str) else tier.value
     return status
+
+
+def _build_registry_discount_lookup() -> dict[str, list[FalsifierEntry]]:
+    """Load theory packages and build a lookup of soft FalsifierEntry objects per theory.
+
+    Returns {theory_id: [FalsifierEntry, ...]} with only soft entries (those with discount).
+    Called once per conviction scoring step; loads are cached by the OS via file reads.
+    """
+    packages = load_all_theory_packages()
+    lookup: dict[str, list[FalsifierEntry]] = {}
+    for pkg in packages:
+        registry = build_falsifier_registry(pkg.core, pkg.activation)
+        lookup[pkg.theory_id] = [e for e in registry if e.classification == "soft"]
+    return lookup
+
+
+def _resolve_registry_entry(
+    sf: dict, registry_entries: list[FalsifierEntry],
+) -> FalsifierEntry | None:
+    """Match a hypothesis soft falsifier to a FalsifierEntry from the registry.
+
+    Matching strategy (in priority order):
+    1. Exact condition match (hypothesis condition == registry condition)
+    2. Substring containment (either direction, condition text only, min 10 chars)
+    Returns None if no match — callers fall back to hypothesis-level data.
+    """
+    name = sf.get("name", "").lower().strip()
+    condition = sf.get("condition", "").lower().strip()
+
+    for entry in registry_entries:
+        entry_cond = entry.condition.lower().strip()
+        if condition and condition == entry_cond:
+            return entry
+        if name and name == entry_cond:
+            return entry
+
+    # Substring containment (skip very short strings to avoid false positives)
+    for entry in registry_entries:
+        entry_cond = entry.condition.lower().strip()
+        if len(entry_cond) < 10:
+            continue
+        if condition and len(condition) >= 10 and (condition in entry_cond or entry_cond in condition):
+            return entry
+        if name and len(name) >= 10 and (name in entry_cond or entry_cond in name):
+            return entry
+
+    return None
 
 
 def _load_briefing() -> dict[str, Any]:
@@ -801,6 +850,9 @@ def import_elimination(payload: dict = Body(...), db: Session = Depends(get_db))
     activation_data = json.loads(latest_run.activation_scores) if latest_run.activation_scores else []
     briefing_raw = _load_briefing()
 
+    # v8: Load falsifier registries for canonical severity discounts
+    registry_lookup = _build_registry_discount_lookup()
+
     # Load active regime flags for conviction scoring (D_r discount)
     active_regime_flags = []
     if latest_run.regime_flags_active:
@@ -906,11 +958,28 @@ def import_elimination(payload: dict = Body(...), db: Session = Depends(get_db))
         if h.status != "KILLED":
             llm_inputs = h_data.get("_conviction_inputs", {})
             soft_f = json.loads(h.soft_falsifiers) if h.soft_falsifiers else []
-            triggered_sf = [{"severity": sf["severity"]} for sf in soft_f if sf.get("status") == "TRIGGERED" or sf.get("staleness_classification") == "TRIGGERED_BY_PASSAGE"]
+
+            # v8: resolve discounts from falsifier registry (canonical source)
+            theory_entries = registry_lookup.get(h.source_theory, [])
+            triggered_sf = []
+            for sf in soft_f:
+                if sf.get("status") == "TRIGGERED" or sf.get("staleness_classification") == "TRIGGERED_BY_PASSAGE":
+                    entry = {"severity": sf.get("severity", "minor")}
+                    matched = _resolve_registry_entry(sf, theory_entries)
+                    if matched and matched.discount is not None:
+                        entry["discount"] = matched.discount
+                    triggered_sf.append(entry)
             # v7: emergent risk slot compounds into D_f as additional triggered soft falsifier
             if h.emergent_risk_severity:
                 triggered_sf.append({"severity": h.emergent_risk_severity})
-            untestable_sf = [{"severity": sf["severity"], "status": sf["status"]} for sf in soft_f if sf.get("status") in ("UNTESTABLE", "ESCALATED_UNTESTABLE")]
+            untestable_sf = []
+            for sf in soft_f:
+                if sf.get("status") in ("UNTESTABLE", "ESCALATED_UNTESTABLE"):
+                    matched = _resolve_registry_entry(sf, theory_entries)
+                    # Use registry severity if matched (canonical source);
+                    # discount field is NOT used for untestable — UNTESTABLE_WEIGHTS is separate
+                    sev = matched.severity.value if matched and matched.severity else sf.get("severity", "minor")
+                    untestable_sf.append({"severity": sev, "status": sf["status"]})
 
             # Compute theory-aware overlap for primary asset
             assets = json.loads(h.predicted_assets) if h.predicted_assets else []
