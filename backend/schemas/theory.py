@@ -4,7 +4,7 @@
 from __future__ import annotations
 
 from enum import Enum
-from typing import Optional
+from typing import Literal, Optional
 
 from pydantic import BaseModel
 
@@ -127,3 +127,46 @@ class ActivationResult(BaseModel):
     # Details
     indicator_results: dict[str, dict] = {}  # indicator_name → {triggered, value, threshold}
     skipped_indicators: list[str] = []  # web-search or qualitative indicators
+
+
+# ---------------------------------------------------------------------------
+# v8 Theory Package models (four-file directory structure)
+# ---------------------------------------------------------------------------
+
+class FalsifierEntry(BaseModel):
+    """Pre-joined falsifier: condition from CORE.md + classification/severity from ACTIVATION.md."""
+    falsifier_id: str  # e.g. "H1", "S3"
+    condition: str     # from CORE.md deep_falsifiers
+    logic: str         # from CORE.md deep_falsifiers
+    classification: Literal["hard", "soft"]  # from ACTIVATION.md
+    severity: Optional[Severity] = None      # minor/medium/major for soft; None for hard
+    discount: Optional[float] = None         # 0.10/0.25/0.45 for soft; None for hard
+
+
+class IndicatorOwnership(BaseModel):
+    """Data ownership classification for a scored indicator from ACTIVATION.md."""
+    indicator_name: str
+    metric_source: str
+    data_ownership: Literal["mechanical", "computed-mechanical", "web-search", "qualitative"]
+    dependencies: Optional[list[str]] = None  # for computed-mechanical only
+
+
+class ContextFlag(BaseModel):
+    """Qualitative context flag from ACTIVATION.md -- routed to generator, excluded from scoring."""
+    flag_name: str
+    source: str
+    data_ownership: str
+    description: str
+    usage: str
+
+
+class TheoryPackage(BaseModel):
+    """Complete four-file theory package. Replaces monolithic TheoryModule for v8."""
+    theory_id: str
+    core: str          # full text of CORE.md
+    activation: str    # full text of ACTIVATION.md
+    tactical: str      # full text of TACTICAL.md
+    playbook: str      # full text of PLAYBOOK.md
+    falsifier_registry: list[FalsifierEntry] = []
+    data_ownership: list[IndicatorOwnership] = []
+    context_flags: list[ContextFlag] = []

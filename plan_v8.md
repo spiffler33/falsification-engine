@@ -505,4 +505,4 @@ These are implementation-facing questions. The plan specifies WHAT changes; Clau
 
 ---
 
-## Status: DESIGN COMPLETE — Ready for implementation
+## Status: Phase 1 in progress — Unit 1 complete (data models defined)
