@@ -1,14 +1,14 @@
 # v8 Implementation State
 
 ## Current Phase: Phase 1 (Loader + Parsers)
-## Current Task: Unit 1 complete — data models defined
-## Last Completed: Unit 1 (TheoryPackage + FalsifierEntry data models)
-## Last Commit: v8 Unit 1
+## Current Task: Unit 2 complete — directory discovery + 4-file loading
+## Last Completed: Unit 2 (theory_loader.py — discover, load, extract theory_id)
+## Last Commit: v8 Unit 2
 
 ## Phase Status
 - [ ] Phase 1: Loader + Parsers (Components 1-5)
   - [x] Unit 1: TheoryPackage + FalsifierEntry data models in backend/schemas/theory.py
-  - [ ] Unit 2: Directory discovery + 4-file loading + missing file validation
+  - [x] Unit 2: Directory discovery + 4-file loading + missing file validation (16 tests)
   - [ ] Unit 3: CORE.md deep_falsifiers parser
   - [ ] Unit 4: ACTIVATION.md falsifier_severity_assignments parser (theory-level + state-level)
   - [ ] Unit 5: Falsifier registry join logic + orphan validation
