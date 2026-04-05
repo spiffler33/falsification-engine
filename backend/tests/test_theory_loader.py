@@ -10,6 +10,7 @@ from backend.engine.theory_loader import (
     load_all_theory_packages,
     load_theory_package,
     parse_deep_falsifiers,
+    parse_falsifier_severity,
 )
 
 EXPECTED_THEORY_IDS = {
@@ -339,3 +340,310 @@ class TestParseDeepFalsifiersSynthetic:
         )
         entries = parse_deep_falsifiers(text)
         assert len(entries) == 1
+
+
+# ---------------------------------------------------------------------------
+# parse_falsifier_severity — Unit 4
+# ---------------------------------------------------------------------------
+
+_VALID_CLASSIFICATIONS = {"hard", "soft"}
+_VALID_SEVERITIES = {"minor", "medium", "major"}
+_VALID_SOURCES = {"core", "state"}
+
+
+class TestParseFalsifierSeverityLive:
+    """Tests against the real ACTIVATION.md files in the repo."""
+
+    @pytest.fixture()
+    def all_activation_texts(self):
+        dirs = discover_theory_dirs()
+        return {
+            load_theory_package(d).theory_id: load_theory_package(d).activation
+            for d in dirs
+        }
+
+    def test_all_eight_parse_successfully(self, all_activation_texts):
+        for theory_id, text in all_activation_texts.items():
+            entries = parse_falsifier_severity(text)
+            assert len(entries) >= 3, f"{theory_id}: expected at least 3 entries"
+
+    def test_each_entry_has_valid_fields(self, all_activation_texts):
+        for theory_id, text in all_activation_texts.items():
+            for entry in parse_falsifier_severity(text):
+                assert entry["falsifier_id"], f"{theory_id}: empty falsifier_id"
+                assert entry["classification"] in _VALID_CLASSIFICATIONS, (
+                    f"{theory_id}: bad classification {entry['classification']!r}"
+                )
+                assert entry["source"] in _VALID_SOURCES, (
+                    f"{theory_id}: bad source {entry['source']!r}"
+                )
+
+    def test_hard_falsifiers_have_no_severity(self, all_activation_texts):
+        for theory_id, text in all_activation_texts.items():
+            for entry in parse_falsifier_severity(text):
+                if entry["classification"] == "hard":
+                    assert entry["severity"] is None, (
+                        f"{theory_id} {entry['falsifier_id']}: hard should have None severity"
+                    )
+
+    def test_soft_falsifiers_have_severity(self, all_activation_texts):
+        for theory_id, text in all_activation_texts.items():
+            for entry in parse_falsifier_severity(text):
+                if entry["classification"] == "soft":
+                    assert entry["severity"] in _VALID_SEVERITIES, (
+                        f"{theory_id} {entry['falsifier_id']}: soft needs minor/medium/major"
+                    )
+
+    def test_state_entries_have_condition_and_logic(self, all_activation_texts):
+        for theory_id, text in all_activation_texts.items():
+            for entry in parse_falsifier_severity(text):
+                if entry["source"] == "state":
+                    assert entry.get("condition"), (
+                        f"{theory_id} {entry['falsifier_id']}: state entry empty condition"
+                    )
+                    assert entry.get("logic"), (
+                        f"{theory_id} {entry['falsifier_id']}: state entry empty logic"
+                    )
+
+    def test_core_entries_have_no_condition(self, all_activation_texts):
+        for theory_id, text in all_activation_texts.items():
+            for entry in parse_falsifier_severity(text):
+                if entry["source"] == "core":
+                    assert "condition" not in entry, (
+                        f"{theory_id} {entry['falsifier_id']}: core should not have condition"
+                    )
+
+    def test_no_duplicate_ids_per_theory(self, all_activation_texts):
+        for theory_id, text in all_activation_texts.items():
+            entries = parse_falsifier_severity(text)
+            ids = [e["falsifier_id"] for e in entries]
+            assert len(ids) == len(set(ids)), (
+                f"{theory_id}: duplicate IDs: {[x for x in ids if ids.count(x) > 1]}"
+            )
+
+    # --- Theory-specific structural assertions ---
+
+    def test_structural_fragility_inline_state(self, all_activation_texts):
+        """structural_fragility: state falsifiers inline in falsifier_severity_assignments."""
+        entries = parse_falsifier_severity(all_activation_texts["structural_fragility"])
+        hard = [e for e in entries if e["classification"] == "hard"]
+        soft = [e for e in entries if e["classification"] == "soft"]
+        assert len(hard) >= 4, "Expected H1-H4 hard falsifiers"
+        assert len(soft) >= 3, "Expected S1-S3 soft falsifiers"
+
+    def test_valuation_mean_reversion_separate_state(self, all_activation_texts):
+        """valuation_mean_reversion: separate ## state_falsifiers section."""
+        entries = parse_falsifier_severity(all_activation_texts["valuation_mean_reversion"])
+        hard = [e for e in entries if e["classification"] == "hard"]
+        state = [e for e in entries if e["source"] == "state"]
+        assert len(hard) >= 3, "Expected H1-H3"
+        assert len(state) >= 5, "Expected S1-S5"
+
+    def test_monetary_architecture_core_soft(self, all_activation_texts):
+        """monetary_architecture: S1, S4 are soft but sourced from CORE.md."""
+        entries = parse_falsifier_severity(all_activation_texts["monetary_architecture"])
+        core_soft = [e for e in entries if e["source"] == "core" and e["classification"] == "soft"]
+        assert len(core_soft) >= 2, "Expected S1, S4 as core-sourced soft falsifiers"
+
+    def test_fiscal_dominance_liquidity_df_prefix(self, all_activation_texts):
+        """fiscal_dominance_liquidity: uses DF prefix for theory-level falsifiers."""
+        entries = parse_falsifier_severity(all_activation_texts["fiscal_dominance_liquidity"])
+        df_entries = [e for e in entries if str(e["falsifier_id"]).startswith("DF")]
+        assert len(df_entries) >= 3, "Expected DF1-DF3"
+        for e in df_entries:
+            assert e["classification"] == "hard"
+            assert e["source"] == "core"
+
+    def test_debt_cycle_short_dedup(self, all_activation_texts):
+        """debt_cycle_short: S entries deduplicated in favour of state_falsifiers detail."""
+        entries = parse_falsifier_severity(all_activation_texts["debt_cycle_short"])
+        s_entries = [e for e in entries if str(e["falsifier_id"]).startswith("S")]
+        for e in s_entries:
+            assert e.get("condition"), (
+                f"S entry {e['falsifier_id']} should have condition after dedup"
+            )
+
+    def test_capital_flows_auto_id_state(self, all_activation_texts):
+        """capital_flows: unnamed state_falsifiers entries get auto-generated IDs."""
+        entries = parse_falsifier_severity(all_activation_texts["capital_flows"])
+        auto = [e for e in entries if str(e["falsifier_id"]).startswith("ST_")]
+        assert len(auto) >= 1, "Expected auto-generated IDs for unnamed state entries"
+
+
+class TestParseFalsifierSeveritySynthetic:
+    """Tests with synthetic markdown to verify parser edge cases."""
+
+    def test_basic_theory_and_state(self):
+        text = (
+            "## falsifier_severity_assignments\n\n"
+            "### Theory-level falsifiers\n\n"
+            "| Falsifier | Severity | Rationale |\n"
+            "|-----------|----------|----------|\n"
+            "| H1 \u2014 Hard condition one | **Hard** | Kills theory |\n"
+            "| H2 \u2014 Hard condition two | **theory-killing** | Also kills |\n\n"
+            "### State-level falsifiers\n\n"
+            "| # | Condition | Severity | Implication |\n"
+            "|---|-----------|----------|-------------|\n"
+            "| S1 | Rates drop | **major** (0.45) | Caps magnitude |\n"
+            "| S2 | Growth surge | **minor** (0.10) | Extends timeline |\n"
+        )
+        entries = parse_falsifier_severity(text)
+        assert len(entries) == 4
+
+        hard = [e for e in entries if e["classification"] == "hard"]
+        soft = [e for e in entries if e["classification"] == "soft"]
+        assert len(hard) == 2
+        assert len(soft) == 2
+
+        for h in hard:
+            assert h["source"] == "core"
+            assert h["severity"] is None
+            assert "condition" not in h
+
+        s1 = next(e for e in entries if e["falsifier_id"] == "S1")
+        assert s1["severity"] == "major"
+        assert s1["source"] == "state"
+        assert s1["condition"] == "Rates drop"
+        assert s1["logic"] == "Caps magnitude"
+
+    def test_separate_state_section(self):
+        text = (
+            "## falsifier_severity_assignments\n\n"
+            "| Falsifier | Severity | Rationale |\n"
+            "|-----------|----------|----------|\n"
+            "| H1 \u2014 Kill condition | **Hard** | Theory dead |\n\n"
+            "---\n\n"
+            "## state_falsifiers\n\n"
+            "| # | Condition | Severity | Implication |\n"
+            "|---|-----------|----------|-------------|\n"
+            "| S1 | Dollar drops | **medium** (0.25) | Changes expression |\n"
+        )
+        entries = parse_falsifier_severity(text)
+        assert len(entries) == 2
+
+        h1 = next(e for e in entries if e["falsifier_id"] == "H1")
+        assert h1["classification"] == "hard"
+        assert h1["source"] == "core"
+
+        s1 = next(e for e in entries if e["falsifier_id"] == "S1")
+        assert s1["severity"] == "medium"
+        assert s1["source"] == "state"
+        assert s1["condition"] == "Dollar drops"
+
+    def test_consolidated_table_with_location(self):
+        """debt_cycle_short pattern: single table with Location column."""
+        text = (
+            "## falsifier_severity_assignments\n\n"
+            "| Falsifier | Location | Severity | Discount |\n"
+            "|-----------|----------|----------|----------|\n"
+            "| H1 (hard cond) | CORE.md deep_falsifiers | hard \u2014 binary kill | Override |\n"
+            "| S1 (soft cond) | ACTIVATION.md state_falsifiers | medium | 0.25 |\n"
+        )
+        entries = parse_falsifier_severity(text)
+        assert len(entries) == 2
+
+        h1 = next(e for e in entries if e["falsifier_id"] == "H1")
+        assert h1["source"] == "core"
+        assert h1["classification"] == "hard"
+
+        s1 = next(e for e in entries if e["falsifier_id"] == "S1")
+        assert s1["source"] == "state"
+        assert s1["severity"] == "medium"
+
+    def test_dedup_prefers_condition(self):
+        """When same ID appears in both sections, prefer the one with condition."""
+        text = (
+            "## state_falsifiers\n\n"
+            "| # | Condition | Severity | Implication |\n"
+            "|---|-----------|----------|-------------|\n"
+            "| S1 | Full condition text | **major** (0.45) | Full logic |\n\n"
+            "---\n\n"
+            "## falsifier_severity_assignments\n\n"
+            "| Falsifier | Location | Severity | Discount |\n"
+            "|-----------|----------|----------|----------|\n"
+            "| H1 (kill) | CORE.md | hard | Override |\n"
+            "| S1 (brief) | ACTIVATION.md state_falsifiers | major | 0.45 |\n"
+        )
+        entries = parse_falsifier_severity(text)
+        assert len(entries) == 2
+
+        s1 = next(e for e in entries if e["falsifier_id"] == "S1")
+        assert s1["condition"] == "Full condition text"
+        assert s1["logic"] == "Full logic"
+
+    def test_classification_column(self):
+        """monetary_architecture pattern: explicit Classification column."""
+        text = (
+            "## falsifier_severity_assignments\n\n"
+            "### Deep Falsifiers (from CORE.md)\n\n"
+            "| ID | Condition | Classification | Severity | Notes |\n"
+            "|----|-----------|---------------|----------|-------|\n"
+            "| H1 | Gold selling | **hard** | Theory-killing | No discount |\n"
+            "| S1 | RMB stalls | **soft** | **minor** (0.10) | Changes endpoint |\n\n"
+            "### State-Level Falsifiers\n\n"
+            "| ID | Condition | Severity | Implication |\n"
+            "|----|-----------|----------|-------------|\n"
+            "| S3 | Fiscal improves | **medium** (0.25) | Removes demand |\n"
+        )
+        entries = parse_falsifier_severity(text)
+        assert len(entries) == 3
+
+        h1 = next(e for e in entries if e["falsifier_id"] == "H1")
+        assert h1["classification"] == "hard"
+        assert h1["source"] == "core"
+
+        s1 = next(e for e in entries if e["falsifier_id"] == "S1")
+        assert s1["classification"] == "soft"
+        assert s1["severity"] == "minor"
+        assert s1["source"] == "core"
+        assert "condition" not in s1
+
+        s3 = next(e for e in entries if e["falsifier_id"] == "S3")
+        assert s3["source"] == "state"
+        assert s3["condition"] == "Fiscal improves"
+
+    def test_auto_id_for_unnamed_entries(self):
+        """Entries without recognized IDs get auto-generated ST_ prefixed IDs."""
+        text = (
+            "## state_falsifiers\n\n"
+            "| Condition | Phase | Severity | Description |\n"
+            "|-----------|-------|----------|-------------|\n"
+            "| Dollar reverses | B | **major** (0.45) | Rotation aborts |\n"
+            "| Growth stalls | A | **medium** (0.25) | Slows timeline |\n"
+        )
+        entries = parse_falsifier_severity(text)
+        assert len(entries) == 2
+        assert entries[0]["falsifier_id"] == "ST_1"
+        assert entries[1]["falsifier_id"] == "ST_2"
+        assert entries[0]["condition"] == "Dollar reverses"
+        assert entries[0]["severity"] == "major"
+
+    def test_no_section_raises(self):
+        text = "## phases\n\nSome content.\n\n## activation_table\n"
+        with pytest.raises(ValueError, match="no.*section"):
+            parse_falsifier_severity(text)
+
+    def test_empty_tables_raises(self):
+        text = (
+            "## falsifier_severity_assignments\n\n"
+            "No tables here, just prose.\n\n"
+            "## context_flags\n"
+        )
+        with pytest.raises(ValueError, match="no parseable entries"):
+            parse_falsifier_severity(text)
+
+    def test_embedded_condition_in_id_cell(self):
+        """capital_flows pattern: condition embedded after ID with colon."""
+        text = (
+            "## falsifier_severity_assignments\n\n"
+            "### Soft Falsifiers (State-Level)\n\n"
+            "| Falsifier | Severity | Discount | Rationale |\n"
+            "|-----------|----------|----------|----------|\n"
+            "| S1: China crisis deepens | **major** | 0.45 | Caps magnitude |\n"
+        )
+        entries = parse_falsifier_severity(text)
+        assert len(entries) == 1
+        assert entries[0]["falsifier_id"] == "S1"
+        assert entries[0]["source"] == "state"
+        assert entries[0]["condition"] == "China crisis deepens"
+        assert entries[0]["logic"] == "Caps magnitude"

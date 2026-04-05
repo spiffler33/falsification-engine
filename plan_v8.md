@@ -505,4 +505,4 @@ These are implementation-facing questions. The plan specifies WHAT changes; Clau
 
 ---
 
-## Status: Phase 1 in progress — Unit 3 complete (deep_falsifiers parser, 28 cumulative tests)
+## Status: Phase 1 in progress — Unit 4 complete (falsifier severity parser, 50 cumulative tests)

@@ -1,16 +1,16 @@
 # v8 Implementation State
 
 ## Current Phase: Phase 1 (Loader + Parsers)
-## Current Task: Unit 3 complete — CORE.md deep_falsifiers parser
-## Last Completed: Unit 3 (parse_deep_falsifiers in theory_loader.py — 28 tests)
-## Last Commit: v8 Unit 3
+## Current Task: Unit 4 complete — ACTIVATION.md falsifier_severity_assignments parser
+## Last Completed: Unit 4 (parse_falsifier_severity in theory_loader.py — 50 cumulative tests)
+## Last Commit: v8 Unit 4
 
 ## Phase Status
 - [ ] Phase 1: Loader + Parsers (Components 1-5)
   - [x] Unit 1: TheoryPackage + FalsifierEntry data models in backend/schemas/theory.py
   - [x] Unit 2: Directory discovery + 4-file loading + missing file validation (16 tests)
   - [x] Unit 3: CORE.md deep_falsifiers parser (12 tests — 5 live, 7 synthetic)
-  - [ ] Unit 4: ACTIVATION.md falsifier_severity_assignments parser (theory-level + state-level)
+  - [x] Unit 4: ACTIVATION.md falsifier_severity_assignments parser (22 tests — 14 live, 8 synthetic)
   - [ ] Unit 5: Falsifier registry join logic + orphan validation
   - [ ] Unit 6: ACTIVATION.md activation_table parser with data_ownership column
   - [ ] Unit 7: ACTIVATION.md context_flags parser + qualitative exclusion validation
