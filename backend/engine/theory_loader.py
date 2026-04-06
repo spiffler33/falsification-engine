@@ -866,6 +866,22 @@ def parse_activation_table(activation_text: str) -> list[dict]:
                 f"context_flags, not activation_table"
             )
 
+    # FRAGILITY-11: if any indicators have a phase, ALL must have a phase.
+    # Mixed phased/unphased indicators means some indicators leaked outside
+    # their phase sections — the parser cannot determine which phase they
+    # belong to, so this is an error, not a guess.
+    phases_found = {e["phase"] for e in entries}
+    has_phased = any(p is not None for p in phases_found)
+    has_unphased = None in phases_found
+    if has_phased and has_unphased:
+        unphased = [e["indicator_name"] for e in entries if e["phase"] is None]
+        raise ValueError(
+            f"Mixed phased and unphased indicators in activation_table. "
+            f"Indicators outside any phase section: {unphased}. "
+            f"In a two-phase theory, all indicators must be inside a "
+            f"Phase A or Phase B section."
+        )
+
     return entries
 
 

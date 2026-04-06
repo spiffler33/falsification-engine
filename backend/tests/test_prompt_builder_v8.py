@@ -1001,3 +1001,129 @@ class TestActivationDataPathV8:
         conf_ind = next(i for i in phase_a.indicators if i.name == "Consumer Confidence")
         assert conf_ind.requires_web_search is True
         assert conf_ind.metric_source.lower().startswith("web search:")
+
+
+# ---------------------------------------------------------------------------
+# Task 6: Phase structure validation in _build_phases_from_package
+# (FRAGILITY-03, FRAGILITY-11)
+# ---------------------------------------------------------------------------
+
+_PHASE_TABLE_HEADER = (
+    "| Indicator | Metric Source | Data Ownership | Threshold "
+    "| Direction | Weight | Rationale |\n"
+    "|-----------|--------------|----------------|-----------|"
+    "-----------|--------|-----------|\n"
+)
+_PHASE_ROW_A = "| Ind A | src_a | mechanical | Above 10 | above | 0.50 | Note |\n"
+_PHASE_ROW_B = "| Ind B | src_b | mechanical | Below 5 | below | 0.50 | Note |\n"
+_PHASE_ROW_C = "| Ind C | src_c | mechanical | Above 20 | above | 0.40 | Note |\n"
+
+
+class TestBuildPhasesValidation:
+    """FRAGILITY-03/FRAGILITY-11: phase structure validation."""
+
+    def test_unrecognized_phase_string_raises(self):
+        """Phase strings without 'Phase A' or 'Phase B' are rejected."""
+        text = (
+            "## activation_table — Expansion\n\n"
+            f"{_PHASE_TABLE_HEADER}"
+            f"{_PHASE_ROW_A}\n"
+            "## activation_table — Contraction\n\n"
+            f"{_PHASE_TABLE_HEADER}"
+            f"{_PHASE_ROW_B}\n"
+        )
+        pkg = _make_package("test", activation=text)
+        with pytest.raises(ValueError, match="does not contain.*Phase A.*Phase B"):
+            _build_phases_from_package(pkg)
+
+    def test_duplicate_phase_a_raises(self):
+        """Two phase strings that both map to phase_a are rejected."""
+        text = (
+            "## activation_table\n\n"
+            "### Phase A: Alpha\n\n"
+            f"{_PHASE_TABLE_HEADER}"
+            f"{_PHASE_ROW_A}\n"
+            "### Phase A: Beta\n\n"
+            f"{_PHASE_TABLE_HEADER}"
+            f"{_PHASE_ROW_B}\n"
+        )
+        pkg = _make_package("test", activation=text)
+        with pytest.raises(ValueError, match="Duplicate phase name.*phase_a"):
+            _build_phases_from_package(pkg)
+
+    def test_three_phase_groups_raises(self):
+        """Three distinct phase groups are rejected."""
+        text = (
+            "## activation_table — Phase A: Expansion\n\n"
+            f"{_PHASE_TABLE_HEADER}"
+            f"{_PHASE_ROW_A}\n"
+            "## activation_table — Phase B: Contraction\n\n"
+            f"{_PHASE_TABLE_HEADER}"
+            f"{_PHASE_ROW_B}\n"
+            "## activation_table — Phase A: Late Expansion\n\n"
+            f"{_PHASE_TABLE_HEADER}"
+            f"{_PHASE_ROW_C}\n"
+        )
+        pkg = _make_package("test", activation=text)
+        with pytest.raises(ValueError, match="3 phase groups.*expected exactly 2"):
+            _build_phases_from_package(pkg)
+
+    def test_valid_subsection_format_passes(self):
+        """structural_fragility/capital_flows style: ### subsections."""
+        pkg = _make_package("test", activation=_TWO_PHASE_ACTIVATION)
+        is_two_phase, phases = _build_phases_from_package(pkg)
+        assert is_two_phase
+        assert len(phases) == 2
+        names = {p.phase_name for p in phases}
+        assert names == {"phase_a", "phase_b"}
+
+    def test_valid_separate_heading_format_passes(self):
+        """debt_cycle_short style: separate ## headings."""
+        text = (
+            "## activation_table — Phase A: Expansion\n\n"
+            f"{_PHASE_TABLE_HEADER}"
+            f"{_PHASE_ROW_A}\n"
+            "## activation_table — Phase B: Contraction\n\n"
+            f"{_PHASE_TABLE_HEADER}"
+            f"{_PHASE_ROW_B}\n"
+        )
+        pkg = _make_package("test", activation=text)
+        is_two_phase, phases = _build_phases_from_package(pkg)
+        assert is_two_phase
+        assert len(phases) == 2
+        names = {p.phase_name for p in phases}
+        assert names == {"phase_a", "phase_b"}
+
+    def test_phase_labels_extracted(self):
+        """Phase labels are extracted from 'Phase A: <label>' format."""
+        text = (
+            "## activation_table\n\n"
+            "### Phase A: Fragility Building\n\n"
+            f"{_PHASE_TABLE_HEADER}"
+            f"{_PHASE_ROW_A}\n"
+            "### Phase B: Fragility Resolving\n\n"
+            f"{_PHASE_TABLE_HEADER}"
+            f"{_PHASE_ROW_B}\n"
+        )
+        pkg = _make_package("test", activation=text)
+        _, phases = _build_phases_from_package(pkg)
+        labels = {p.phase_name: p.phase_label for p in phases}
+        assert labels["phase_a"] == "Fragility Building"
+        assert labels["phase_b"] == "Fragility Resolving"
+
+    def test_case_insensitive_phase_matching(self):
+        """Phase A/B detection is case-insensitive."""
+        text = (
+            "## activation_table\n\n"
+            "### phase a: Alpha\n\n"
+            f"{_PHASE_TABLE_HEADER}"
+            f"{_PHASE_ROW_A}\n"
+            "### phase b: Beta\n\n"
+            f"{_PHASE_TABLE_HEADER}"
+            f"{_PHASE_ROW_B}\n"
+        )
+        pkg = _make_package("test", activation=text)
+        is_two_phase, phases = _build_phases_from_package(pkg)
+        assert is_two_phase
+        names = {p.phase_name for p in phases}
+        assert names == {"phase_a", "phase_b"}

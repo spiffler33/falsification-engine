@@ -401,9 +401,18 @@ Each task below is intended to be executed in a separate Claude Code session aft
 - full activation regression tests
 
 **Update status:**
-- [ ] Task 6 not started
-- [ ] Task 6 in progress
-- [ ] Task 6 complete
+- [x] Task 6 complete (2026-04-06)
+  - FRAGILITY-03: silent `phase_name = phase_str` fallthrough killed in `_build_phases_from_package()` — unrecognized phase strings now raise ValueError with clear format guidance
+  - FRAGILITY-11: three structural validations added: (1) exactly 2 phase groups required for two-phase theories, (2) each must map to `phase_a` or `phase_b`, (3) no duplicate phase names; plus parse-level check: mixed phased/unphased indicators in `parse_activation_table()` raise ValueError
+  - Both supported formats (separate headings + nested subsections) preserved and validated
+  - 12 new tests (819 total), v8 equivalence check ALL PASS
+
+#### Completion note — 2026-04-06
+- Summary: Closed both two-phase fragilities without changing scoring behavior. FRAGILITY-03: replaced silent `phase_name = phase_str` fallthrough in `_build_phases_from_package()` with a ValueError — phase strings must contain recognizable 'Phase A' or 'Phase B'. FRAGILITY-11: added three structural validations in `_build_phases_from_package()` (exactly 2 phase groups, each maps to phase_a/phase_b, no duplicates) and one in `parse_activation_table()` (mixed phased/unphased indicators rejected). Both existing representation formats (debt_cycle_short's separate `## activation_table — Phase A/B:` headings and structural_fragility/capital_flows' nested `### Phase A/B:` subsections) continue to work and are validated through the same pipeline.
+- Files changed: `backend/engine/activation.py`, `backend/engine/theory_loader.py`, `backend/tests/test_theory_loader.py`, `backend/tests/test_prompt_builder_v8.py`
+- Validation run: `python -m pytest backend/tests/ -x -q` (819 passed, +12 new tests), `python -m scripts.v8_equivalence_check` (ALL PASS, 3 runs)
+- Result: No score changes (validations are additive — current packages already follow the contract). All 3 two-phase theories parse and score identically. New tests confirm: (1) mixed phased/unphased indicators raise, (2) unrecognized phase strings raise, (3) duplicate phase names raise, (4) three phase groups raise, (5) both valid formats pass, (6) phase labels extracted correctly, (7) case-insensitive matching works, (8) all 3 live two-phase theories validate, (9) all 5 single-phase theories unaffected.
+- Residual risk: None for FRAGILITY-03/FRAGILITY-11. The `_PHASE_SUBSECTION_RE` regex still requires `### Phase [AB]:` — it does not use `_normalize_section_header()` because subsection matching operates at a different level than section discovery. This is deliberate: phase labels are machine-critical and should not be subject to broad normalization.
 
 ---
 
@@ -565,7 +574,7 @@ The remediation is done only when all of the following are true:
 - [x] Task 3 complete
 - [x] Task 4 complete
 - [x] Task 5 complete
-- [ ] Task 6 complete
+- [x] Task 6 complete
 - [ ] Task 7 complete
 - [ ] Task 8 complete
 

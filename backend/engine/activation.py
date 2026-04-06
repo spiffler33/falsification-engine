@@ -452,6 +452,11 @@ def _build_phases_from_package(pkg: TheoryPackage) -> tuple[bool, list[Activatio
     """Parse ACTIVATION.md text into ActivationPhase objects.
 
     Returns (is_two_phase, phases).
+
+    Two-phase validation (FRAGILITY-03, FRAGILITY-11):
+    - Exactly 2 phase groups required
+    - Each must map to ``phase_a`` or ``phase_b`` (no silent fallthrough)
+    - No duplicate phase names
     """
     from backend.engine.theory_loader import parse_activation_table
 
@@ -465,14 +470,38 @@ def _build_phases_from_package(pkg: TheoryPackage) -> tuple[bool, list[Activatio
         for entry in entries:
             phase_groups.setdefault(entry["phase"], []).append(entry)
 
+        # FRAGILITY-11: exactly 2 phase groups required.
+        if len(phase_groups) != 2:
+            raise ValueError(
+                f"Two-phase theory has {len(phase_groups)} phase groups "
+                f"(expected exactly 2): {sorted(phase_groups.keys())}"
+            )
+
         phases: list[ActivationPhase] = []
+        seen_names: set[str] = set()
+
         for phase_str in sorted(phase_groups):
+            # FRAGILITY-03: phase string must contain 'Phase A' or 'Phase B'.
+            # No silent fallthrough to phase_name = phase_str.
             if re.search(r"Phase\s*A\b", phase_str, re.IGNORECASE):
                 phase_name = "phase_a"
             elif re.search(r"Phase\s*B\b", phase_str, re.IGNORECASE):
                 phase_name = "phase_b"
             else:
-                phase_name = phase_str
+                raise ValueError(
+                    f"Phase string {phase_str!r} does not contain "
+                    f"'Phase A' or 'Phase B'. Two-phase theories must "
+                    f"use 'Phase A: <label>' and 'Phase B: <label>' format."
+                )
+
+            # FRAGILITY-11: no duplicate phase names.
+            if phase_name in seen_names:
+                raise ValueError(
+                    f"Duplicate phase name {phase_name!r} — two different "
+                    f"phase strings both mapped to the same internal name: "
+                    f"{sorted(phase_groups.keys())}"
+                )
+            seen_names.add(phase_name)
 
             label_match = re.search(r"Phase\s+[AB]:\s*(.+)", phase_str)
             phase_label = label_match.group(1).strip() if label_match else phase_str

@@ -3132,3 +3132,104 @@ class TestTask4RegressionLivePackages:
                 }
                 assert e["direction"]
                 assert 0 < e["weight"] <= 1.0
+
+
+# ---------------------------------------------------------------------------
+# Task 6: Phase structure validation (FRAGILITY-03, FRAGILITY-11)
+# ---------------------------------------------------------------------------
+
+_TABLE_ROW = (
+    "| Ind | src | mechanical | Above 10 | above | 0.50 | Note |"
+)
+_TABLE_HEADER = (
+    "| Indicator | Metric Source | Data Ownership | Threshold "
+    "| Direction | Weight | Rationale |\n"
+    "|-----------|--------------|----------------|-----------|"
+    "-----------|--------|-----------|\n"
+)
+
+
+class TestPhaseConsistencyValidation:
+    """FRAGILITY-11: mixed phased/unphased indicators are rejected."""
+
+    def test_mixed_phased_unphased_raises(self):
+        """Indicators both inside and outside phase sections → error."""
+        text = (
+            "## activation_table\n\n"
+            f"{_TABLE_HEADER}"
+            "| Orphan | src | mechanical | Above 5 | above | 0.30 | Note |\n\n"
+            "### Phase A: Alpha\n\n"
+            f"{_TABLE_HEADER}"
+            f"{_TABLE_ROW}\n\n"
+            "### Phase B: Beta\n\n"
+            f"{_TABLE_HEADER}"
+            "| Ind B | src | mechanical | Below 3 | below | 0.40 | Note |\n"
+        )
+        with pytest.raises(ValueError, match="Mixed phased and unphased"):
+            parse_activation_table(text)
+
+    def test_all_phased_passes(self):
+        """All indicators inside phase sections → no error."""
+        text = (
+            "## activation_table\n\n"
+            "### Phase A: Alpha\n\n"
+            f"{_TABLE_HEADER}"
+            f"{_TABLE_ROW}\n\n"
+            "### Phase B: Beta\n\n"
+            f"{_TABLE_HEADER}"
+            "| Ind B | src | mechanical | Below 3 | below | 0.40 | Note |\n"
+        )
+        entries = parse_activation_table(text)
+        assert len(entries) == 2
+        assert all(e["phase"] is not None for e in entries)
+
+    def test_all_unphased_passes(self):
+        """Single-phase theory with no phase subsections → no error."""
+        text = (
+            "## activation_table\n\n"
+            f"{_TABLE_HEADER}"
+            f"{_TABLE_ROW}\n"
+        )
+        entries = parse_activation_table(text)
+        assert len(entries) == 1
+        assert entries[0]["phase"] is None
+
+
+class TestPhaseStructureLivePackages:
+    """Task 6 regression: all 3 two-phase theories pass phase validation."""
+
+    def test_two_phase_theories_validated(self):
+        from backend.engine.activation import _build_phases_from_package
+
+        packages = load_all_theory_packages()
+        for pkg in packages:
+            if pkg.theory_id in _TWO_PHASE_THEORIES:
+                is_two_phase, phases = _build_phases_from_package(pkg)
+                assert is_two_phase, f"{pkg.theory_id}: expected two-phase"
+                assert len(phases) == 2, (
+                    f"{pkg.theory_id}: expected 2 phases, got {len(phases)}"
+                )
+                names = {p.phase_name for p in phases}
+                assert names == {"phase_a", "phase_b"}, (
+                    f"{pkg.theory_id}: expected phase_a/phase_b, got {names}"
+                )
+                for p in phases:
+                    assert len(p.phase_label) > 0, (
+                        f"{pkg.theory_id}/{p.phase_name}: empty phase label"
+                    )
+                    assert len(p.indicators) > 0, (
+                        f"{pkg.theory_id}/{p.phase_name}: no indicators"
+                    )
+
+    def test_single_phase_theories_unaffected(self):
+        from backend.engine.activation import _build_phases_from_package
+
+        packages = load_all_theory_packages()
+        for pkg in packages:
+            if pkg.theory_id in _SINGLE_PHASE_THEORIES:
+                is_two_phase, phases = _build_phases_from_package(pkg)
+                assert not is_two_phase, (
+                    f"{pkg.theory_id}: should be single-phase"
+                )
+                assert len(phases) == 1
+                assert phases[0].phase_name == "single"
