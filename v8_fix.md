@@ -245,9 +245,14 @@ Each task below is intended to be executed in a separate Claude Code session aft
 - diff results against the Task 0 baseline artifact where relevant
 
 **Update status:**
-- [ ] Task 2 not started
-- [ ] Task 2 in progress
-- [ ] Task 2 complete
+- [x] Task 2 complete
+
+#### Completion note — 2026-04-06
+- Summary: Fixed BUG-02 (11 non-canonical direction strings across 6 ACTIVATION.md files replaced with canonical values; `_parse_direction()` fallback removed, now raises ValueError). Fixed BUG-05 (threshold for `interest_exceeds_defense` changed to "Above 0" since field stores surplus; added 2 new computed fields `cash_exceeds_equity_yield` and `real_fed_funds_rate` in data_agent.py to make previously untestable prose thresholds mechanically checkable). Documented BUG-03 (RISING/FALLING explicitly marked as provisional threshold proxies in code comments).
+- Files changed: `theories/THEORY_MODULE_valuation_mean_reversion_v2/ACTIVATION.md`, `theories/THEORY_MODULE_fiscal_dominance_arithmatic_v2/ACTIVATION.md`, `theories/THEORY_MODULE_capital_flows_v2/ACTIVATION.md`, `theories/THEORY_MODULE_debt_cycle_long_v2/ACTIVATION.md`, `theories/THEORY_MODULE_debt_cycle_short_v2/ACTIVATION.md`, `theories/THEORY_MODULE_monetary_architecture_v2/ACTIVATION.md`, `backend/engine/activation.py`, `backend/engine/data_agent.py`, `scripts/v8_equivalence_check.py`, `backend/tests/test_activation_web_integration.py`
+- Validation run: `python -m pytest backend/tests/ -v` (734 passed, +32 new tests), `python -m scripts.v8_equivalence_check` (ALL PASS, 3 runs)
+- Result: fiscal_dominance_arithmetic 0.556→0.722 (Adjacent→Active, intentional improvement: interest_exceeds_defense now correctly triggers). valuation_mean_reversion stable at 0.706 Active (cash yield indicator correctly does not trigger via new computed comparison field). debt_cycle_long stable at 0.900 Active (real_fed_funds_rate=0.98, correctly not triggered below 0). capital_flows stable at 0.450 Adjacent Rotation (Phase A China credit direction fix has no effect on effective score). All other theories unchanged.
+- Residual risk: (1) RISING/FALLING directions remain provisional threshold proxies (no temporal trend data). (2) Unit-suffix stripping in `_extract_number()` does not scale ("$1.5T" extracts 1.5 not 1500) — currently produces correct results by coincidence for all active indicators, but not architecturally sound. Both are candidates for later remediation tasks.
 
 ---
 
@@ -540,7 +545,7 @@ The remediation is done only when all of the following are true:
 
 - [x] Task 0 complete
 - [x] Task 1 complete
-- [ ] Task 2 complete
+- [x] Task 2 complete
 - [ ] Task 3 complete
 - [ ] Task 4 complete
 - [ ] Task 5 complete

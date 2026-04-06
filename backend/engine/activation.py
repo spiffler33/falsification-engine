@@ -341,9 +341,16 @@ def _check_threshold(value: float, indicator: Indicator) -> bool:
     elif indicator.direction == Direction.BELOW:
         return value < threshold_num
     elif indicator.direction == Direction.RISING:
-        # For rising/falling, we'd need historical data. For v1, check against threshold.
+        # BUG-03 KNOWN LIMITATION: RISING/FALLING are treated as simple
+        # threshold comparisons (value > threshold / value < threshold)
+        # because the engine has no temporal trend data.  This is an
+        # explicitly provisional proxy — the check answers "is the current
+        # level above/below the threshold?" not "is the value trending
+        # up/down?"  Indicators that truly need trend detection should use
+        # computed fields with temporal logic in data_agent.py.
         return value > threshold_num
     elif indicator.direction == Direction.FALLING:
+        # See RISING note above — same provisional proxy applies.
         return value < threshold_num
     elif indicator.direction == Direction.BETWEEN:
         # Try to extract a range
@@ -401,13 +408,18 @@ def _parse_direction(raw: str) -> str:
     """Map a direction string to a Direction enum value.
 
     Handles compound directions (e.g. "above and rising") by matching the
-    first keyword — same heuristic the old parser used.
+    first canonical keyword.  Raises ValueError on unrecognized directions
+    so that non-canonical strings are surfaced loudly rather than silently
+    defaulting to "above" (BUG-02 fix).
     """
     low = raw.lower().strip()
     for keyword, value in _DIRECTION_KEYWORDS.items():
         if keyword in low:
             return value
-    return "above"
+    raise ValueError(
+        f"Unrecognized direction '{raw}' — must contain one of: "
+        f"{', '.join(_DIRECTION_KEYWORDS.keys())}"
+    )
 
 
 def _entry_to_indicator(entry: dict) -> Indicator:

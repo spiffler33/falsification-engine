@@ -36,14 +36,21 @@ OLD_CODE_COMMIT = "d7f3767"
 # Classification from Layer 1 automated tests (test_activation_equivalence.py).
 EXACT_MATCH = {
     "debt_cycle_short", "fiscal_dominance_liquidity", "structural_fragility",
-    "capital_flows", "fiscal_dominance_arithmetic",  # Fixed: v8 remediation Task 1
+    "capital_flows",  # Fixed: v8 remediation Task 1
 }
 TIER_MATCH = {"debt_cycle_long", "monetary_architecture"}
 KNOWN_DIVERGED = {
-    # valuation_mean_reversion: field resolution fixed (Task 1) but threshold
-    # extraction for cash-yield indicator has no extractable number in v2
-    # threshold text (BUG-05, Task 2 scope).  Recovery scenario diverges.
+    # valuation_mean_reversion: v8 scores 0.706 vs v1 0.882.  v1 was inflated
+    # by accidental threshold extraction ("1" from "(1/PE)").  v8 now has a
+    # proper computed comparison field; the indicator correctly does not trigger.
+    # Recovery scenario diverges (v8 Inactive, v1 Adjacent).
     "valuation_mean_reversion",
+    # fiscal_dominance_arithmetic: v8 scores 0.722 Active vs v1 0.556 Adjacent.
+    # v8 is MORE CORRECT: interest_exceeds_defense threshold fixed to "Above 0"
+    # (BUG-05 Task 2 fix).  v1 had prose threshold with no extractable number,
+    # so the indicator never triggered in either version.  Now it correctly
+    # triggers (surplus 287 > 0 = interest exceeds defense by $287B).
+    "fiscal_dominance_arithmetic",
 }
 
 

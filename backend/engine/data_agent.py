@@ -469,6 +469,29 @@ def _compute_metrics(
             detail="4.5% constant - 10Y yield (corporate profits data unavailable)",
         )
 
+    # --- Cash yield vs equity earnings yield (valuation_mean_reversion) ---
+    # Positive = cash (fed funds) pays more than equities yield.
+    # SPY earnings yield ≈ equity_risk_premium + 10Y yield.
+    fed_funds = fred_data.get("rates.fed_funds")
+    erp = computed.get("equity_risk_premium")
+    if fed_funds is not None and erp is not None and t10y is not None:
+        spy_earnings_yield = erp + t10y
+        computed["cash_exceeds_equity_yield"] = round(fed_funds - spy_earnings_yield, 2)
+        provenance["cash_exceeds_equity_yield"] = FieldProvenance(
+            method="primary",
+            detail=f"fed_funds ({fed_funds}) - (ERP ({erp}) + 10Y ({t10y}))",
+        )
+
+    # --- Real fed funds rate (debt_cycle_long) ---
+    # Negative real rate = financial repression signature.
+    cpi_yoy = fred_data.get("inflation.cpi_yoy")
+    if fed_funds is not None and cpi_yoy is not None:
+        computed["real_fed_funds_rate"] = round(fed_funds - cpi_yoy, 2)
+        provenance["real_fed_funds_rate"] = FieldProvenance(
+            method="primary",
+            detail=f"fed_funds ({fed_funds}) - CPI YoY ({cpi_yoy})",
+        )
+
     # --- Net liquidity (Fed BS - TGA - RRP) ---
     fed_bs = fred_data.get("liquidity.fed_balance_sheet")
     tga = fred_data.get("liquidity.tga")

@@ -562,13 +562,16 @@ class TestAffectedTheoryScoring:
         assert result.score > 0.60
 
     def test_fiscal_dominance_arithmetic_no_longer_inactive(self, briefing, packages):
-        """Was 0.056 Inactive (BUG-01), should be Adjacent (0.556) after fix."""
+        """Was 0.056 Inactive (BUG-01), then 0.556 Adjacent (Task 1).
+        Now 0.722 Active (Task 2 BUG-05 fix: interest_exceeds_defense
+        threshold corrected to 'Above 0', enabling the indicator to trigger
+        since the computed surplus is 287 > 0)."""
         from backend.engine.activation import score_package
         result = score_package(packages["fiscal_dominance_arithmetic"], briefing)
-        assert result.tier == ActivationTier.ADJACENT, (
-            f"Expected Adjacent, got {result.tier} (score={result.score:.3f})"
+        assert result.tier == ActivationTier.ACTIVE, (
+            f"Expected Active, got {result.tier} (score={result.score:.3f})"
         )
-        assert abs(result.score - 0.556) < 0.01
+        assert abs(result.score - 0.722) < 0.01
 
     def test_capital_flows_no_longer_inactive(self, briefing, packages):
         """Was N/A Inactive (BUG-01), should be Adjacent (Rotation, 0.450) after fix."""
@@ -596,3 +599,212 @@ class TestAffectedTheoryScoring:
         assert ir_result is not None
         assert ir_result["triggered"] is True
         assert ir_result["metric_field"] == "interest_receipts_ratio"
+
+    def test_interest_exceeds_defense_triggers(self, briefing, packages):
+        """BUG-05 fix: interest_exceeds_defense=287 now triggers with
+        threshold 'Above 0' (surplus: positive = interest exceeds defense)."""
+        from backend.engine.activation import score_package
+        result = score_package(packages["fiscal_dominance_arithmetic"], briefing)
+        ind = result.indicator_results.get(
+            "Interest expense exceeds major discretionary category"
+        )
+        assert ind is not None, "interest_exceeds_defense indicator missing"
+        assert ind["triggered"] is True, (
+            f"Should trigger: value {ind.get('value')} should be above 0"
+        )
+
+    def test_china_credit_accumulation_not_triggered(self, briefing, packages):
+        """BUG-02 fix: China credit impulse=3.5 (positive) should NOT trigger
+        in Accumulation phase (direction corrected from fallback 'above' to 'below')."""
+        from backend.engine.activation import score_package
+        result = score_package(packages["capital_flows"], briefing)
+        ind = result.indicator_results.get(
+            "China credit impulse flat or negative"
+        )
+        assert ind is not None, "China credit accumulation indicator missing"
+        assert ind["triggered"] is False, (
+            f"Credit impulse 3.5 is positive — 'flat or negative' condition NOT met"
+        )
+
+
+# ---------------------------------------------------------------------------
+# Task 2: BUG-02 / BUG-03 / BUG-05 unit tests
+# ---------------------------------------------------------------------------
+
+class TestParseDirectionBUG02:
+    """BUG-02: _parse_direction must reject non-canonical directions loudly."""
+
+    def test_canonical_above(self):
+        from backend.engine.activation import _parse_direction
+        assert _parse_direction("above") == "above"
+
+    def test_canonical_below(self):
+        from backend.engine.activation import _parse_direction
+        assert _parse_direction("below") == "below"
+
+    def test_canonical_rising(self):
+        from backend.engine.activation import _parse_direction
+        assert _parse_direction("rising") == "rising"
+
+    def test_canonical_falling(self):
+        from backend.engine.activation import _parse_direction
+        assert _parse_direction("falling") == "falling"
+
+    def test_canonical_between(self):
+        from backend.engine.activation import _parse_direction
+        assert _parse_direction("between") == "between"
+
+    def test_compound_above_and_rising(self):
+        from backend.engine.activation import _parse_direction
+        assert _parse_direction("above and rising") == "above"
+
+    def test_compound_below_or_falling(self):
+        from backend.engine.activation import _parse_direction
+        assert _parse_direction("below or falling") == "below"
+
+    def test_compound_below_and_stable_tightening(self):
+        from backend.engine.activation import _parse_direction
+        assert _parse_direction("below and stable/tightening") == "below"
+
+    def test_compound_rising_sharply(self):
+        from backend.engine.activation import _parse_direction
+        assert _parse_direction("rising sharply") == "rising"
+
+    def test_case_insensitive(self):
+        from backend.engine.activation import _parse_direction
+        assert _parse_direction("Above") == "above"
+        assert _parse_direction("BELOW") == "below"
+        assert _parse_direction("Falling") == "falling"
+
+    def test_rejects_diverging(self):
+        """Was BUG-02: 'diverging' used to silently default to 'above'."""
+        from backend.engine.activation import _parse_direction
+        with pytest.raises(ValueError, match="Unrecognized direction"):
+            _parse_direction("diverging")
+
+    def test_rejects_positive(self):
+        from backend.engine.activation import _parse_direction
+        with pytest.raises(ValueError, match="Unrecognized direction"):
+            _parse_direction("positive")
+
+    def test_rejects_tightening(self):
+        from backend.engine.activation import _parse_direction
+        with pytest.raises(ValueError, match="Unrecognized direction"):
+            _parse_direction("tightening")
+
+    def test_rejects_negative(self):
+        from backend.engine.activation import _parse_direction
+        with pytest.raises(ValueError, match="Unrecognized direction"):
+            _parse_direction("negative")
+
+    def test_rejects_declining_share(self):
+        from backend.engine.activation import _parse_direction
+        with pytest.raises(ValueError, match="Unrecognized direction"):
+            _parse_direction("declining share")
+
+    def test_rejects_widening_more_negative(self):
+        from backend.engine.activation import _parse_direction
+        with pytest.raises(ValueError, match="Unrecognized direction"):
+            _parse_direction("widening (more negative)")
+
+    def test_rejects_at_or_near_floor(self):
+        from backend.engine.activation import _parse_direction
+        with pytest.raises(ValueError, match="Unrecognized direction"):
+            _parse_direction("at or near floor recently")
+
+    def test_rejects_gap_widening(self):
+        from backend.engine.activation import _parse_direction
+        with pytest.raises(ValueError, match="Unrecognized direction"):
+            _parse_direction("Gap widening or at extreme")
+
+    def test_rejects_flat_or_negative(self):
+        from backend.engine.activation import _parse_direction
+        with pytest.raises(ValueError, match="Unrecognized direction"):
+            _parse_direction("Flat or negative")
+
+    def test_rejects_empty_string(self):
+        from backend.engine.activation import _parse_direction
+        with pytest.raises(ValueError, match="Unrecognized direction"):
+            _parse_direction("")
+
+
+class TestThresholdExtractionBUG05:
+    """BUG-05: threshold extraction for prose thresholds."""
+
+    def test_above_zero_extracts_zero(self):
+        """Surplus thresholds like interest_exceeds_defense should extract 0."""
+        from backend.engine.activation import _extract_number
+        assert _extract_number("Above 0 (surplus: positive = interest exceeds defense)") == 0.0
+
+    def test_below_zero_extracts_zero(self):
+        """Real rate thresholds should extract 0."""
+        from backend.engine.activation import _extract_number
+        assert _extract_number("Below 0 (negative real rate = financial repression)") == 0.0
+
+    def test_numeric_with_unit_suffix(self):
+        from backend.engine.activation import _extract_number
+        assert _extract_number("Above 300bp") == 300.0
+        assert _extract_number("Below 5.0%") == 5.0
+
+    def test_prose_threshold_no_number(self):
+        """Pure prose thresholds should return None."""
+        from backend.engine.activation import _extract_number
+        assert _extract_number("Annual interest expense > defense spending") is None
+
+    def test_interest_exceeds_defense_triggers(self):
+        """Surplus field: 287 > 0 should trigger with direction 'above'."""
+        ind = Indicator(
+            name="test", metric_source="", weight=1.0,
+            threshold="Above 0 (positive = interest exceeds defense)",
+            direction=Direction.ABOVE,
+        )
+        assert _check_threshold(287.0, ind) is True
+
+    def test_interest_exceeds_defense_negative_surplus(self):
+        """If interest does NOT exceed defense, surplus is negative → no trigger."""
+        ind = Indicator(
+            name="test", metric_source="", weight=1.0,
+            threshold="Above 0 (positive = interest exceeds defense)",
+            direction=Direction.ABOVE,
+        )
+        assert _check_threshold(-150.0, ind) is False
+
+    def test_cash_exceeds_equity_threshold(self):
+        """cash_exceeds_equity_yield < 0 means cash does NOT exceed equity yield."""
+        ind = Indicator(
+            name="test", metric_source="", weight=1.0,
+            threshold="Above 0 (positive = cash yield exceeds equity)",
+            direction=Direction.ABOVE,
+        )
+        assert _check_threshold(-1.03, ind) is False
+        assert _check_threshold(0.5, ind) is True
+
+    def test_real_rate_below_zero(self):
+        """Positive real rate (0.98) should NOT trigger 'below 0'."""
+        ind = Indicator(
+            name="test", metric_source="", weight=1.0,
+            threshold="Below 0 (negative = financial repression)",
+            direction=Direction.BELOW,
+        )
+        assert _check_threshold(0.98, ind) is False
+        assert _check_threshold(-1.5, ind) is True
+
+
+class TestRisingFallingBUG03:
+    """BUG-03: RISING/FALLING documented as provisional threshold proxies."""
+
+    def test_rising_treated_as_above(self):
+        ind = Indicator(
+            name="test", metric_source="", weight=1.0,
+            threshold="Above 3.0", direction=Direction.RISING,
+        )
+        assert _check_threshold(3.5, ind) is True
+        assert _check_threshold(2.5, ind) is False
+
+    def test_falling_treated_as_below(self):
+        ind = Indicator(
+            name="test", metric_source="", weight=1.0,
+            threshold="Below 7.0", direction=Direction.FALLING,
+        )
+        assert _check_threshold(6.5, ind) is True
+        assert _check_threshold(7.5, ind) is False
