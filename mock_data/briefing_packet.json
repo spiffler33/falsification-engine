@@ -1,5 +1,5 @@
 {
-  "timestamp": "2026-04-06T07:06:30.033323+00:00",
+  "timestamp": "2026-04-06T07:27:09.275637+00:00",
   "staleness_hours": 0.0,
   "growth": {
     "gdp_latest": 31442.483,
@@ -45,7 +45,8 @@
     "real_fed_funds_rate": 0.98,
     "net_liquidity": 5827299.0,
     "net_liquidity_30d_change": 101440.0,
-    "gold_oil_ratio": 3.11,
+    "gold_oil_ratio": 42.3,
+    "dxy_index": 100.08,
     "em_us_relative_3m": 7.27,
     "eem_spy_3m_relative": 7.27,
     "em_us_relative_12m": 9.5,
@@ -69,12 +70,6 @@
     "interest_exceeds_defense": 287.0
   },
   "markets": {
-    "RSP": {
-      "price": 193.09,
-      "return_1m": -4.83,
-      "return_3m": 0.8,
-      "return_12m": 15.95
-    },
     "QQQ": {
       "price": 584.98,
       "return_1m": -4.22,
@@ -87,17 +82,35 @@
       "return_3m": 2.08,
       "return_12m": 32.5
     },
-    "DIA": {
-      "price": 465.06,
-      "return_1m": -4.65,
-      "return_3m": -3.23,
-      "return_12m": 14.77
+    "RSP": {
+      "price": 193.09,
+      "return_1m": -4.83,
+      "return_3m": 0.8,
+      "return_12m": 15.95
     },
     "SPY": {
       "price": 655.83,
       "return_1m": -4.28,
       "return_3m": -3.83,
       "return_12m": 22.2
+    },
+    "DIA": {
+      "price": 465.06,
+      "return_1m": -4.65,
+      "return_3m": -3.23,
+      "return_12m": 14.77
+    },
+    "FXI": {
+      "price": 35.56,
+      "return_1m": -1.8,
+      "return_3m": -7.13,
+      "return_12m": 0.97
+    },
+    "KWEB": {
+      "price": 28.09,
+      "return_1m": -6.34,
+      "return_3m": -17.5,
+      "return_12m": -18.72
     },
     "EEM": {
       "price": 56.59,
@@ -111,23 +124,17 @@
       "return_3m": 2.05,
       "return_12m": 22.01
     },
-    "KWEB": {
-      "price": 28.09,
-      "return_1m": -6.34,
-      "return_3m": -17.5,
-      "return_12m": -18.72
-    },
-    "FXI": {
-      "price": 35.56,
-      "return_1m": -1.8,
-      "return_3m": -7.13,
-      "return_12m": 0.97
-    },
     "MDY": {
       "price": 622.4,
       "return_1m": -3.79,
       "return_3m": 3.17,
       "return_12m": 22.4
+    },
+    "EWJ": {
+      "price": 85.29,
+      "return_1m": -3.73,
+      "return_3m": 5.64,
+      "return_12m": 30.39
     },
     "EWZ": {
       "price": 38.35,
@@ -135,11 +142,11 @@
       "return_3m": 20.71,
       "return_12m": 45.65
     },
-    "EWJ": {
-      "price": 85.29,
-      "return_1m": -3.73,
-      "return_3m": 5.64,
-      "return_12m": 30.39
+    "INDA": {
+      "price": 46.65,
+      "return_1m": -7.2,
+      "return_3m": -13.69,
+      "return_12m": -8.85
     },
     "VGK": {
       "price": 83.22,
@@ -153,18 +160,6 @@
       "return_3m": -6.12,
       "return_12m": 8.63
     },
-    "INDA": {
-      "price": 46.65,
-      "return_1m": -7.2,
-      "return_3m": -13.69,
-      "return_12m": -8.85
-    },
-    "EWT": {
-      "price": 70.77,
-      "return_1m": -1.19,
-      "return_3m": 11.4,
-      "return_12m": 53.68
-    },
     "EWU": {
       "price": 46.23,
       "return_1m": -2.14,
@@ -176,6 +171,12 @@
       "return_1m": -4.26,
       "return_3m": 7.29,
       "return_12m": 20.86
+    },
+    "EWT": {
+      "price": 70.77,
+      "return_1m": -1.19,
+      "return_3m": 11.4,
+      "return_12m": 53.68
     },
     "EIDO": {
       "price": 15.54,
@@ -207,17 +208,17 @@
       "return_3m": -0.42,
       "return_12m": -5.51
     },
-    "SHY": {
-      "price": 82.36,
-      "return_1m": -0.47,
-      "return_3m": -0.56,
-      "return_12m": -0.45
-    },
     "IEF": {
       "price": 95.26,
       "return_1m": -1.6,
       "return_3m": -0.94,
       "return_12m": -1.07
+    },
+    "SHY": {
+      "price": 82.36,
+      "return_1m": -0.47,
+      "return_3m": -0.56,
+      "return_12m": -0.45
     },
     "HYG": {
       "price": 79.56,
@@ -225,17 +226,17 @@
       "return_3m": -1.33,
       "return_12m": 2.17
     },
-    "LQD": {
-      "price": 109.12,
-      "return_1m": -1.67,
-      "return_3m": -0.97,
-      "return_12m": 0.2
-    },
     "TIP": {
       "price": 110.81,
       "return_1m": -0.4,
       "return_3m": 0.82,
       "return_12m": -0.14
+    },
+    "LQD": {
+      "price": 109.12,
+      "return_1m": -1.67,
+      "return_3m": -0.97,
+      "return_12m": 0.2
     },
     "EMB": {
       "price": 93.97,
@@ -255,17 +256,17 @@
       "return_3m": -0.66,
       "return_12m": -0.24
     },
-    "BNDX": {
-      "price": 47.96,
-      "return_1m": -1.66,
-      "return_3m": -0.75,
-      "return_12m": -2.12
-    },
     "BWX": {
       "price": 21.88,
       "return_1m": -3.06,
       "return_3m": -2.89,
       "return_12m": -2.37
+    },
+    "BNDX": {
+      "price": 47.96,
+      "return_1m": -1.66,
+      "return_3m": -0.75,
+      "return_12m": -2.12
     },
     "GOVT": {
       "price": 22.88,
@@ -285,17 +286,17 @@
       "return_3m": 1.07,
       "return_12m": -0.14
     },
-    "GLD": {
-      "price": 429.41,
-      "return_1m": -8.98,
-      "return_3m": 8.35,
-      "return_12m": 49.92
-    },
     "SLV": {
       "price": 65.79,
       "return_1m": -12.68,
       "return_3m": 2.13,
       "return_12m": 127.73
+    },
+    "GLD": {
+      "price": 429.41,
+      "return_1m": -8.98,
+      "return_3m": 8.35,
+      "return_12m": 49.92
     },
     "USO": {
       "price": 137.92,
@@ -327,12 +328,6 @@
       "return_3m": 7.06,
       "return_12m": 111.15
     },
-    "PPLT": {
-      "price": 180.79,
-      "return_1m": -7.41,
-      "return_3m": -3.03,
-      "return_12m": 108.91
-    },
     "WEAT": {
       "price": 22.87,
       "return_1m": 4.96,
@@ -345,17 +340,17 @@
       "return_3m": 2.59,
       "return_12m": -2.62
     },
+    "PPLT": {
+      "price": 180.79,
+      "return_1m": -7.41,
+      "return_3m": -3.03,
+      "return_12m": 108.91
+    },
     "DBA": {
       "price": 27.16,
       "return_1m": 3.98,
       "return_3m": 6.43,
       "return_12m": 0.67
-    },
-    "XLK": {
-      "price": 135.99,
-      "return_1m": -2.75,
-      "return_3m": -5.54,
-      "return_12m": 39.31
     },
     "XLF": {
       "price": 49.53,
@@ -375,6 +370,18 @@
       "return_3m": -5.16,
       "return_12m": 2.57
     },
+    "XLK": {
+      "price": 135.99,
+      "return_1m": -2.75,
+      "return_3m": -5.54,
+      "return_12m": 39.31
+    },
+    "XLU": {
+      "price": 46.34,
+      "return_1m": -1.97,
+      "return_3m": 8.55,
+      "return_12m": 17.44
+    },
     "XLI": {
       "price": 163.77,
       "return_1m": -6.93,
@@ -387,23 +394,17 @@
       "return_3m": 3.12,
       "return_12m": 1.94
     },
-    "XLU": {
-      "price": 46.34,
-      "return_1m": -1.97,
-      "return_3m": 8.55,
-      "return_12m": 17.44
+    "XLB": {
+      "price": 50.41,
+      "return_1m": -2.91,
+      "return_3m": 11.16,
+      "return_12m": 21.35
     },
     "XLP": {
       "price": 81.89,
       "return_1m": -6.05,
       "return_3m": 5.42,
       "return_12m": -0.16
-    },
-    "XLB": {
-      "price": 50.41,
-      "return_1m": -2.91,
-      "return_3m": 11.16,
-      "return_12m": 21.35
     },
     "XLC": {
       "price": 111.7,
@@ -429,17 +430,17 @@
       "return_3m": 5.77,
       "return_12m": 65.04
     },
-    "KRE": {
-      "price": 66.0,
-      "return_1m": -2.22,
-      "return_3m": 1.84,
-      "return_12m": 28.63
-    },
     "KBE": {
       "price": 60.24,
       "return_1m": -2.57,
       "return_3m": -0.74,
       "return_12m": 23.9
+    },
+    "KRE": {
+      "price": 66.0,
+      "return_1m": -2.22,
+      "return_3m": 1.84,
+      "return_12m": 28.63
     },
     "XOP": {
       "price": 177.72,
@@ -447,23 +448,17 @@
       "return_3m": 40.76,
       "return_12m": 48.77
     },
-    "OIH": {
-      "price": 399.05,
-      "return_1m": 4.13,
-      "return_3m": 40.13,
-      "return_12m": 68.5
-    },
     "ITB": {
       "price": 90.25,
       "return_1m": -12.52,
       "return_3m": -6.28,
       "return_12m": -0.56
     },
-    "JETS": {
-      "price": 24.93,
-      "return_1m": -8.75,
-      "return_3m": -11.19,
-      "return_12m": 30.39
+    "OIH": {
+      "price": 399.05,
+      "return_1m": 4.13,
+      "return_3m": 40.13,
+      "return_12m": 68.5
     },
     "XHB": {
       "price": 98.22,
@@ -471,11 +466,23 @@
       "return_3m": -4.6,
       "return_12m": 6.97
     },
+    "JETS": {
+      "price": 24.93,
+      "return_1m": -8.75,
+      "return_3m": -11.19,
+      "return_12m": 30.39
+    },
     "XME": {
       "price": 110.78,
       "return_1m": -5.84,
       "return_3m": 6.92,
       "return_12m": 112.02
+    },
+    "FXY": {
+      "price": 57.54,
+      "return_1m": -1.62,
+      "return_3m": -1.93,
+      "return_12m": -8.77
     },
     "UUP": {
       "price": 27.86,
@@ -489,18 +496,6 @@
       "return_3m": -1.92,
       "return_12m": 4.82
     },
-    "FXY": {
-      "price": 57.54,
-      "return_1m": -1.62,
-      "return_3m": -1.93,
-      "return_12m": -8.77
-    },
-    "FXB": {
-      "price": 127.05,
-      "return_1m": -1.21,
-      "return_3m": -2.08,
-      "return_12m": 1.03
-    },
     "IBIT": {
       "price": 37.97,
       "return_1m": -8.37,
@@ -513,6 +508,12 @@
       "return_3m": -24.26,
       "return_12m": -48.35
     },
+    "FXB": {
+      "price": 127.05,
+      "return_1m": -1.21,
+      "return_3m": -2.08,
+      "return_12m": 1.03
+    },
     "VNQ": {
       "price": 90.23,
       "return_1m": -5.56,
@@ -524,12 +525,6 @@
       "return_1m": -7.53,
       "return_3m": -2.23,
       "return_12m": 9.72
-    },
-    "IYR": {
-      "price": 96.25,
-      "return_1m": -4.76,
-      "return_3m": 2.51,
-      "return_12m": 3.24
     },
     "^VIX": {
       "price": 23.87,
@@ -544,7 +539,7 @@
       "return_12m": -0.83
     },
     "DX-Y.NYB": {
-      "price": 100.083,
+      "price": 100.08,
       "return_1m": 0.77,
       "return_3m": 1.69,
       "return_12m": -3.08
@@ -555,17 +550,35 @@
       "return_3m": 1.48,
       "return_12m": 6.28
     },
+    "IYR": {
+      "price": 96.25,
+      "return_1m": -4.76,
+      "return_3m": 2.51,
+      "return_12m": 3.24
+    },
+    "GC=F": {
+      "price": 4676.2998,
+      "return_1m": -7.68,
+      "return_3m": 8.39,
+      "return_12m": 58.45
+    },
     "EURUSD=X": {
-      "price": 1.1531,
-      "return_1m": -0.66,
-      "return_3m": -1.34,
-      "return_12m": 2.43
+      "price": 1.1535,
+      "return_1m": -0.63,
+      "return_3m": -1.31,
+      "return_12m": 2.47
+    },
+    "CL=F": {
+      "price": 110.66,
+      "return_1m": 36.6,
+      "return_3m": 93.06,
+      "return_12m": 82.31
     },
     "JPYUSD=X": {
       "price": 0.0063,
-      "return_1m": -1.34,
+      "return_1m": -1.35,
       "return_3m": -1.88,
-      "return_12m": -9.97
+      "return_12m": -9.98
     }
   },
   "web_sourced": {
@@ -728,6 +741,10 @@
     "real_fed_funds_rate": {
       "method": "primary",
       "detail": "fed_funds (3.64) - CPI YoY (2.66)"
+    },
+    "gold_oil_ratio": {
+      "method": "primary",
+      "detail": "GC=F (4676.2998) / CL=F (110.66)"
     },
     "buffett_indicator": {
       "method": "missing",

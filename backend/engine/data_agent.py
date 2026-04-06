@@ -279,13 +279,15 @@ ETF_UNIVERSE = [
     "VNQ", "VNQI", "IYR", "REM",
 ]
 
-# Special tickers for VIX and FX (Yahoo format)
+# Special tickers for VIX, FX, and commodity futures (Yahoo format)
 SPECIAL_TICKERS = {
     "^VIX": "^VIX",
     "DX-Y.NYB": "DX-Y.NYB",      # DXY Dollar Index
     "CNYUSD=X": "CNYUSD=X",
     "EURUSD=X": "EURUSD=X",
     "JPYUSD=X": "JPYUSD=X",
+    "GC=F": "GC=F",              # Gold futures (continuous)
+    "CL=F": "CL=F",              # WTI crude oil futures (continuous)
 }
 
 # Concurrency: how many curl processes to run in parallel
@@ -503,11 +505,26 @@ def _compute_metrics(
     # --- Net liquidity 30d change (from FRED time series) ---
     computed["net_liquidity_30d_change"] = _compute_net_liq_30d_change(fred_timeseries)
 
-    # --- Gold/Oil ratio (GLD price / USO price) ---
-    gld = market_data.get("GLD")
-    uso = market_data.get("USO")
-    if gld and uso and gld.price and uso.price and uso.price > 0:
-        computed["gold_oil_ratio"] = round(gld.price / uso.price, 2)
+    # --- Gold/Oil ratio (commodity futures: GC=F / CL=F) ---
+    # A-01 fix: use actual commodity prices, not ETF proxies (GLD/USO).
+    # GLD/USO ratio (~3) is economically meaningless; real ratio is ~60-70.
+    gold_futures = market_data.get("GC=F")
+    oil_futures = market_data.get("CL=F")
+    if (gold_futures and oil_futures
+            and gold_futures.price and oil_futures.price
+            and oil_futures.price > 0):
+        computed["gold_oil_ratio"] = round(gold_futures.price / oil_futures.price, 1)
+        provenance["gold_oil_ratio"] = FieldProvenance(
+            method="primary",
+            detail=f"GC=F ({gold_futures.price}) / CL=F ({oil_futures.price})",
+        )
+
+    # --- DXY index (A-07 fix: expose DX-Y.NYB through computed field) ---
+    # DX-Y.NYB is fetched but get_field can't resolve it (not ^/$ prefixed).
+    # Expose as a plain computed field so theory backtick refs work.
+    dxy_data = market_data.get("DX-Y.NYB")
+    if dxy_data and dxy_data.price is not None:
+        computed["dxy_index"] = round(dxy_data.price, 2)
 
     # --- EM/US relative (EEM return - SPY return) ---
     eem = market_data.get("EEM")
