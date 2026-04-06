@@ -18,6 +18,7 @@ from backend.schemas.theory import (
     IndicatorOwnership,
     Severity,
     TheoryPackage,
+    ValidationReport,
 )
 
 REQUIRED_FILES = ("CORE.md", "ACTIVATION.md", "TACTICAL.md", "PLAYBOOK.md")
@@ -1483,6 +1484,235 @@ def enrich_theory_package(pkg: TheoryPackage) -> TheoryPackage:
         "data_ownership": ownership,
         "context_flags": flags,
     })
+
+
+# ---------------------------------------------------------------------------
+# Unit 16: Theory-package validation pass (Task 7 capstone)
+#
+# Architecture: this is a LOAD-TIME pre-flight gate.  It runs before
+# scoring and aggregates ALL failures into a single ValidationReport
+# rather than raising on the first.
+#
+# The validator calls the SAME parsers that enrich_theory_package() uses
+# (which already raise on structural impossibilities via Tasks 1-6).
+# On top of that, it adds cross-cutting checks that no single parser
+# can see: metric resolution, direction validity, threshold parseability,
+# weight range, and phase coherence.
+#
+# Parse-time checks (Tasks 1-6) still exist and still raise on malformed
+# input.  The validator catches those raises and converts them into
+# findings.  This means:
+#   - If you call enrich_theory_package() directly, you get fail-fast.
+#   - If you call validate_theory_package(), you get fail-aggregated.
+#   - score_package() calls validate first, so scoring never runs on
+#     packages that fail validation.
+# ---------------------------------------------------------------------------
+
+# Direction keywords recognized by activation.py's _parse_direction()
+_VALID_DIRECTIONS = {"above", "below", "rising", "falling", "between"}
+
+
+def validate_theory_package(
+    pkg: TheoryPackage,
+    report: ValidationReport | None = None,
+) -> ValidationReport:
+    """Validate a theory package against all machine contracts.
+
+    Checks every contract formalized in Tasks 1-6:
+      1. Required sections exist (CORE.md + ACTIVATION.md)
+      2. theory_id is extractable and valid
+      3. Activation table parses without error
+      4. All indicators have valid data_ownership
+      5. All indicators have recognized direction strings
+      6. All weights are numeric and in valid range
+      7. All thresholds are parseable (numeric extractable) or
+         explicitly flagged
+      8. Metric sources resolve to a field name (backtick or web-search)
+      9. Falsifier tables parse without error
+     10. Falsifier registry join succeeds (no orphans)
+     11. Context flags parse without error
+     12. Phase structure is valid for two-phase theories
+
+    Returns a ValidationReport.  If *report* is provided, findings are
+    appended to it (for batch validation of multiple packages).
+    """
+    if report is None:
+        report = ValidationReport()
+
+    tid = pkg.theory_id
+    report.theories_checked.append(tid)
+
+    # --- 1. Required sections ---
+    try:
+        validate_required_sections(pkg.core, pkg.activation)
+    except ValueError as e:
+        report.add(tid, "sections", "required_sections", str(e))
+        # If sections are missing, downstream parsers will fail too.
+        # Still continue to collect as many findings as possible.
+
+    # --- 2. theory_id extraction ---
+    try:
+        extracted_id = _extract_theory_id(pkg.core)
+        if extracted_id != tid:
+            report.add(
+                tid, "CORE.md", "theory_id",
+                f"Extracted theory_id {extracted_id!r} does not match "
+                f"package theory_id {tid!r}",
+            )
+    except ValueError as e:
+        report.add(tid, "CORE.md", "theory_id", str(e))
+
+    # --- 3-8. Activation table: parse + cross-cutting indicator checks ---
+    activation_entries: list[dict] = []
+    try:
+        activation_entries = parse_activation_table(pkg.activation)
+    except ValueError as e:
+        report.add(tid, "ACTIVATION.md", "activation_table", str(e))
+
+    # Import activation-layer helpers for cross-cutting checks.
+    # Deferred import to avoid circular dependency at module level.
+    from backend.engine.activation import (
+        _extract_metric_field,
+        _extract_number,
+        _parse_direction,
+    )
+
+    for entry in activation_entries:
+        ind_name = entry["indicator_name"]
+
+        # 5. Direction validity
+        try:
+            _parse_direction(entry["direction"])
+        except ValueError as e:
+            report.add(
+                tid, "ACTIVATION.md",
+                f"indicator:{ind_name}",
+                f"direction: {e}",
+            )
+
+        # 6. Weight range
+        w = entry["weight"]
+        if not (0.0 < w <= 1.0):
+            report.add(
+                tid, "ACTIVATION.md",
+                f"indicator:{ind_name}",
+                f"weight {w} outside valid range (0, 1.0]",
+            )
+
+        # 7. Threshold parseability
+        # NOTE severity: the engine handles non-numeric thresholds gracefully
+        # (_check_threshold returns False → indicator doesn't trigger).
+        # This is informational — the indicator is effectively dormant.
+        threshold_num = _extract_number(entry["threshold"])
+        direction_lower = entry["direction"].lower().strip()
+        if threshold_num is None and direction_lower != "between":
+            report.add(
+                tid, "ACTIVATION.md",
+                f"indicator:{ind_name}",
+                f"threshold {entry['threshold']!r} has no extractable "
+                f"numeric value — indicator will never trigger",
+                severity="note",
+            )
+        if direction_lower == "between":
+            nums = re.findall(r"[-+]?\d*\.?\d+", entry["threshold"])
+            if len(nums) < 2:
+                report.add(
+                    tid, "ACTIVATION.md",
+                    f"indicator:{ind_name}",
+                    f"BETWEEN direction requires 2 numbers in threshold "
+                    f"{entry['threshold']!r}, found {len(nums)}",
+                    severity="note",
+                )
+
+        # 8. Metric resolution
+        # NOTE severity: unresolvable metric sources produce value=None
+        # in the scorer, which is handled gracefully (indicator doesn't
+        # trigger or is skipped for web-search).  Informational only.
+        metric_field = _extract_metric_field(entry["metric_source"])
+        if metric_field is None and entry["data_ownership"] != "web-search":
+            report.add(
+                tid, "ACTIVATION.md",
+                f"indicator:{ind_name}",
+                f"metric_source {entry['metric_source']!r} does not "
+                f"resolve to a briefing field name",
+                severity="note",
+            )
+
+    # --- 9. Falsifier tables ---
+    try:
+        parse_deep_falsifiers(pkg.core)
+    except ValueError as e:
+        report.add(tid, "CORE.md", "deep_falsifiers", str(e))
+
+    try:
+        parse_falsifier_severity(pkg.activation)
+    except ValueError as e:
+        report.add(
+            tid, "ACTIVATION.md", "falsifier_severity_assignments", str(e),
+        )
+
+    # --- 10. Falsifier registry join (catches orphans) ---
+    try:
+        build_falsifier_registry(pkg.core, pkg.activation)
+    except ValueError as e:
+        report.add(tid, "CORE.md+ACTIVATION.md", "falsifier_registry", str(e))
+
+    # --- 11. Context flags ---
+    try:
+        parse_context_flags(pkg.activation)
+    except ValueError as e:
+        report.add(tid, "ACTIVATION.md", "context_flags", str(e))
+
+    # --- 12. Phase structure (two-phase theories) ---
+    phases_present = {e["phase"] for e in activation_entries if e["phase"]}
+    if len(phases_present) >= 2:
+        # Validate phase mapping without building full phases — re-use
+        # the same regex checks from _build_phases_from_package.
+        for phase_str in sorted(phases_present):
+            if not re.search(r"Phase\s*A\b", phase_str, re.IGNORECASE) and \
+               not re.search(r"Phase\s*B\b", phase_str, re.IGNORECASE):
+                report.add(
+                    tid, "ACTIVATION.md",
+                    f"phase:{phase_str}",
+                    f"Phase string does not contain 'Phase A' or 'Phase B'",
+                )
+
+        # Check for duplicate phase mappings
+        mapped_names: list[str] = []
+        for phase_str in sorted(phases_present):
+            if re.search(r"Phase\s*A\b", phase_str, re.IGNORECASE):
+                mapped_names.append("phase_a")
+            elif re.search(r"Phase\s*B\b", phase_str, re.IGNORECASE):
+                mapped_names.append("phase_b")
+        if len(mapped_names) != len(set(mapped_names)):
+            report.add(
+                tid, "ACTIVATION.md", "phase_structure",
+                f"Multiple phase strings map to the same internal name: "
+                f"{sorted(phases_present)}",
+            )
+
+    return report
+
+
+def validate_all_packages(
+    packages: list[TheoryPackage],
+) -> ValidationReport:
+    """Validate all theory packages and return a single aggregated report."""
+    report = ValidationReport()
+    for pkg in packages:
+        validate_theory_package(pkg, report)
+    return report
+
+
+class TheoryValidationError(Exception):
+    """Raised when theory package validation fails at the scoring gate.
+
+    Carries the full ValidationReport so callers can inspect all findings.
+    """
+
+    def __init__(self, report: ValidationReport) -> None:
+        self.report = report
+        super().__init__(report.summary())
 
 
 # ---------------------------------------------------------------------------

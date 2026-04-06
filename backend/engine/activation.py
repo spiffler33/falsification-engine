@@ -523,11 +523,33 @@ def _build_phases_from_package(pkg: TheoryPackage) -> tuple[bool, list[Activatio
     return is_two_phase, phases
 
 
-def score_package(pkg: TheoryPackage, briefing: BriefingPacket) -> ActivationResult:
+def score_package(
+    pkg: TheoryPackage,
+    briefing: BriefingPacket,
+    *,
+    skip_validation: bool = False,
+) -> ActivationResult:
     """Score activation for a v8 TheoryPackage against a briefing packet.
 
     Parses ACTIVATION.md internally — no adapter or TheoryModule needed.
+
+    Runs ``validate_theory_package()`` as a pre-flight gate before scoring
+    unless *skip_validation* is True.  Raises ``TheoryValidationError`` if
+    the package has error-severity validation failures.
+
+    *skip_validation* exists for batch scoring via ``score_all_packages()``,
+    which validates all packages in one pass before scoring any of them.
+    Individual callers should not set it.
     """
+    if not skip_validation:
+        from backend.engine.theory_loader import (
+            TheoryValidationError,
+            validate_theory_package,
+        )
+        report = validate_theory_package(pkg)
+        if not report.passed:
+            raise TheoryValidationError(report)
+
     is_two_phase, phases = _build_phases_from_package(pkg)
     module = TheoryModule(
         theory_id=pkg.theory_id,
@@ -541,5 +563,17 @@ def score_all_packages(
     packages: list[TheoryPackage],
     briefing: BriefingPacket,
 ) -> list[ActivationResult]:
-    """Score activation for all v8 TheoryPackages against a briefing packet."""
-    return [score_package(pkg, briefing) for pkg in packages]
+    """Score activation for all v8 TheoryPackages against a briefing packet.
+
+    Validates all packages in a single pass first.  If any package has
+    error-severity findings, raises ``TheoryValidationError`` with the
+    full report before scoring any package.
+    """
+    from backend.engine.theory_loader import (
+        TheoryValidationError,
+        validate_all_packages,
+    )
+    report = validate_all_packages(packages)
+    if not report.passed:
+        raise TheoryValidationError(report)
+    return [score_package(pkg, briefing, skip_validation=True) for pkg in packages]

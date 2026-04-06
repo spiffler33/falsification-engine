@@ -6,6 +6,7 @@ import pytest
 
 from backend.config import THEORIES_DIR
 from backend.engine.theory_loader import (
+    TheoryValidationError,
     _extract_phase_summary,
     _extract_stability_class,
     _extract_theory_id,
@@ -27,7 +28,9 @@ from backend.engine.theory_loader import (
     parse_interaction_matrix,
     parse_interaction_pairwise,
     parse_shared_upstream_warnings,
+    validate_all_packages,
     validate_required_sections,
+    validate_theory_package,
 )
 from backend.schemas.theory import (
     ContextFlag,
@@ -35,6 +38,7 @@ from backend.schemas.theory import (
     IndicatorOwnership,
     Severity,
     TheoryPackage,
+    ValidationReport,
 )
 
 EXPECTED_THEORY_IDS = {
@@ -3233,3 +3237,371 @@ class TestPhaseStructureLivePackages:
                 )
                 assert len(phases) == 1
                 assert phases[0].phase_name == "single"
+
+
+# ---------------------------------------------------------------------------
+# Task 7: Theory-package validation pass
+# ---------------------------------------------------------------------------
+
+# Minimal valid CORE.md template for test fixtures.
+_MINIMAL_CORE = """\
+# CORE.md — Test Theory
+
+*theory_id: `test_theory`*
+
+---
+
+## deep_falsifiers
+
+| # | Condition | Logic |
+|---|-----------|-------|
+| H1 | Market disproves theory | Theory killed |
+| S1 | Partial disconfirmation | Weakened |
+"""
+
+# Minimal valid ACTIVATION.md template for test fixtures.
+_MINIMAL_ACTIVATION = """\
+## activation_table
+
+| Indicator | Metric Source | Data Ownership | Threshold | Direction | Weight |
+|-----------|-------------|----------------|-----------|-----------|--------|
+| Test indicator A | `rates.fed_funds` | `mechanical` | Above 3.0 | above | 0.50 |
+| Test indicator B | `credit.hy_spread` | `mechanical` | Above 400bp | above | 0.50 |
+
+---
+
+## context_flags
+
+| Flag | Source | Data Ownership | What to Look For |
+|------|--------|----------------|------------------|
+| Test flag | Commentary | `qualitative` | Look for narrative shifts |
+
+---
+
+## falsifier_severity_assignments
+
+### Theory-level falsifiers (from CORE.md)
+
+| Falsifier | Classification | Rationale |
+|-----------|---------------|-----------|
+| H1 | Hard / theory-killing | Binary kill |
+| S1 | Soft | Weakens theory |
+
+### State-level falsifier severity
+
+| # | Condition | Severity | Implication |
+|---|-----------|----------|-------------|
+| S2 | Rate cut | minor | Reduces severity |
+"""
+
+
+def _make_package(
+    theory_id: str = "test_theory",
+    core: str = None,
+    activation: str = None,
+) -> TheoryPackage:
+    """Build a minimal valid TheoryPackage for testing."""
+    return TheoryPackage(
+        theory_id=theory_id,
+        core=core or _MINIMAL_CORE,
+        activation=activation or _MINIMAL_ACTIVATION,
+        tactical="# TACTICAL.md\n",
+        playbook="# PLAYBOOK.md\n",
+    )
+
+
+class TestValidateTheoryPackage:
+    """Tests for the Task 7 pre-flight validation pass."""
+
+    # --- Current packages pass clean ---
+
+    def test_all_8_packages_pass_validation(self):
+        """All 8 live theory packages must pass with 0 errors."""
+        packages = load_all_theory_packages()
+        report = validate_all_packages(packages)
+        assert report.passed, report.summary()
+        assert len(report.errors) == 0
+        assert len(report.theories_checked) == 8
+
+    def test_all_8_packages_notes_are_known_limitations(self):
+        """Notes surfaced by the validator are known data-resolution gaps."""
+        packages = load_all_theory_packages()
+        report = validate_all_packages(packages)
+        for note in report.notes:
+            assert note.severity == "note"
+            assert (
+                "no extractable numeric value" in note.message
+                or "does not resolve to a briefing field name" in note.message
+            ), f"Unexpected note: {note.message}"
+
+    # --- Minimal valid package passes ---
+
+    def test_minimal_valid_package_passes(self):
+        pkg = _make_package()
+        report = validate_theory_package(pkg)
+        assert report.passed, report.summary()
+        assert len(report.errors) == 0
+
+    # --- Required sections ---
+
+    def test_missing_activation_table_is_error(self):
+        bad_activation = _MINIMAL_ACTIVATION.replace(
+            "## activation_table", "## removed_section"
+        )
+        pkg = _make_package(activation=bad_activation)
+        report = validate_theory_package(pkg)
+        assert not report.passed
+        errors = [f for f in report.errors if "activation_table" in f.location
+                  or "activation_table" in f.message]
+        assert len(errors) >= 1
+
+    def test_missing_deep_falsifiers_is_error(self):
+        bad_core = _MINIMAL_CORE.replace(
+            "## deep_falsifiers", "## removed_section"
+        )
+        pkg = _make_package(core=bad_core)
+        report = validate_theory_package(pkg)
+        assert not report.passed
+        assert any("deep_falsifiers" in f.message for f in report.errors)
+
+    def test_missing_context_flags_is_error(self):
+        bad_activation = _MINIMAL_ACTIVATION.replace(
+            "## context_flags", "## removed_section"
+        )
+        pkg = _make_package(activation=bad_activation)
+        report = validate_theory_package(pkg)
+        assert not report.passed
+        assert any("context_flags" in f.message or "context_flags" in f.location
+                    for f in report.errors)
+
+    # --- theory_id ---
+
+    def test_theory_id_mismatch_is_error(self):
+        pkg = _make_package(theory_id="wrong_id")
+        report = validate_theory_package(pkg)
+        assert not report.passed
+        assert any("does not match" in f.message for f in report.errors)
+
+    def test_theory_id_not_extractable_is_error(self):
+        bad_core = "# CORE.md\n\nNo theory id here.\n\n## deep_falsifiers\n\n| # | Condition | Logic |\n|---|---|---|\n| H1 | fail | kill |\n"
+        pkg = _make_package(core=bad_core)
+        report = validate_theory_package(pkg)
+        assert not report.passed
+        assert any("theory_id" in f.location for f in report.errors)
+
+    # --- Direction validity ---
+
+    def test_invalid_direction_is_error(self):
+        bad_activation = _MINIMAL_ACTIVATION.replace(
+            "| above | 0.50 |", "| sideways | 0.50 |", 1,
+        )
+        pkg = _make_package(activation=bad_activation)
+        report = validate_theory_package(pkg)
+        assert not report.passed
+        assert any("direction" in f.message.lower() for f in report.errors)
+
+    # --- Weight range ---
+
+    def test_zero_weight_is_error(self):
+        bad_activation = _MINIMAL_ACTIVATION.replace(
+            "| above | 0.50 |", "| above | 0.00 |", 1,
+        )
+        pkg = _make_package(activation=bad_activation)
+        report = validate_theory_package(pkg)
+        assert not report.passed
+        assert any("weight" in f.message.lower() for f in report.errors)
+
+    def test_weight_above_one_is_error(self):
+        bad_activation = _MINIMAL_ACTIVATION.replace(
+            "| above | 0.50 |", "| above | 1.50 |", 1,
+        )
+        pkg = _make_package(activation=bad_activation)
+        report = validate_theory_package(pkg)
+        assert not report.passed
+        assert any("weight" in f.message.lower() for f in report.errors)
+
+    # --- Threshold parseability ---
+
+    def test_prose_threshold_is_note_not_error(self):
+        """Prose thresholds are informational notes, not blocking errors."""
+        bad_activation = _MINIMAL_ACTIVATION.replace(
+            "Above 3.0", "Fed funds exceeds nominal GDP growth rate",
+        )
+        pkg = _make_package(activation=bad_activation)
+        report = validate_theory_package(pkg)
+        assert report.passed, "Prose threshold should be a note, not an error"
+        assert any(
+            "no extractable numeric value" in f.message for f in report.notes
+        )
+
+    # --- Metric resolution ---
+
+    def test_unresolvable_metric_is_note_not_error(self):
+        """Metric sources that don't resolve are informational notes."""
+        bad_activation = _MINIMAL_ACTIVATION.replace(
+            "`rates.fed_funds`", "Some prose description of a metric",
+        )
+        pkg = _make_package(activation=bad_activation)
+        report = validate_theory_package(pkg)
+        assert report.passed, "Unresolvable metric should be a note, not error"
+        assert any(
+            "does not resolve" in f.message for f in report.notes
+        )
+
+    # --- Falsifier structure ---
+
+    def test_orphan_core_falsifier_is_error(self):
+        """CORE.md falsifier missing from ACTIVATION.md severity → error."""
+        extra_core = _MINIMAL_CORE + "| H99 | Extra condition | Extra logic |\n"
+        pkg = _make_package(core=extra_core)
+        report = validate_theory_package(pkg)
+        assert not report.passed
+        assert any("H99" in f.message for f in report.errors)
+
+    # --- Phase structure ---
+
+    def test_bad_phase_string_is_error(self):
+        """Two-phase theory with a phase that doesn't contain Phase A/B."""
+        # Use format 2 (separate ## activation_table headings) to inject
+        # a bad phase string that the parser actually tracks.
+        two_phase_activation = (
+            "## activation_table — Phase A: Expansion\n\n"
+            "| Indicator | Metric Source | Data Ownership | Threshold | Direction | Weight |\n"
+            "|-----------|-------------|----------------|-----------|-----------|--------|\n"
+            "| Test indicator A | `rates.fed_funds` | `mechanical` | Above 3.0 | above | 0.50 |\n\n"
+            "## activation_table — Bogus Label: Contraction\n\n"
+            "| Indicator | Metric Source | Data Ownership | Threshold | Direction | Weight |\n"
+            "|-----------|-------------|----------------|-----------|-----------|--------|\n"
+            "| Test indicator B | `credit.hy_spread` | `mechanical` | Above 400bp | above | 0.50 |\n\n"
+            "---\n\n"
+            + _MINIMAL_ACTIVATION.split("---\n\n", 1)[-1]
+        )
+        pkg = _make_package(activation=two_phase_activation)
+        report = validate_theory_package(pkg)
+        assert not report.passed
+        assert any("Phase A" in f.message or "Phase B" in f.message
+                    for f in report.errors)
+
+    # --- Aggregation: multiple errors collected ---
+
+    def test_multiple_errors_all_collected(self):
+        """Validator collects ALL errors, not just the first."""
+        bad_activation = _MINIMAL_ACTIVATION.replace(
+            "| above | 0.50 |", "| sideways | 0.00 |",  # two errors per row
+        )
+        pkg = _make_package(activation=bad_activation, theory_id="wrong_id")
+        report = validate_theory_package(pkg)
+        assert not report.passed
+        # At least: theory_id mismatch + direction error + weight error
+        assert len(report.errors) >= 3, (
+            f"Expected >= 3 errors, got {len(report.errors)}: "
+            + "; ".join(f.message for f in report.errors)
+        )
+
+    # --- Finding detail: names theory, section, indicator ---
+
+    def test_finding_names_theory_and_section(self):
+        bad_activation = _MINIMAL_ACTIVATION.replace(
+            "| above | 0.50 |", "| sideways | 0.50 |", 1,
+        )
+        pkg = _make_package(activation=bad_activation)
+        report = validate_theory_package(pkg)
+        err = report.errors[0]
+        assert err.theory_id == "test_theory"
+        assert err.section == "ACTIVATION.md"
+        assert "indicator:" in err.location
+
+    def test_finding_names_exact_indicator(self):
+        bad_activation = _MINIMAL_ACTIVATION.replace(
+            "| above | 0.50 |", "| sideways | 0.50 |", 1,
+        )
+        pkg = _make_package(activation=bad_activation)
+        report = validate_theory_package(pkg)
+        err = report.errors[0]
+        assert "Test indicator A" in err.location
+
+    # --- ValidationReport model ---
+
+    def test_report_summary_for_passing(self):
+        report = ValidationReport()
+        report.theories_checked.append("test")
+        assert "PASSED" in report.summary()
+        assert "0 findings" in report.summary()
+
+    def test_report_summary_for_failing(self):
+        report = ValidationReport()
+        report.theories_checked.append("test")
+        report.add("test", "ACTIVATION.md", "indicator:X", "bad direction")
+        assert "FAILED" in report.summary()
+        assert "1 error" in report.summary()
+
+    def test_report_errors_and_notes_properties(self):
+        report = ValidationReport()
+        report.theories_checked.append("test")
+        report.add("test", "ACTIVATION.md", "ind:A", "error msg")
+        report.add("test", "ACTIVATION.md", "ind:B", "note msg", severity="note")
+        assert len(report.errors) == 1
+        assert len(report.notes) == 1
+        assert not report.passed
+
+
+class TestScoringGateValidation:
+    """Tests for the validator gate wired into score_package/score_all_packages."""
+
+    def test_valid_packages_score_through_gate(self):
+        """All 8 live packages pass the validation gate and score."""
+        from backend.engine.activation import score_all_packages as score_all
+        from backend.schemas.briefing import BriefingPacket
+        import json
+
+        with open("mock_data/briefing_packet.json") as f:
+            data = json.load(f)
+        briefing = BriefingPacket(**data)
+        packages = load_all_theory_packages()
+        results = score_all(packages, briefing)
+        assert len(results) == 8
+
+    def test_malformed_package_blocked_by_gate(self):
+        """A package with error-severity findings raises TheoryValidationError."""
+        from backend.engine.activation import score_package
+        from backend.schemas.briefing import BriefingPacket
+        import json
+
+        with open("mock_data/briefing_packet.json") as f:
+            data = json.load(f)
+        briefing = BriefingPacket(**data)
+
+        bad_activation = _MINIMAL_ACTIVATION.replace(
+            "| above | 0.50 |", "| sideways | 0.50 |", 1,
+        )
+        pkg = _make_package(activation=bad_activation)
+
+        with pytest.raises(TheoryValidationError) as exc_info:
+            score_package(pkg, briefing)
+        assert not exc_info.value.report.passed
+        assert len(exc_info.value.report.errors) >= 1
+
+    def test_batch_scoring_validates_all_before_scoring_any(self):
+        """score_all_packages validates all packages before scoring any."""
+        from backend.engine.activation import score_all_packages as score_all
+        from backend.schemas.briefing import BriefingPacket
+        import json
+
+        with open("mock_data/briefing_packet.json") as f:
+            data = json.load(f)
+        briefing = BriefingPacket(**data)
+
+        good_pkg = _make_package()
+        bad_activation = _MINIMAL_ACTIVATION.replace(
+            "| above | 0.50 |", "| sideways | 0.50 |", 1,
+        )
+        bad_pkg = _make_package(
+            theory_id="bad_theory",
+            activation=bad_activation,
+            core=_MINIMAL_CORE.replace("test_theory", "bad_theory"),
+        )
+
+        with pytest.raises(TheoryValidationError) as exc_info:
+            score_all([good_pkg, bad_pkg], briefing)
+        # Both packages should appear in theories_checked
+        assert len(exc_info.value.report.theories_checked) == 2

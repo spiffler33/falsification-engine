@@ -170,3 +170,91 @@ class TheoryPackage(BaseModel):
     falsifier_registry: list[FalsifierEntry] = []
     data_ownership: list[IndicatorOwnership] = []
     context_flags: list[ContextFlag] = []
+
+
+# ---------------------------------------------------------------------------
+# Validation report models (Task 7: pre-flight validation gate)
+# ---------------------------------------------------------------------------
+
+class ValidationFinding(BaseModel):
+    """A single validation finding within a theory package.
+
+    Names the theory, section, indicator/row, and exact issue so the
+    human editor knows precisely what to fix.
+
+    Severity levels:
+      - ``"error"``: structural contract violation — scoring MUST NOT proceed.
+        Bad direction, bad ownership, missing sections, malformed tables.
+      - ``"note"``: data-resolution gap — the engine handles this gracefully
+        (indicator skipped or untriggered). Informational only; does not
+        block scoring.  Known limitations like prose thresholds or
+        unresolvable metric sources.
+    """
+    theory_id: str
+    section: str       # e.g. "ACTIVATION.md", "CORE.md", "phase_structure"
+    location: str      # e.g. indicator name, falsifier ID, row description
+    message: str       # what is wrong, human-readable
+    severity: Literal["error", "note"] = "error"
+
+
+class ValidationReport(BaseModel):
+    """Aggregated validation results for one or more theory packages.
+
+    The validator collects ALL findings rather than failing on the first,
+    so a single run surfaces every problem in the package.
+
+    ``passed`` is True only when there are zero error-severity findings.
+    Notes (informational) do not block scoring.
+    """
+    passed: bool = True
+    findings: list[ValidationFinding] = []
+    theories_checked: list[str] = []
+
+    @property
+    def errors(self) -> list[ValidationFinding]:
+        return [f for f in self.findings if f.severity == "error"]
+
+    @property
+    def notes(self) -> list[ValidationFinding]:
+        return [f for f in self.findings if f.severity == "note"]
+
+    def add(
+        self, theory_id: str, section: str, location: str, message: str,
+        *, severity: Literal["error", "note"] = "error",
+    ) -> None:
+        """Record a finding.  Errors mark the report as failed; notes do not."""
+        self.findings.append(ValidationFinding(
+            theory_id=theory_id, section=section,
+            location=location, message=message,
+            severity=severity,
+        ))
+        if severity == "error":
+            self.passed = False
+
+    def summary(self) -> str:
+        """Human-readable summary for console / log output."""
+        n_err = len(self.errors)
+        n_note = len(self.notes)
+        n_theories = len(self.theories_checked)
+        if self.passed and n_note == 0:
+            return (
+                f"Validation PASSED: {n_theories} "
+                f"theory package(s) checked, 0 findings."
+            )
+        status = "PASSED" if self.passed else "FAILED"
+        lines = [
+            f"Validation {status}: {n_theories} theory package(s), "
+            f"{n_err} error(s), {n_note} note(s).",
+            "",
+        ]
+        for f in self.errors:
+            lines.append(
+                f"  ERROR [{f.theory_id}] {f.section} > "
+                f"{f.location}: {f.message}"
+            )
+        for f in self.notes:
+            lines.append(
+                f"  NOTE  [{f.theory_id}] {f.section} > "
+                f"{f.location}: {f.message}"
+            )
+        return "\n".join(lines)

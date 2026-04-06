@@ -450,9 +450,21 @@ Each task below is intended to be executed in a separate Claude Code session aft
 - full run showing validator passes before scoring
 
 **Update status:**
-- [ ] Task 7 not started
-- [ ] Task 7 in progress
-- [ ] Task 7 complete
+- [x] Task 7 complete (2026-04-06)
+  - `validate_theory_package()` and `validate_all_packages()` added to `theory_loader.py` — centralized pre-flight gate checking all 12 machine contracts
+  - `ValidationReport` / `ValidationFinding` models added to `schemas/theory.py` with error/note severity distinction
+  - `TheoryValidationError` exception carries the full report
+  - `score_package()` and `score_all_packages()` in `activation.py` now gate on validation — scoring refuses to proceed on packages with error-severity findings
+  - Batch scoring validates all packages in one pass before scoring any
+  - 24 new tests (983 total), v8 equivalence check ALL PASS
+
+#### Completion note — 2026-04-06
+- Summary: Implemented the Task 7 architectural capstone — a centralized theory-package validation pass that runs as a load-time pre-flight gate before scoring. The validator calls the same parsers that `enrich_theory_package()` uses (which raise on structural impossibilities from Tasks 1-6), plus adds cross-cutting checks that no single parser can see: direction validity, weight range, threshold parseability, metric resolution, phase coherence, theory_id consistency. It collects ALL findings rather than failing on the first. Findings are severity-graded: "error" (structural contract violation, blocks scoring) vs "note" (data-resolution gap, handled gracefully by engine, informational only). The scoring entry points (`score_package`, `score_all_packages`) now call the validator as a mandatory gate — `TheoryValidationError` is raised if any error-severity findings exist, carrying the full report. Batch scoring validates all packages before scoring any.
+- Files changed: `backend/engine/theory_loader.py` (+`validate_theory_package`, `validate_all_packages`, `TheoryValidationError`, `_VALID_DIRECTIONS`), `backend/engine/activation.py` (validation gate in `score_package`, `score_all_packages`), `backend/schemas/theory.py` (+`ValidationFinding`, `ValidationReport`), `backend/tests/test_theory_loader.py` (+24 tests in `TestValidateTheoryPackage`, `TestScoringGateValidation`)
+- Validation run: `python -m pytest backend/ -x -q` (983 passed, +24 new tests), `python -m scripts.v8_equivalence_check` (ALL PASS, 3 runs)
+- Result: All 8 current theory packages pass validation with 0 errors and 8 informational notes (all pre-existing known limitations: DXY metric resolution in capital_flows, prose thresholds in debt_cycle_short/fiscal_dominance_arithmetic/fiscal_dominance_liquidity, non-backtick metric sources in monetary_architecture). No score changes. Scoring entry points now refuse to proceed on packages with error-severity validation failures.
+- Residual risk: (1) The 8 informational notes are pre-existing data-resolution gaps — they do not block scoring because the engine handles them gracefully (indicators don't trigger or are skipped). (2) The validator is load-time only (not a separate CLI script) — it runs automatically before scoring via the gated entry points. This is the right boundary: the validator's job is to prevent bad data from reaching the scorer, not to provide a standalone editing tool.
+- Architectural boundary: The validator is **load-time pre-flight only**, not parse-time. Parse-time checks (Tasks 1-6) still exist in the individual parsers and raise immediately on structural impossibilities. The validator runs on top of those parsers, catching their raises and adding cross-cutting checks, then producing an aggregated report. This two-layer architecture is correct: parse-time checks catch "this table is malformed" (local), while the validator catches "this indicator's direction is unrecognized" (cross-cutting). Both layers stay.
 
 ---
 
@@ -575,7 +587,7 @@ The remediation is done only when all of the following are true:
 - [x] Task 4 complete
 - [x] Task 5 complete
 - [x] Task 6 complete
-- [ ] Task 7 complete
+- [x] Task 7 complete
 - [ ] Task 8 complete
 
 **Project status:** NOT COMPLETE
