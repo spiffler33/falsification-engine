@@ -23,6 +23,16 @@ from backend.schemas.theory import (
 REQUIRED_FILES = ("CORE.md", "ACTIVATION.md", "TACTICAL.md", "PLAYBOOK.md")
 
 
+def _normalize_section_header(line: str) -> str:
+    """Normalize a markdown section header for matching.
+
+    Lowercases, replaces underscores with spaces, collapses whitespace.
+    '## Activation_Table' and '## activation table' both → '## activation table'.
+    '## Deep Falsifiers' and '## deep_falsifiers' both → '## deep falsifiers'.
+    """
+    return re.sub(r"[\s_]+", " ", line.strip().lower()).strip()
+
+
 def discover_theory_dirs(theories_dir: Path | None = None) -> list[Path]:
     """Find all THEORY_MODULE_*_v2/ directories, validating all four files exist."""
     d = theories_dir or THEORIES_DIR
@@ -46,24 +56,43 @@ def _extract_theory_id(core_text: str) -> str:
     """Extract theory_id from CORE.md content.
 
     Two patterns across the 8 theory packages:
-    1. ``## theory_id`` section header → backtick-wrapped ID on the next non-empty line
+    1. ``## theory_id`` section header → ID on the next non-empty line
+       (backtick-wrapped or plain)
     2. Frontmatter ``*theory_id: `...`*`` in the first few lines
+
+    FRAGILITY-10: accepts underscore/space/case variants in both the section
+    header and the frontmatter key name. Validates the extracted ID is a
+    valid snake_case identifier.
     """
     lines = core_text.split("\n")
 
-    # Pattern 1: ## theory_id section header
+    # Pattern 1: ## theory_id section header (normalized: underscore/space/case)
     for i, line in enumerate(lines):
-        if line.strip().lower() == "## theory_id":
+        if _normalize_section_header(line) == "## theory id":
             for j in range(i + 1, min(i + 5, len(lines))):
                 candidate = lines[j].strip()
                 if candidate:
-                    return candidate.strip("`").strip()
+                    tid = candidate.strip("`").strip()
+                    if re.fullmatch(r"[a-z][a-z0-9_]+", tid):
+                        return tid
+                    raise ValueError(
+                        f"theory_id value {tid!r} is not a valid "
+                        f"snake_case identifier"
+                    )
             break
 
-    # Pattern 2: *theory_id: `...`* in frontmatter
-    m = re.search(r"\*theory_id:\s*`([^`]+)`\*", core_text[:500])
+    # Pattern 2: *theory_id: `...`* in frontmatter — accept underscore/space
+    # in key name and optional backticks around the value
+    m = re.search(
+        r"\*theory[_ ]id:\s*`?([^`*\n]+)`?\*", core_text[:500], re.IGNORECASE,
+    )
     if m:
-        return m.group(1).strip()
+        tid = m.group(1).strip()
+        if re.fullmatch(r"[a-z][a-z0-9_]+", tid):
+            return tid
+        raise ValueError(
+            f"theory_id value {tid!r} is not a valid snake_case identifier"
+        )
 
     raise ValueError("Could not extract theory_id from CORE.md content")
 
@@ -117,10 +146,10 @@ def parse_deep_falsifiers(core_text: str) -> list[dict]:
     """
     lines = core_text.split("\n")
 
-    # Find ## deep_falsifiers section start (line after the header)
+    # Find ## deep_falsifiers section start (normalized: underscore/space/case)
     section_start = None
     for i, line in enumerate(lines):
-        if re.match(r"^##\s+deep_falsifiers\s*$", line.strip(), re.IGNORECASE):
+        if _normalize_section_header(line) == "## deep falsifiers":
             section_start = i + 1
             break
 
@@ -193,11 +222,14 @@ _FALS_ID_RE = re.compile(r"(H\d+|S\d+|DF\d+|SF\d+)\b")
 def _find_severity_section(
     lines: list[str], section_name: str,
 ) -> tuple[int, int] | None:
-    """Return ``(start, end)`` line range for ``## <section_name>``, or *None*."""
+    """Return ``(start, end)`` line range for ``## <section_name>``, or *None*.
+
+    Uses normalized header matching so underscore/space/case differences
+    in the section header do not break detection.
+    """
+    target = _normalize_section_header(f"## {section_name}")
     for i, line in enumerate(lines):
-        if re.match(
-            rf"^##\s+{re.escape(section_name)}\s*$", line.strip(), re.IGNORECASE,
-        ):
+        if _normalize_section_header(line) == target:
             start = i + 1
             for j in range(start, len(lines)):
                 # Next ## header (not ###) ends the section
@@ -574,9 +606,7 @@ _PHASE_SUBSECTION_RE = re.compile(
     r"^###\s+(Phase\s+[AB]:\s*.+)", re.IGNORECASE,
 )
 
-_ACTIVATION_TABLE_RE = re.compile(
-    r"^##\s+activation_table(?:\s*[—–\-]+\s*(.+))?$", re.IGNORECASE,
-)
+_ACTIVATION_TABLE_SUFFIX_RE = re.compile(r"[—–\-]+\s*(.+)$")
 
 _WEIGHT_NUM_RE = re.compile(r"[\d.]+")
 
@@ -584,6 +614,37 @@ _WEIGHT_NUM_RE = re.compile(r"[\d.]+")
 # "qualitative" is NOT valid here — qualitative indicators must live in
 # context_flags (validated separately by parse_activation_table).
 _VALID_ACTIVATION_OWNERSHIP = {"mechanical", "computed-mechanical", "web-search"}
+
+# Required activation table columns — the parser fails loudly if any are
+# missing from the header row (FRAGILITY-02).
+_REQUIRED_ACTIVATION_COLS = {
+    "indicator", "metric_source", "data_ownership",
+    "threshold", "direction", "weight",
+}
+
+
+def _map_activation_columns(header_cells: list[str]) -> dict[str, int]:
+    """Map activation table column roles to indices from a header row.
+
+    Handles reasonable header name variations (case-insensitive, multi-word).
+    Returns dict mapping canonical role names to column indices.
+    """
+    m: dict[str, int] = {}
+    for i, c in enumerate(header_cells):
+        lo = c.lower().strip()
+        if lo in ("indicator", "indicator name"):
+            m.setdefault("indicator", i)
+        elif "metric" in lo and "source" in lo:
+            m.setdefault("metric_source", i)
+        elif "ownership" in lo:
+            m.setdefault("data_ownership", i)
+        elif lo == "threshold":
+            m.setdefault("threshold", i)
+        elif lo == "direction":
+            m.setdefault("direction", i)
+        elif lo == "weight":
+            m.setdefault("weight", i)
+    return m
 
 
 def _parse_activation_rows(
@@ -594,10 +655,14 @@ def _parse_activation_rows(
     *header_phase* overrides phase for all rows (debt_cycle_short pattern).
     Within the section, ``### Phase A/B:`` subsections update the current phase
     (structural_fragility / capital_flows pattern).
+
+    FRAGILITY-02: columns are resolved by header-name mapping, not position.
     """
     entries: list[dict] = []
     current_phase = header_phase
     in_table = False
+    col_map: dict[str, int] = {}
+    min_cells = 6  # updated to actual value when header is parsed
 
     for i in range(start, end):
         stripped = lines[i].strip()
@@ -607,12 +672,14 @@ def _parse_activation_rows(
         if pm:
             current_phase = pm.group(1).strip()
             in_table = False
+            col_map = {}
             continue
 
         # Non-table line resets table state
         if not stripped.startswith("|"):
             if in_table:
                 in_table = False
+                col_map = {}
             continue
 
         cells = [c.strip() for c in stripped.split("|")]
@@ -622,32 +689,41 @@ def _parse_activation_rows(
         if all(_SEPARATOR_CELL_RE.match(c) for c in cells):
             continue
 
-        # FRAGILITY-09: short rows.  Before the header is consumed, skip
-        # short rows silently (they may be sub-heading fragments).  After
-        # the header is consumed, any table row with < 6 cells is a
-        # malformed data row — fail loudly.
-        if len(cells) < 6:
-            if in_table:
-                raise ValueError(
-                    f"Short activation table row ({len(cells)} cells, "
-                    f"need 6+): {stripped!r}"
-                )
-            continue
-
-        # First non-separator table row is the header — skip it
+        # FRAGILITY-09: pre-header short rows (< 4 cells) are skipped
+        # silently — they may be sub-heading fragments.  Rows with ≥ 4
+        # cells are treated as header attempts so that missing-column
+        # errors surface clearly.  Post-header, the minimum cell count
+        # is derived from the column map.
         if not in_table:
+            if len(cells) < 4:
+                continue
+            # First non-separator row with ≥4 cells is the header.
+            # Build column map and validate required columns.
+            col_map = _map_activation_columns(cells)
+            missing = _REQUIRED_ACTIVATION_COLS - set(col_map.keys())
+            if missing:
+                raise ValueError(
+                    f"Activation table header missing required columns: "
+                    f"{sorted(missing)}. Header cells: {cells}"
+                )
+            min_cells = max(col_map.values()) + 1
             in_table = True
             continue
 
-        # --- Data row ---
-        # Columns: Indicator | Metric Source | Data Ownership | Threshold
-        #          | Direction | Weight | Calibration Rationale
-        indicator_name = cells[0]
-        metric_source = cells[1]
-        ownership_raw = cells[2]
-        threshold = cells[3]
-        direction = cells[4]
-        weight_str = cells[5]
+        # Post-header: data rows must have enough cells for all mapped columns
+        if len(cells) < min_cells:
+            raise ValueError(
+                f"Short activation table row ({len(cells)} cells, "
+                f"need {min_cells}+): {stripped!r}"
+            )
+
+        # --- Data row: extract by column name (FRAGILITY-02) ---
+        indicator_name = cells[col_map["indicator"]]
+        metric_source = cells[col_map["metric_source"]]
+        ownership_raw = cells[col_map["data_ownership"]]
+        threshold = cells[col_map["threshold"]]
+        direction = cells[col_map["direction"]]
+        weight_str = cells[col_map["weight"]]
 
         # Extract data ownership keyword
         om = _OWNERSHIP_KW_RE.search(ownership_raw)
@@ -722,11 +798,18 @@ def parse_activation_table(activation_text: str) -> list[dict]:
     lines = activation_text.split("\n")
 
     # Collect section ranges: (start_line, end_line, phase_from_heading | None)
+    # Normalized matching: '## Activation Table', '## activation_table' etc.
+    # all match.  Phase suffix (e.g. '— Phase A: Expansion') extracted from
+    # the original line to preserve casing.
     ranges: list[tuple[int, int, str | None]] = []
     for i, line in enumerate(lines):
-        m = _ACTIVATION_TABLE_RE.match(line.strip())
-        if m:
-            phase = m.group(1).strip() if m.group(1) else None
+        norm = _normalize_section_header(line)
+        if norm == "## activation table" or norm.startswith(
+            "## activation table "
+        ):
+            # Extract optional phase suffix from original line
+            suffix_m = _ACTIVATION_TABLE_SUFFIX_RE.search(line.strip())
+            phase = suffix_m.group(1).strip() if suffix_m else None
             # Section ends at next ## heading (not ###)
             end = len(lines)
             for j in range(i + 1, len(lines)):
@@ -763,10 +846,6 @@ def parse_activation_table(activation_text: str) -> list[dict]:
 # ---------------------------------------------------------------------------
 # Unit 7: ACTIVATION.md context_flags parser
 # ---------------------------------------------------------------------------
-
-_CONTEXT_FLAG_SECTION_RE = re.compile(
-    r"^##\s+context_flags\s*$", re.IGNORECASE,
-)
 
 _VALID_CTX_OWNERSHIP = {"qualitative", "web-search"}
 
@@ -834,10 +913,10 @@ def parse_context_flags(activation_text: str) -> list[dict]:
     """
     lines = activation_text.split("\n")
 
-    # Find ## context_flags section
+    # Find ## context_flags section (normalized: underscore/space/case)
     section_start = None
     for i, line in enumerate(lines):
-        if _CONTEXT_FLAG_SECTION_RE.match(line.strip()):
+        if _normalize_section_header(line) == "## context flags":
             section_start = i + 1
             break
 
@@ -946,12 +1025,8 @@ def parse_context_flags(activation_text: str) -> list[dict]:
 # Unit 8: INTERACTION_MATRIX.md parser
 # ---------------------------------------------------------------------------
 
-_PAIRWISE_SECTION_RE = re.compile(
-    r"^##\s+Pairwise\s+Interaction\s+Table\s*$", re.IGNORECASE,
-)
-_SHARED_UPSTREAM_SECTION_RE = re.compile(
-    r"^##\s+Shared\s+Upstream\s+Cause\s+Warnings?\s*$", re.IGNORECASE,
-)
+_PAIRWISE_NORMALIZED = "## pairwise interaction table"
+_SHARED_UPSTREAM_NORMALIZED = "## shared upstream cause warning"
 
 
 def _strip_phase_annotation(theory_ref: str) -> tuple[str, str | None]:
@@ -1019,10 +1094,10 @@ def parse_interaction_pairwise(matrix_text: str) -> list[dict]:
     """
     lines = matrix_text.split("\n")
 
-    # Find section start
+    # Find section start (normalized: underscore/space/case)
     section_start = None
     for i, line in enumerate(lines):
-        if _PAIRWISE_SECTION_RE.match(line.strip()):
+        if _normalize_section_header(line) == _PAIRWISE_NORMALIZED:
             section_start = i + 1
             break
 
@@ -1036,7 +1111,7 @@ def parse_interaction_pairwise(matrix_text: str) -> list[dict]:
     for i in range(section_start, len(lines)):
         stripped = lines[i].strip()
         if stripped.startswith("## ") and not stripped.startswith("### "):
-            if not _PAIRWISE_SECTION_RE.match(stripped):
+            if _normalize_section_header(stripped) != _PAIRWISE_NORMALIZED:
                 section_end = i
                 break
 
@@ -1107,10 +1182,11 @@ def parse_shared_upstream_warnings(matrix_text: str) -> list[dict]:
     """
     lines = matrix_text.split("\n")
 
-    # Find section start
+    # Find section start (normalized: underscore/space/case)
+    # Accepts both "Warnings" and "Warning" via startswith
     section_start = None
     for i, line in enumerate(lines):
-        if _SHARED_UPSTREAM_SECTION_RE.match(line.strip()):
+        if _normalize_section_header(line).startswith(_SHARED_UPSTREAM_NORMALIZED):
             section_start = i + 1
             break
 
@@ -1124,7 +1200,9 @@ def parse_shared_upstream_warnings(matrix_text: str) -> list[dict]:
     for i in range(section_start, len(lines)):
         stripped = lines[i].strip()
         if stripped.startswith("## ") and not stripped.startswith("### "):
-            if not _SHARED_UPSTREAM_SECTION_RE.match(stripped):
+            if not _normalize_section_header(stripped).startswith(
+                _SHARED_UPSTREAM_NORMALIZED
+            ):
                 section_end = i
                 break
 
@@ -1284,6 +1362,65 @@ def build_context_flag_list(activation_text: str) -> list[ContextFlag]:
     return [ContextFlag(**e) for e in entries]
 
 
+def validate_required_sections(
+    core_text: str, activation_text: str,
+) -> None:
+    """Pre-flight check that all required sections exist in theory package text.
+
+    Normalizes headers before matching so underscore/space/case differences
+    do not cause false negatives. Reports ALL missing sections in a single
+    error rather than failing on the first.
+
+    Required CORE.md sections: ``## theory_id``, ``## deep_falsifiers``.
+    Required ACTIVATION.md sections: ``## activation_table``,
+    ``## context_flags``, and at least one of ``## falsifier_severity_assignments``
+    or ``## state_falsifiers``.
+    """
+    core_headers = {
+        _normalize_section_header(line)
+        for line in core_text.split("\n")
+        if line.strip().startswith("## ")
+    }
+    act_headers = {
+        _normalize_section_header(line)
+        for line in activation_text.split("\n")
+        if line.strip().startswith("## ")
+    }
+
+    missing: list[str] = []
+
+    # theory_id: accept either ## section header or frontmatter pattern
+    has_theory_id_header = "## theory id" in core_headers
+    has_theory_id_frontmatter = bool(
+        re.search(r"\*theory[_ ]id:\s*`?[^`*\n]+`?\*", core_text[:500], re.IGNORECASE)
+    )
+    if not has_theory_id_header and not has_theory_id_frontmatter:
+        missing.append("CORE.md: ## theory_id (or frontmatter *theory_id: `...`*)")
+
+    if "## deep falsifiers" not in core_headers:
+        missing.append("CORE.md: ## deep_falsifiers")
+
+    # activation_table may appear with a phase suffix, so use prefix check
+    if not any(h == "## activation table" or h.startswith("## activation table ")
+               for h in act_headers):
+        missing.append("ACTIVATION.md: ## activation_table")
+
+    if "## context flags" not in act_headers:
+        missing.append("ACTIVATION.md: ## context_flags")
+
+    has_sev = "## falsifier severity assignments" in act_headers
+    has_state = "## state falsifiers" in act_headers
+    if not has_sev and not has_state:
+        missing.append(
+            "ACTIVATION.md: ## falsifier_severity_assignments or ## state_falsifiers"
+        )
+
+    if missing:
+        raise ValueError(
+            f"Theory package missing required sections: {'; '.join(missing)}"
+        )
+
+
 def enrich_theory_package(pkg: TheoryPackage) -> TheoryPackage:
     """Populate enrichment fields on a loaded theory package.
 
@@ -1292,8 +1429,10 @@ def enrich_theory_package(pkg: TheoryPackage) -> TheoryPackage:
     - data_ownership: IndicatorOwnership objects from activation_table
     - context_flags: ContextFlag objects from context_flags section
 
+    Runs ``validate_required_sections`` as a pre-flight gate before parsing.
     Returns a new TheoryPackage; the original is not modified.
     """
+    validate_required_sections(pkg.core, pkg.activation)
     registry = build_falsifier_registry(pkg.core, pkg.activation)
     ownership = build_indicator_ownership(pkg.activation)
     flags = build_context_flag_list(pkg.activation)

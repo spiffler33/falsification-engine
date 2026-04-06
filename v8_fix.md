@@ -326,9 +326,12 @@ Each task below is intended to be executed in a separate Claude Code session aft
 - regression test that current packages still parse identically
 
 **Update status:**
-- [ ] Task 4 not started
-- [ ] Task 4 in progress
-- [ ] Task 4 complete
+- [x] Task 4 complete (2026-04-06)
+  - FRAGILITY-01: `_normalize_section_header()` added — all section-finding code uses normalized matching (underscore/space/case equivalent)
+  - FRAGILITY-02: `_map_activation_columns()` added — activation table parsing uses header-name mapping instead of positional indices; pre-header threshold lowered from 6→4 cells so missing-column errors surface clearly
+  - FRAGILITY-10: `_extract_theory_id()` hardened — accepts underscore/space/case variants in both section header and frontmatter key; validates extracted ID is valid snake_case
+  - `validate_required_sections()` added — pre-flight gate in `enrich_theory_package()` reports ALL missing sections in one error
+  - 51 new tests (941 total), v8 equivalence check ALL PASS
 
 ---
 
@@ -552,7 +555,7 @@ The remediation is done only when all of the following are true:
 - [x] Task 1 complete
 - [x] Task 2 complete
 - [x] Task 3 complete
-- [ ] Task 4 complete
+- [x] Task 4 complete
 - [ ] Task 5 complete
 - [ ] Task 6 complete
 - [ ] Task 7 complete

@@ -8,6 +8,9 @@ from backend.config import THEORIES_DIR
 from backend.engine.theory_loader import (
     _extract_phase_summary,
     _extract_stability_class,
+    _extract_theory_id,
+    _map_activation_columns,
+    _normalize_section_header,
     build_context_flag_list,
     build_falsifier_registry,
     build_indicator_ownership,
@@ -24,6 +27,7 @@ from backend.engine.theory_loader import (
     parse_interaction_matrix,
     parse_interaction_pairwise,
     parse_shared_upstream_warnings,
+    validate_required_sections,
 )
 from backend.schemas.theory import (
     ContextFlag,
@@ -2617,3 +2621,417 @@ class TestAllPackagesParseClean:
             assert len(entries) >= 2, (
                 f"{pkg.theory_id}: expected at least 2 context flags"
             )
+
+
+# ---------------------------------------------------------------------------
+# Task 4 (v8 remediation): FRAGILITY-01, FRAGILITY-02, FRAGILITY-10 tests
+# ---------------------------------------------------------------------------
+
+class TestNormalizeSectionHeader:
+    """FRAGILITY-01: _normalize_section_header collapses underscore/space/case."""
+
+    def test_underscore_to_space(self):
+        assert _normalize_section_header("## activation_table") == "## activation table"
+
+    def test_mixed_case(self):
+        assert _normalize_section_header("## Activation_Table") == "## activation table"
+
+    def test_all_caps(self):
+        assert _normalize_section_header("## DEEP_FALSIFIERS") == "## deep falsifiers"
+
+    def test_spaces_preserved(self):
+        assert _normalize_section_header("## deep falsifiers") == "## deep falsifiers"
+
+    def test_mixed_underscore_space(self):
+        assert _normalize_section_header("## Deep Falsifiers") == "## deep falsifiers"
+
+    def test_extra_whitespace(self):
+        assert _normalize_section_header("  ##  context_flags  ") == "## context flags"
+
+    def test_pairwise_with_underscores(self):
+        assert (
+            _normalize_section_header("## Pairwise_Interaction_Table")
+            == "## pairwise interaction table"
+        )
+
+
+class TestHeaderVariantsDeepFalsifiers:
+    """FRAGILITY-01: deep_falsifiers section found with variant headers."""
+
+    BODY = (
+        "| # | Condition | Logic |\n"
+        "|---|-----------|-------|\n"
+        "| H1 | Bond crisis | Yield spike |\n"
+    )
+
+    def test_underscore_form(self):
+        text = f"## intro\ntext\n## deep_falsifiers\n{self.BODY}"
+        entries = parse_deep_falsifiers(text)
+        assert len(entries) == 1 and entries[0]["falsifier_id"] == "H1"
+
+    def test_space_form(self):
+        text = f"## intro\ntext\n## Deep Falsifiers\n{self.BODY}"
+        entries = parse_deep_falsifiers(text)
+        assert len(entries) == 1
+
+    def test_mixed_case_underscore(self):
+        text = f"## intro\ntext\n## Deep_Falsifiers\n{self.BODY}"
+        entries = parse_deep_falsifiers(text)
+        assert len(entries) == 1
+
+    def test_all_caps(self):
+        text = f"## intro\ntext\n## DEEP_FALSIFIERS\n{self.BODY}"
+        entries = parse_deep_falsifiers(text)
+        assert len(entries) == 1
+
+
+class TestHeaderVariantsSeverity:
+    """FRAGILITY-01: falsifier_severity_assignments found with variant headers."""
+
+    BODY = (
+        "### Theory-Level (from CORE.md)\n"
+        "| # | Classification | Severity |\n"
+        "|---|----------------|----------|\n"
+        "| H1 | Hard | N/A |\n"
+    )
+
+    def test_underscore_form(self):
+        text = f"## falsifier_severity_assignments\n{self.BODY}"
+        entries = parse_falsifier_severity(text)
+        assert any(e["falsifier_id"] == "H1" for e in entries)
+
+    def test_space_form(self):
+        text = f"## Falsifier Severity Assignments\n{self.BODY}"
+        entries = parse_falsifier_severity(text)
+        assert any(e["falsifier_id"] == "H1" for e in entries)
+
+    def test_mixed_form(self):
+        text = f"## Falsifier_Severity_Assignments\n{self.BODY}"
+        entries = parse_falsifier_severity(text)
+        assert any(e["falsifier_id"] == "H1" for e in entries)
+
+
+class TestHeaderVariantsActivationTable:
+    """FRAGILITY-01: activation_table section found with variant headers."""
+
+    TABLE = (
+        "| Indicator | Metric Source | Data Ownership | Threshold | Direction | Weight | Rationale |\n"
+        "|-----------|--------------|----------------|-----------|-----------|--------|-----------|\n"
+        "| ERP compressed | Computed: `erp` | `computed-mechanical` | Below 1.0% | below | 0.25 | reason |\n"
+    )
+
+    def test_underscore_form(self):
+        text = f"## activation_table\n{self.TABLE}\n## context_flags\n"
+        entries = parse_activation_table(text)
+        assert len(entries) == 1
+
+    def test_space_form(self):
+        text = f"## Activation Table\n{self.TABLE}\n## context_flags\n"
+        entries = parse_activation_table(text)
+        assert len(entries) == 1
+
+    def test_mixed_case(self):
+        text = f"## Activation_Table\n{self.TABLE}\n## context_flags\n"
+        entries = parse_activation_table(text)
+        assert len(entries) == 1
+
+    def test_phase_suffix_preserved(self):
+        text = (
+            f"## Activation Table — Phase A: Expansion\n{self.TABLE}\n"
+            f"## Activation Table — Phase B: Contraction\n{self.TABLE}\n"
+            f"## context_flags\n"
+        )
+        entries = parse_activation_table(text)
+        assert len(entries) == 2
+        phases = {e["phase"] for e in entries}
+        assert "Phase A: Expansion" in phases
+        assert "Phase B: Contraction" in phases
+
+
+class TestHeaderVariantsContextFlags:
+    """FRAGILITY-01: context_flags section found with variant headers."""
+
+    TABLE = (
+        "| Flag | Source | Data Ownership | What to Look For |\n"
+        "|------|--------|----------------|------------------|\n"
+        "| Narrative test | Media | `qualitative` | Look for X |\n"
+    )
+
+    def test_underscore_form(self):
+        text = f"## context_flags\n{self.TABLE}"
+        entries = parse_context_flags(text)
+        assert len(entries) == 1
+
+    def test_space_form(self):
+        text = f"## Context Flags\n{self.TABLE}"
+        entries = parse_context_flags(text)
+        assert len(entries) == 1
+
+    def test_mixed_case(self):
+        text = f"## Context_Flags\n{self.TABLE}"
+        entries = parse_context_flags(text)
+        assert len(entries) == 1
+
+
+class TestActivationColumnReorder:
+    """FRAGILITY-02: activation table parsing works with reordered columns."""
+
+    def test_standard_order(self):
+        text = (
+            "## activation_table\n"
+            "| Indicator | Metric Source | Data Ownership | Threshold | Direction | Weight | Rationale |\n"
+            "|-----------|--------------|----------------|-----------|-----------|--------|-----------|\n"
+            "| ERP | Computed: `erp` | `computed-mechanical` | Below 1.0% | below | 0.25 | reason |\n"
+        )
+        entries = parse_activation_table(text)
+        assert entries[0]["indicator_name"] == "ERP"
+        assert entries[0]["direction"] == "below"
+        assert entries[0]["weight"] == 0.25
+
+    def test_weight_before_direction(self):
+        """Columns reordered: Weight comes before Direction."""
+        text = (
+            "## activation_table\n"
+            "| Indicator | Metric Source | Data Ownership | Threshold | Weight | Direction | Rationale |\n"
+            "|-----------|--------------|----------------|-----------|--------|-----------|----------|\n"
+            "| ERP | Computed: `erp` | `computed-mechanical` | Below 1.0% | 0.25 | below | reason |\n"
+        )
+        entries = parse_activation_table(text)
+        assert entries[0]["indicator_name"] == "ERP"
+        assert entries[0]["direction"] == "below"
+        assert entries[0]["weight"] == 0.25
+
+    def test_ownership_first(self):
+        """Columns reordered: Data Ownership is first."""
+        text = (
+            "## activation_table\n"
+            "| Data Ownership | Indicator | Metric Source | Threshold | Direction | Weight |\n"
+            "|----------------|-----------|--------------|-----------|-----------|--------|\n"
+            "| `mechanical` | ERP | fred: `erp` | 1.0% | below | 0.30 |\n"
+        )
+        entries = parse_activation_table(text)
+        assert entries[0]["indicator_name"] == "ERP"
+        assert entries[0]["data_ownership"] == "mechanical"
+        assert entries[0]["weight"] == 0.30
+
+    def test_missing_required_column_raises(self):
+        """Header missing a required column raises ValueError."""
+        text = (
+            "## activation_table\n"
+            "| Indicator | Metric Source | Threshold | Direction | Weight |\n"
+            "|-----------|--------------|-----------|-----------|--------|\n"
+            "| ERP | Computed: `erp` | Below 1.0% | below | 0.25 |\n"
+        )
+        with pytest.raises(ValueError, match="missing required columns.*data_ownership"):
+            parse_activation_table(text)
+
+
+class TestMapActivationColumns:
+    """FRAGILITY-02: _map_activation_columns handles header name variations."""
+
+    def test_standard_headers(self):
+        cells = ["Indicator", "Metric Source", "Data Ownership",
+                 "Threshold", "Direction", "Weight", "Calibration Rationale"]
+        m = _map_activation_columns(cells)
+        assert m["indicator"] == 0
+        assert m["metric_source"] == 1
+        assert m["data_ownership"] == 2
+        assert m["threshold"] == 3
+        assert m["direction"] == 4
+        assert m["weight"] == 5
+
+    def test_case_insensitive(self):
+        cells = ["indicator", "metric source", "data ownership",
+                 "threshold", "direction", "weight"]
+        m = _map_activation_columns(cells)
+        assert len(m) == 6
+
+    def test_indicator_name_variant(self):
+        cells = ["Indicator Name", "Metric Source", "Data Ownership",
+                 "Threshold", "Direction", "Weight"]
+        m = _map_activation_columns(cells)
+        assert m["indicator"] == 0
+
+
+class TestExtractTheoryIdVariants:
+    """FRAGILITY-10: theory_id extraction with format variations."""
+
+    def test_section_header_underscore(self):
+        text = "## theory_id\n\n`valuation_mean_reversion`\n"
+        assert _extract_theory_id(text) == "valuation_mean_reversion"
+
+    def test_section_header_space(self):
+        text = "## Theory ID\n\n`valuation_mean_reversion`\n"
+        assert _extract_theory_id(text) == "valuation_mean_reversion"
+
+    def test_section_header_mixed_case(self):
+        text = "## Theory_ID\n\nvaluation_mean_reversion\n"
+        assert _extract_theory_id(text) == "valuation_mean_reversion"
+
+    def test_section_header_no_backticks(self):
+        text = "## theory_id\n\ndebt_cycle_long\n"
+        assert _extract_theory_id(text) == "debt_cycle_long"
+
+    def test_frontmatter_underscore(self):
+        text = "*theory_id: `structural_fragility`*\n\n## core_claim\n"
+        assert _extract_theory_id(text) == "structural_fragility"
+
+    def test_frontmatter_space(self):
+        text = "*theory id: `structural_fragility`*\n\n## core_claim\n"
+        assert _extract_theory_id(text) == "structural_fragility"
+
+    def test_frontmatter_no_backticks(self):
+        text = "*theory_id: structural_fragility*\n\n## core_claim\n"
+        assert _extract_theory_id(text) == "structural_fragility"
+
+    def test_invalid_id_raises(self):
+        text = "## theory_id\n\nNot A Valid ID!\n"
+        with pytest.raises(ValueError, match="not a valid snake_case"):
+            _extract_theory_id(text)
+
+    def test_no_theory_id_raises(self):
+        text = "## core_claim\n\nJust text.\n"
+        with pytest.raises(ValueError, match="Could not extract theory_id"):
+            _extract_theory_id(text)
+
+
+class TestValidateRequiredSections:
+    """Task 4: validate_required_sections pre-flight check."""
+
+    MINIMAL_CORE = (
+        "## theory_id\n\n`test_theory`\n\n"
+        "## deep_falsifiers\n"
+        "| # | Condition | Logic |\n"
+        "|---|-----------|-------|\n"
+        "| H1 | Crisis | Spike |\n"
+    )
+    MINIMAL_ACTIVATION = (
+        "## activation_table\n"
+        "| Indicator | Metric Source | Data Ownership | Threshold | Direction | Weight |\n"
+        "|-----------|--------------|----------------|-----------|-----------|--------|\n"
+        "| ERP | Computed: `erp` | `computed-mechanical` | 1.0% | below | 0.25 |\n"
+        "\n## context_flags\n"
+        "| Flag | Source | Data Ownership | What to Look For |\n"
+        "|------|--------|----------------|------------------|\n"
+        "| Test | Media | `qualitative` | Look |\n"
+        "\n## falsifier_severity_assignments\n"
+        "### Theory-Level (from CORE.md)\n"
+        "| # | Classification | Severity |\n"
+        "|---|----------------|----------|\n"
+        "| H1 | Hard | N/A |\n"
+    )
+
+    def test_valid_passes(self):
+        validate_required_sections(self.MINIMAL_CORE, self.MINIMAL_ACTIVATION)
+
+    def test_missing_theory_id_raises(self):
+        core = "## deep_falsifiers\n| # | Condition | Logic |\n|---|---|---|\n| H1 | X | Y |\n"
+        with pytest.raises(ValueError, match="theory_id"):
+            validate_required_sections(core, self.MINIMAL_ACTIVATION)
+
+    def test_missing_deep_falsifiers_raises(self):
+        core = "## theory_id\n\n`test`\n"
+        with pytest.raises(ValueError, match="deep_falsifiers"):
+            validate_required_sections(core, self.MINIMAL_ACTIVATION)
+
+    def test_missing_activation_table_raises(self):
+        act = self.MINIMAL_ACTIVATION.replace("## activation_table", "## other_section")
+        with pytest.raises(ValueError, match="activation_table"):
+            validate_required_sections(self.MINIMAL_CORE, act)
+
+    def test_missing_context_flags_raises(self):
+        act = self.MINIMAL_ACTIVATION.replace("## context_flags", "## other_section")
+        with pytest.raises(ValueError, match="context_flags"):
+            validate_required_sections(self.MINIMAL_CORE, act)
+
+    def test_missing_severity_section_raises(self):
+        act = self.MINIMAL_ACTIVATION.replace(
+            "## falsifier_severity_assignments", "## other_section"
+        )
+        with pytest.raises(ValueError, match="falsifier_severity_assignments"):
+            validate_required_sections(self.MINIMAL_CORE, act)
+
+    def test_state_falsifiers_accepted(self):
+        """state_falsifiers is accepted as alternative to falsifier_severity_assignments."""
+        act = self.MINIMAL_ACTIVATION.replace(
+            "## falsifier_severity_assignments", "## state_falsifiers"
+        )
+        validate_required_sections(self.MINIMAL_CORE, act)
+
+    def test_frontmatter_theory_id_accepted(self):
+        core = "*theory_id: `test`*\n\n## deep_falsifiers\n| # | Condition | Logic |\n|---|---|---|\n| H1 | X | Y |\n"
+        validate_required_sections(core, self.MINIMAL_ACTIVATION)
+
+    def test_multiple_missing_reported(self):
+        """All missing sections reported in one error, not just the first."""
+        core = "## some_section\ntext\n"
+        act = "## some_other\ntext\n"
+        with pytest.raises(ValueError) as exc_info:
+            validate_required_sections(core, act)
+        msg = str(exc_info.value)
+        assert "theory_id" in msg
+        assert "deep_falsifiers" in msg
+        assert "activation_table" in msg
+
+    def test_variant_headers_accepted(self):
+        """Normalized headers (spaces, mixed case) pass validation."""
+        core = (
+            "## Theory ID\n\n`test_theory`\n\n"
+            "## Deep Falsifiers\n"
+            "| # | Condition | Logic |\n"
+            "|---|-----------|-------|\n"
+            "| H1 | Crisis | Spike |\n"
+        )
+        act = (
+            "## Activation Table\n"
+            "| Indicator | Metric Source | Data Ownership | Threshold | Direction | Weight |\n"
+            "|-----------|--------------|----------------|-----------|-----------|--------|\n"
+            "| ERP | Computed: `erp` | `computed-mechanical` | 1.0% | below | 0.25 |\n"
+            "\n## Context Flags\n"
+            "| Flag | Source | Data Ownership | What to Look For |\n"
+            "|------|--------|----------------|------------------|\n"
+            "| Test | Media | `qualitative` | Look |\n"
+            "\n## Falsifier Severity Assignments\n"
+            "### Theory-Level (from CORE.md)\n"
+            "| # | Classification | Severity |\n"
+            "|---|----------------|----------|\n"
+            "| H1 | Hard | N/A |\n"
+        )
+        validate_required_sections(core, act)
+
+
+class TestTask4RegressionLivePackages:
+    """Regression: all 8 current packages still parse identically after Task 4."""
+
+    @pytest.fixture()
+    def all_packages(self):
+        return load_all_theory_packages()
+
+    def test_all_eight_load(self, all_packages):
+        assert len(all_packages) == 8
+
+    def test_all_theory_ids_present(self, all_packages):
+        ids = {pkg.theory_id for pkg in all_packages}
+        assert ids == EXPECTED_THEORY_IDS
+
+    def test_all_enrichment_succeeds(self, all_packages):
+        for pkg in all_packages:
+            enriched = enrich_theory_package(pkg)
+            assert len(enriched.falsifier_registry) > 0
+            assert len(enriched.data_ownership) > 0
+            assert len(enriched.context_flags) > 0
+
+    def test_all_activation_tables_parse(self, all_packages):
+        for pkg in all_packages:
+            entries = parse_activation_table(pkg.activation)
+            assert len(entries) >= 3, (
+                f"{pkg.theory_id}: expected at least 3 activation indicators"
+            )
+            for e in entries:
+                assert e["indicator_name"]
+                assert e["metric_source"]
+                assert e["data_ownership"] in {
+                    "mechanical", "computed-mechanical", "web-search",
+                }
+                assert e["direction"]
+                assert 0 < e["weight"] <= 1.0
