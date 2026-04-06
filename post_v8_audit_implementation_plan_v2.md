@@ -123,14 +123,14 @@ The following are **not** part of this plan and belong in `v9.md`:
 - diff against Task 0 baseline artifact
 
 **Update status:**
-- [ ] Task 1 complete
+- [x] Task 1 complete
 
-#### Completion note — YYYY-MM-DD
-- Summary:
-- Files changed:
-- Validation run:
-- Result:
-- Residual risk:
+#### Completion note — 2026-04-06
+- Summary: Batch-fixed 8 field wiring/unit-alignment issues. gold_oil_ratio uses commodity futures (GC=F/CL=F). DXY resolves via dxy_index computed field. fed_bs_gdp_ratio wired correctly. Deficit pace thresholds aligned to native $B units. monetary_architecture backticks repaired.
+- Files changed: `backend/engine/data_agent.py`, 5 ACTIVATION.md files, `mock_data/briefing_packet.json`, `docs/POST_V8_TASK1_FIELD_WIRING_RESULTS.md`
+- Validation run: 983 tests passing (unchanged)
+- Result: 2 tier changes (monetary_architecture Adjacent->Active, capital_flows/Accumulation Inactive->Adjacent). All score deltas causally traceable.
+- Residual risk: foreign_treasury temporal threshold; Dollar weakening temporal threshold; CL=F contango premium
 
 ---
 
@@ -172,14 +172,14 @@ Before changing any logic, **enumerate every indicator affected by the new polic
 - diff against Task 0 baseline artifact
 
 **Update status:**
-- [ ] Task 2 complete
+- [x] Task 2 complete
 
-#### Completion note — YYYY-MM-DD
-- Summary:
-- Files changed:
-- Validation run:
-- Result:
-- Residual risk:
+#### Completion note — 2026-04-06
+- Summary: Made data-gap scoring policy explicit. 5 indicators across 4 theories excluded from denominator: 1 with no data source (top_10_sp500_weight), 4 with pure-prose thresholds that _extract_number cannot parse. All score increases are within the same tier. 7 new tests covering every data-gap path.
+- Files changed: `backend/engine/activation.py`, `backend/tests/test_activation_web_integration.py`, `docs/POST_V8_TASK2_DATA_GAP_POLICY_RESULTS.md`
+- Validation run: 850 tests passing (843 + 7 new)
+- Result: No tier changes. 4 theories score higher: structural_fragility/Building +0.109, debt_cycle_short/Expansion +0.217, fiscal_dominance_arithmetic +0.167, fiscal_dominance_liquidity +0.078. All deltas causally traceable to dead-weight indicator removal.
+- Residual risk: BUG-03 RISING/FALLING proxy still extracts temporal numbers (Task 3 scope). top_10_sp500_weight still has no data source (v9 scope).
 
 ---
 

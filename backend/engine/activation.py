@@ -218,17 +218,49 @@ def _score_phase(
             skipped.append(f"{ind.name} ({reason})")
             continue
 
-        total_mechanical_weight += ind.weight
+        # --- Data-gap policy (post-v8 Task 2) ---
+        # Indicators that cannot be mechanically scored under the current
+        # architecture must not stay in the denominator as silent penalties.
+        #
+        # Two cases:
+        #   A. Data unavailable: non-web indicator whose field resolves to
+        #      None.  Unlike web-search skips (which are optional enrichment),
+        #      these are computed-mechanical indicators with no data source.
+        #   B. Threshold not evaluable: value exists, but the threshold is
+        #      pure prose with no extractable number.  _check_threshold()
+        #      would always return False, making the indicator dead weight.
+        #
+        # Both are excluded from the denominator and recorded in results
+        # with an explicit reason so the distinction is visible downstream.
 
         if value is None:
+            skipped.append(f"{ind.name} (data unavailable)")
             indicator_results[ind.name] = {
                 "triggered": False,
                 "value": None,
                 "threshold": ind.threshold,
                 "metric_field": metric_field,
-                "reason": "data not available",
+                "weight": ind.weight,
+                "reason": "data_unavailable",
             }
             continue
+
+        threshold_num = _extract_number(ind.threshold) if ind.threshold else None
+        if threshold_num is None:
+            skipped.append(
+                f"{ind.name} (threshold not mechanically evaluable)"
+            )
+            indicator_results[ind.name] = {
+                "triggered": False,
+                "value": value,
+                "threshold": ind.threshold,
+                "metric_field": metric_field,
+                "weight": ind.weight,
+                "reason": "threshold_not_evaluable",
+            }
+            continue
+
+        total_mechanical_weight += ind.weight
 
         # Check threshold
         triggered = _check_threshold(value, ind)

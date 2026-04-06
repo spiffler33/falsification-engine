@@ -241,6 +241,159 @@ class TestScorePhaseWebIntegration:
 
 
 # ---------------------------------------------------------------------------
+# Data-gap scoring policy (post-v8 Task 2)
+# ---------------------------------------------------------------------------
+
+
+class TestDataGapPolicy:
+    """Verify that indicators which cannot be mechanically scored are
+    excluded from the denominator, with explicit reasons in results."""
+
+    # -- A. Data unavailable: non-web indicator, value=None --
+
+    def test_data_unavailable_excluded_from_denominator(self):
+        """Non-web indicator with value=None must not penalize score."""
+        indicators = [
+            _make_indicator("Has Data", "`growth.real_gdp`",
+                            "2.0", Direction.ABOVE, 0.50),
+            _make_indicator("No Source", "`nonexistent_field`",
+                            "30", Direction.ABOVE, 0.50),
+        ]
+        phase = ActivationPhase(
+            phase_name="single", phase_label="Active", indicators=indicators,
+        )
+        bp = _make_briefing()
+        score, results, skipped = _score_phase(phase, bp)
+        # "No Source" excluded — score is 0.50/0.50 = 1.0, not 0.50/1.00
+        assert score == pytest.approx(1.0)
+        assert any("No Source" in s and "data unavailable" in s for s in skipped)
+        assert results["No Source"]["reason"] == "data_unavailable"
+
+    def test_data_unavailable_records_weight_and_field(self):
+        """Skipped indicator result includes weight and field for tracing."""
+        indicators = [
+            _make_indicator("Missing", "`no_such_field`", "10",
+                            Direction.ABOVE, 0.30),
+        ]
+        phase = ActivationPhase(
+            phase_name="single", phase_label="Active", indicators=indicators,
+        )
+        bp = _make_briefing()
+        score, results, skipped = _score_phase(phase, bp)
+        assert score == 0.0  # no denominator
+        assert results["Missing"]["weight"] == 0.30
+        assert results["Missing"]["metric_field"] == "no_such_field"
+
+    # -- B. Threshold not evaluable: value exists, no extractable number --
+
+    def test_prose_threshold_excluded_from_denominator(self):
+        """Indicator with pure-prose threshold must not be dead weight."""
+        indicators = [
+            _make_indicator("Triggers", "`growth.real_gdp`",
+                            "2.0", Direction.ABOVE, 0.40),
+            _make_indicator("Prose", "`rates.fed_funds`",
+                            "Rate rising AND below market rates",
+                            Direction.RISING, 0.60),
+        ]
+        phase = ActivationPhase(
+            phase_name="single", phase_label="Active", indicators=indicators,
+        )
+        bp = _make_briefing()
+        score, results, skipped = _score_phase(phase, bp)
+        # "Prose" excluded — score is 0.40/0.40 = 1.0, not 0.40/1.00
+        assert score == pytest.approx(1.0)
+        assert any("Prose" in s and "threshold" in s for s in skipped)
+        assert results["Prose"]["reason"] == "threshold_not_evaluable"
+        assert results["Prose"]["value"] is not None  # value was resolved
+
+    def test_prose_threshold_with_above_direction(self):
+        """ABOVE direction with no-number threshold also excluded."""
+        indicators = [
+            _make_indicator("Good", "`rates.fed_funds`",
+                            "3.0", Direction.ABOVE, 0.50),
+            _make_indicator("Bad Thresh", "`rates.fed_funds`",
+                            "Banks reporting steady lending standards",
+                            Direction.ABOVE, 0.50),
+        ]
+        phase = ActivationPhase(
+            phase_name="single", phase_label="Active", indicators=indicators,
+        )
+        bp = _make_briefing()
+        score, results, skipped = _score_phase(phase, bp)
+        assert score == pytest.approx(1.0)  # 0.50/0.50
+        assert results["Bad Thresh"]["reason"] == "threshold_not_evaluable"
+
+    # -- C. Valid resolved non-trigger: stays in denominator normally --
+
+    def test_valid_nontrigger_stays_in_denominator(self):
+        """An indicator that resolves and evaluates but doesn't trigger
+        must still count in the denominator (score < 1.0)."""
+        indicators = [
+            _make_indicator("Triggers", "`growth.real_gdp`",
+                            "2.0", Direction.ABOVE, 0.50),
+            _make_indicator("No Trigger", "`growth.real_gdp`",
+                            "99.0", Direction.ABOVE, 0.50),
+        ]
+        phase = ActivationPhase(
+            phase_name="single", phase_label="Active", indicators=indicators,
+        )
+        bp = _make_briefing()
+        score, results, skipped = _score_phase(phase, bp)
+        # Both in denominator. Only first triggers. 0.50/1.00 = 0.50
+        assert score == pytest.approx(0.50)
+        assert results["No Trigger"]["triggered"] is False
+        assert "reason" not in results["No Trigger"]  # normal path, no skip reason
+
+    # -- D. Web-search skip still works (regression) --
+
+    def test_web_search_skip_unchanged(self):
+        """Web-search indicators with no data still skip (existing behavior)."""
+        indicators = [
+            _make_indicator("Mech", "`growth.real_gdp`",
+                            "2.0", Direction.ABOVE, 0.60),
+            _make_indicator("Web", "web search: fake source",
+                            "100", Direction.ABOVE, 0.40,
+                            requires_web_search=True),
+        ]
+        phase = ActivationPhase(
+            phase_name="single", phase_label="Active", indicators=indicators,
+        )
+        bp = _make_briefing()
+        score, results, skipped = _score_phase(phase, bp)
+        assert score == pytest.approx(1.0)  # 0.60/0.60
+        assert "Web" not in results  # web skips don't get result entries
+
+    # -- E. Mixed scenario: all three cases in one phase --
+
+    def test_mixed_data_gap_scenario(self):
+        """Phase with normal, data-unavailable, and prose-threshold
+        indicators scores correctly with only normal ones in denominator."""
+        indicators = [
+            _make_indicator("A Normal Trigger", "`rates.fed_funds`",
+                            "3.0", Direction.ABOVE, 0.30),
+            _make_indicator("B Normal NoTrigger", "`rates.fed_funds`",
+                            "99.0", Direction.ABOVE, 0.20),
+            _make_indicator("C No Data", "`absent_field`",
+                            "10", Direction.ABOVE, 0.25),
+            _make_indicator("D Prose Thresh", "`rates.fed_funds`",
+                            "Fed funds rising faster than neutral rate",
+                            Direction.RISING, 0.25),
+        ]
+        phase = ActivationPhase(
+            phase_name="single", phase_label="Active", indicators=indicators,
+        )
+        bp = _make_briefing()
+        score, results, skipped = _score_phase(phase, bp)
+        # Only A and B in denominator: 0.30/0.50 = 0.60
+        assert score == pytest.approx(0.60)
+        assert len(skipped) == 2
+        assert results["C No Data"]["reason"] == "data_unavailable"
+        assert results["D Prose Thresh"]["reason"] == "threshold_not_evaluable"
+        assert results["A Normal Trigger"]["triggered"] is True
+        assert results["B Normal NoTrigger"]["triggered"] is False
+
+
+# ---------------------------------------------------------------------------
 # ISM proxy override via get_field
 # ---------------------------------------------------------------------------
 
@@ -562,23 +715,28 @@ class TestAffectedTheoryScoring:
         assert result.score > 0.60
 
     def test_fiscal_dominance_arithmetic_no_longer_inactive(self, briefing, packages):
-        """Was 0.056 Inactive (BUG-01), then 0.556 Adjacent (Task 1).
-        Now 0.722 Active (Task 2 BUG-05 fix: interest_exceeds_defense
-        threshold corrected to 'Above 0', enabling the indicator to trigger
-        since the computed surplus is 287 > 0)."""
+        """Was 0.056 Inactive (BUG-01), then 0.722 Active (Task 1).
+        Now 0.867 Active (post-v8 Task 2 data-gap policy: 'Debt rollover
+        at higher rates' has a pure-prose threshold that _extract_number
+        cannot parse, so it is excluded from the denominator instead of
+        silently depressing the score).  0.65/0.75 = 0.867."""
         from backend.engine.activation import score_package
         result = score_package(packages["fiscal_dominance_arithmetic"], briefing)
         assert result.tier == ActivationTier.ACTIVE, (
             f"Expected Active, got {result.tier} (score={result.score:.3f})"
         )
-        assert abs(result.score - 0.722) < 0.01
+        assert abs(result.score - 0.867) < 0.01
 
     def test_capital_flows_no_longer_inactive(self, briefing, packages):
-        """Was N/A Inactive (BUG-01), should be Adjacent (Rotation, 0.450) after fix."""
+        """Was N/A Inactive (BUG-01), then Adjacent (Rotation 0.450, Task 1).
+        Now Active (Rotation 0.600, post-v8 Task 2 data-gap policy:
+        'Dollar weakening' resolves to dxy_index which is absent from this
+        fixture — excluded from denominator instead of penalizing as dead
+        weight).  0.45/0.75 = 0.600."""
         from backend.engine.activation import score_package
         result = score_package(packages["capital_flows"], briefing)
-        assert result.effective_tier == ActivationTier.ADJACENT, (
-            f"Expected Adjacent, got {result.effective_tier}"
+        assert result.effective_tier == ActivationTier.ACTIVE, (
+            f"Expected Active, got {result.effective_tier}"
         )
         assert result.effective_phase == "Rotation"
 
