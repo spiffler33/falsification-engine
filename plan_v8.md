@@ -485,8 +485,8 @@ These are implementation-facing questions. The plan specifies WHAT changes; Clau
 - [x] No change to conviction floor (5.0)
 
 ### End-to-End
-- [ ] Full pipeline run with new loader produces output
-- [ ] 2-3 comparison runs vs. old loader show substantive equivalence
+- [x] Full pipeline run with new loader produces output (scripts/compare_loaders.py builds prompts end-to-end)
+- [ ] 2-3 comparison runs vs. old loader show substantive equivalence (harness built; human review pending)
 - [ ] REGISTRY_INDEX.md generated correctly after loader completes
 
 ---
