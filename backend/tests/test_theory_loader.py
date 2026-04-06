@@ -672,6 +672,103 @@ class TestParseFalsifierSeveritySynthetic:
         assert entries[0]["condition"] == "China crisis deepens"
         assert entries[0]["logic"] == "Caps magnitude"
 
+    # --- FRAGILITY-06: ID extraction restricted to designated column ---
+
+    def test_id_in_narrative_not_extracted(self):
+        """ID pattern in a non-ID cell must NOT set the falsifier ID.
+
+        FRAGILITY-06: the parser must not search narrative cells for IDs.
+        Here the ID column has no valid pattern, so it must raise even
+        though 'S3' appears in the Rationale column.
+        """
+        text = (
+            "## falsifier_severity_assignments\n\n"
+            "| Falsifier | Severity | Rationale |\n"
+            "|-----------|----------|----------|\n"
+            "| Some narrative condition | **major** | Related to S3 analysis |\n"
+        )
+        with pytest.raises(ValueError, match="no valid ID pattern"):
+            parse_falsifier_severity(text)
+
+    def test_malformed_id_column_raises(self):
+        """ID column present but contains no valid H#/S#/DF#/SF# pattern."""
+        text = (
+            "## falsifier_severity_assignments\n\n"
+            "| # | Severity | Condition |\n"
+            "|---|----------|----------|\n"
+            "| item_one | **medium** (0.25) | Rates decline |\n"
+        )
+        with pytest.raises(ValueError, match="no valid ID pattern"):
+            parse_falsifier_severity(text)
+
+    def test_auto_id_no_fallback_search(self):
+        """Table without ID column gets auto-IDs without searching cells.
+
+        Even though the Condition cell contains 'H2' as a substring,
+        the parser must NOT extract it — it should auto-assign ST_1.
+        """
+        text = (
+            "## state_falsifiers\n\n"
+            "| Condition | Severity | Description |\n"
+            "|-----------|----------|-------------|\n"
+            "| Related to H2 mechanism | **minor** (0.10) | Timeline extends |\n"
+        )
+        entries = parse_falsifier_severity(text)
+        assert len(entries) == 1
+        assert entries[0]["falsifier_id"] == "ST_1"
+
+    # --- FRAGILITY-05: severity restricted to designated column ---
+
+    def test_severity_in_narrative_not_extracted(self):
+        """Severity keyword in a non-severity cell must NOT set severity.
+
+        FRAGILITY-05: the parser must not search narrative cells for
+        severity keywords.  This table has Classification and Rationale
+        columns but no Severity column.  'major' appears in Rationale
+        but must not leak into severity metadata.
+        """
+        text = (
+            "## falsifier_severity_assignments\n\n"
+            "| ID | Classification | Rationale |\n"
+            "|----|---------------|----------|\n"
+            "| H1 | hard | This is a major structural risk |\n"
+        )
+        entries = parse_falsifier_severity(text)
+        assert len(entries) == 1
+        assert entries[0]["classification"] == "hard"
+        assert entries[0]["severity"] is None
+
+    def test_no_severity_or_classification_column_raises(self):
+        """Table with neither Classification nor Severity column must fail.
+
+        FRAGILITY-05: the parser refuses to guess classification/severity
+        from narrative cells.
+        """
+        text = (
+            "## falsifier_severity_assignments\n\n"
+            "| ID | Condition | Rationale |\n"
+            "|----|-----------|----------|\n"
+            "| H1 | Some condition | Hard to assess |\n"
+        )
+        with pytest.raises(ValueError, match="no reachable Classification or Severity"):
+            parse_falsifier_severity(text)
+
+    def test_severity_column_respected_over_narrative(self):
+        """When Severity column says 'minor', narrative text 'major' is ignored.
+
+        This confirms the parser reads ONLY the designated Severity column.
+        """
+        text = (
+            "## state_falsifiers\n\n"
+            "| # | Condition | Severity | Description |\n"
+            "|---|-----------|----------|-------------|\n"
+            "| S1 | Major structural failure risk | **minor** (0.10) | A major problem |\n"
+        )
+        entries = parse_falsifier_severity(text)
+        assert len(entries) == 1
+        assert entries[0]["severity"] == "minor"
+        assert entries[0]["classification"] == "soft"
+
 
 # ---------------------------------------------------------------------------
 # build_falsifier_registry — Unit 5

@@ -359,9 +359,17 @@ Each task below is intended to be executed in a separate Claude Code session aft
 - full falsifier registry tests across all packages
 
 **Update status:**
-- [ ] Task 5 not started
-- [ ] Task 5 in progress
-- [ ] Task 5 complete
+- [x] Task 5 complete (2026-04-06)
+  - FRAGILITY-05: severity/classification extraction restricted to designated columns only; all-cells fallback removed; missing Classification+Severity columns now raise ValueError
+  - FRAGILITY-06: falsifier ID extraction restricted to designated ID column only; all-cells fallback removed; malformed ID column raises ValueError; tables without ID column get auto-assigned ST_N IDs (preserved)
+  - 6 new tests, 947 total passing, v8 equivalence check ALL PASS
+
+#### Completion note — 2026-04-06
+- Summary: Removed two interpretive fallback paths in `_parse_falsifier_tables()` that searched ALL cells when designated columns failed. FRAGILITY-06: falsifier ID extraction now reads only the mapped `id` column — if present and malformed, raises ValueError; if absent, auto-assigns `ST_N`. The previous path that scanned every cell for `H#/S#/DF#/SF#` patterns is deleted. FRAGILITY-05: classification/severity extraction now reads only from mapped `classification` and/or `severity` columns — if neither column exists or is reachable, raises ValueError. The previous path that scanned every cell for severity keywords is deleted. The `classification = classification or "soft"` silent default is replaced by an explicit check that the designated column produced a result.
+- Files changed: `backend/engine/theory_loader.py`, `backend/tests/test_theory_loader.py`
+- Validation run: `python -m pytest backend/ -x -q` (947 passed, +6 new tests), `python -m scripts.v8_equivalence_check` (ALL PASS, 3 runs)
+- Result: No score changes (fallbacks were dead code on current packages — all 8 theories have proper ID and severity columns). All 8 theory packages parse identically. New tests confirm: (1) ID patterns in narrative cells are not extracted, (2) malformed ID columns raise, (3) severity keywords in narrative cells are not extracted, (4) tables without classification/severity columns raise, (5) designated Severity column value overrides narrative.
+- Residual risk: None for FRAGILITY-05/06. The `_classify_severity_text()` function still uses heuristic keyword matching on the designated column content — this is acceptable because it operates on a column explicitly labeled for that purpose, not on arbitrary narrative text.
 
 ---
 
@@ -556,7 +564,7 @@ The remediation is done only when all of the following are true:
 - [x] Task 2 complete
 - [x] Task 3 complete
 - [x] Task 4 complete
-- [ ] Task 5 complete
+- [x] Task 5 complete
 - [ ] Task 6 complete
 - [ ] Task 7 complete
 - [ ] Task 8 complete

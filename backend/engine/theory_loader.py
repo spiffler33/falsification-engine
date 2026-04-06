@@ -373,40 +373,66 @@ def _parse_falsifier_tables(
 
         # --- Data row ---
 
-        # Extract falsifier ID
-        id_idx = col_map.get("id", 0)
-        fid = _extract_fals_id(cells[id_idx]) if id_idx < len(cells) else None
-        if fid is None:
-            for cell in cells:
-                fid = _extract_fals_id(cell)
-                if fid:
-                    break
-        if fid is None:
+        # FRAGILITY-06: Extract falsifier ID from designated column only.
+        # Do NOT search narrative cells for ID patterns — narrative text
+        # is not data.  Tables without an ID column get auto-assigned IDs.
+        if "id" in col_map:
+            id_idx = col_map["id"]
+            if id_idx >= len(cells):
+                raise ValueError(
+                    f"Falsifier table row too short to reach ID column "
+                    f"(column {id_idx}, row has {len(cells)} cells): "
+                    f"{stripped!r}"
+                )
+            fid = _extract_fals_id(cells[id_idx])
+            if fid is None:
+                raise ValueError(
+                    f"Falsifier table row has no valid ID pattern "
+                    f"(H#/S#/DF#/SF#) in designated ID column: "
+                    f"{cells[id_idx]!r}"
+                )
+        else:
+            # Table has no ID column — auto-assign sequential IDs.
             auto_id_counter += 1
             fid = f"ST_{auto_id_counter}"
 
-        # Determine classification + severity
+        # FRAGILITY-05: Extract classification/severity from designated
+        # columns only.  Do NOT search narrative cells for severity keywords
+        # — narrative text is not data.  The table MUST have at least one
+        # of Classification or Severity columns.
         classification: str | None = None
         severity: str | None = None
 
-        if "classification" in col_map and col_map["classification"] < len(cells):
+        has_cls_col = "classification" in col_map and col_map["classification"] < len(cells)
+        has_sev_col = "severity" in col_map and col_map["severity"] < len(cells)
+
+        if not has_cls_col and not has_sev_col:
+            raise ValueError(
+                f"Falsifier table row has no reachable Classification or "
+                f"Severity column — cannot determine falsifier type. "
+                f"Row: {stripped!r}"
+            )
+
+        if has_cls_col:
             classification, severity = _classify_severity_text(
                 cells[col_map["classification"]],
             )
-        if "severity" in col_map and col_map["severity"] < len(cells):
+        if has_sev_col:
             cls2, sev2 = _classify_severity_text(cells[col_map["severity"]])
             if classification is None:
                 classification = cls2
             if severity is None:
                 severity = sev2
+
+        # _classify_severity_text always returns a non-None classification
+        # ("hard" or "soft").  If we reach here with None, the designated
+        # column content was unparseable — fail loudly.
         if classification is None:
-            for cell in cells:
-                cls3, sev3 = _classify_severity_text(cell)
-                if cls3 == "hard" or sev3 is not None:
-                    classification = cls3
-                    severity = sev3
-                    break
-        classification = classification or "soft"
+            raise ValueError(
+                f"Falsifier table row: designated Classification/Severity "
+                f"column did not yield a parseable classification. "
+                f"Row: {stripped!r}"
+            )
 
         # Determine source
         source = "state" if force_state else _determine_source(
