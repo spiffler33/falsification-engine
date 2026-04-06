@@ -406,6 +406,7 @@ The updated contract replaces the current one. The old contract is archived alon
 | ~~14~~ | ~~Interface contract update~~ | ~~Update ECONOMIC_THEORIES_INTERFACE_CONTRACT.md to reflect new structure.~~ Done (v2.0). | Phase 4 |
 | ~~15~~ | ~~REGISTRY_INDEX.md generation~~ | ~~Loader byproduct. Mechanical summary of all 8 theories.~~ Done. `generate_registry_index()` + 29 tests. | Phase 4 |
 | ~~16~~ | ~~Old format removal~~ | ~~After cutover: remove adapter layer, remove old loader code path, archive old monolithic modules.~~ Done. Deleted theory_parser.py, adapter, old_format/, validation harnesses. Added score_all_packages() to activation.py. Pipeline + theories endpoints rewired to v8 packages. 675 tests (52 removed with scaffolding). | Phase 4 |
+| ~~17~~ | ~~Dead code cleanup~~ | ~~Remove old build_generation_prompt/build_elimination_prompt/\_extract\_falsifier\_section from prompt\_builder.py. Migrate 30 integration tests to v8 builders.~~ Done. 266 lines removed. 815 tests pass. | Post-cutover |
 
 ### Phase Boundaries (context-clearable)
 
@@ -506,4 +507,4 @@ These are implementation-facing questions. The plan specifies WHAT changes; Clau
 
 ---
 
-## Status: Phase 3 in progress — Component 12 done (Layer 3 prompt assembly snapshots, 287 cumulative tests, 823 total). Next: Component 13 (Layer 4 run-level comparison).
+## Status: COMPLETE. All 16 components + post-cutover cleanup done. 815 tests pass. No old-format code remains in prompt_builder.py or pipeline.py.
