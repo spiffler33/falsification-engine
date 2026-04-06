@@ -1,5 +1,5 @@
 # theories.py -- Theory listing and activation score endpoints.
-# Depends on: engine/theory_parser.py, engine/activation.py, schemas/briefing.py
+# Depends on: engine/theory_loader.py, engine/activation.py, schemas/briefing.py
 # Depended on by: main.py (router registration)
 from __future__ import annotations
 
@@ -9,8 +9,9 @@ from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.orm import Session
 
 from backend.db.database import get_db
-from backend.engine import activation, regime, theory_parser
+from backend.engine import activation, regime
 from backend.engine.prompt_builder import THEORY_LABEL_MAP
+from backend.engine.theory_loader import load_all_theory_packages
 from backend.schemas.briefing import BriefingPacket
 
 router = APIRouter(tags=["theories"])
@@ -32,7 +33,7 @@ def build_theory_summaries(briefing_data: dict | None = None) -> list[dict]:
     When called from the snapshot builder, pass the briefing data;
     when called from the endpoint, it loads the briefing itself.
     """
-    theories = theory_parser.load_all_theories()
+    packages = load_all_theory_packages()
 
     if briefing_data is None:
         briefing_data = _load_briefing_packet()
@@ -40,7 +41,7 @@ def build_theory_summaries(briefing_data: dict | None = None) -> list[dict]:
     activation_results = []
     if briefing_data:
         briefing = BriefingPacket(**briefing_data)
-        activation_results = activation.score_all_theories(theories, briefing)
+        activation_results = activation.score_all_packages(packages, briefing)
 
     ar_map = {ar.theory_id: ar for ar in activation_results}
 
@@ -60,29 +61,28 @@ def build_theory_summaries(briefing_data: dict | None = None) -> list[dict]:
             regime_affects.setdefault(module_id, []).append(flag["flag_id"])
 
     result = []
-    for t in theories:
-        ar = ar_map.get(t.theory_id)
-        label = THEORY_LABEL_MAP.get(t.theory_id, t.theory_id)
+    for pkg in packages:
+        ar = ar_map.get(pkg.theory_id)
+        label = THEORY_LABEL_MAP.get(pkg.theory_id, pkg.theory_id)
+        is_two_phase = ar.is_two_phase if ar else False
 
         entry = {
-            "theory_id": t.theory_id,
-            "name": t.title or label,
-            "title": t.title or label,
+            "theory_id": pkg.theory_id,
+            "name": label,
+            "title": label,
             "label": label,
-            "is_two_phase": t.is_two_phase,
-            "hard_falsifier_count": len(t.hard_falsifiers),
-            "soft_falsifier_count": len(t.soft_falsifiers),
-            "prediction_count": len(t.directional_predictions),
-            "regime_flags": regime_affects.get(t.theory_id, []),
+            "is_two_phase": is_two_phase,
+            "hard_falsifier_count": len([f for f in pkg.falsifier_registry if f.classification == "hard"]),
+            "soft_falsifier_count": len([f for f in pkg.falsifier_registry if f.classification == "soft"]),
+            "regime_flags": regime_affects.get(pkg.theory_id, []),
         }
 
         if ar:
             entry["activation"] = ar.model_dump()
             # Flatten activation fields for frontend convenience
-            if t.is_two_phase:
+            if is_two_phase:
                 eff_tier = ar.effective_tier or ar.tier
                 entry["tier"] = (eff_tier.value if eff_tier else "inactive").lower()
-                # Get score from the effective phase
                 if ar.effective_phase and ar.phase_scores:
                     entry["activation_score"] = ar.phase_scores.get(ar.effective_phase, 0)
                 else:
@@ -112,14 +112,14 @@ def list_theories():
 @router.get("/theories/activation")
 def get_activation_scores():
     """Return current activation tier and score for all theories."""
-    theories = theory_parser.load_all_theories()
+    packages = load_all_theory_packages()
     briefing_data = _load_briefing_packet()
 
     if not briefing_data:
         return {"error": "No briefing packet available", "scores": []}
 
     briefing = BriefingPacket(**briefing_data)
-    results = activation.score_all_theories(theories, briefing)
+    results = activation.score_all_packages(packages, briefing)
 
     return {
         "scores": [ar.model_dump() for ar in results],
@@ -134,18 +134,18 @@ def get_activation_scores():
 
 @router.get("/theories/{theory_id}")
 def get_theory(theory_id: str):
-    """Return a single theory module with full detail."""
-    theories = theory_parser.load_all_theories()
-    for t in theories:
-        if t.theory_id == theory_id:
+    """Return a single theory package with full detail."""
+    packages = load_all_theory_packages()
+    for pkg in packages:
+        if pkg.theory_id == theory_id:
             briefing_data = _load_briefing_packet()
             ar = None
             if briefing_data:
                 briefing = BriefingPacket(**briefing_data)
-                ar = activation.score_theory(t, briefing)
+                ar = activation.score_package(pkg, briefing)
 
             return {
-                "theory": t.model_dump(),
+                "theory": pkg.model_dump(),
                 "activation": ar.model_dump() if ar else None,
                 "label": THEORY_LABEL_MAP.get(theory_id, theory_id),
             }

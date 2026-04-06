@@ -1,5 +1,5 @@
 # prompt_builder.py -- Build generation and elimination prompts.
-# Depends on: schemas/theory.py, schemas/briefing.py, engine/theory_parser.py, engine/activation.py
+# Depends on: schemas/theory.py, schemas/briefing.py, engine/theory_loader.py, engine/activation.py
 # Depended on by: api/pipeline.py
 #
 # The prompts are the interface between the mechanical system and the LLM.

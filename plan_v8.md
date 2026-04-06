@@ -405,7 +405,7 @@ The updated contract replaces the current one. The old contract is archived alon
 | 13 | Validation: Layer 4 (run-level comparison) | Full pipeline runs with human comparison. 2-3 runs minimum. | Phase 3 |
 | ~~14~~ | ~~Interface contract update~~ | ~~Update ECONOMIC_THEORIES_INTERFACE_CONTRACT.md to reflect new structure.~~ Done (v2.0). | Phase 4 |
 | ~~15~~ | ~~REGISTRY_INDEX.md generation~~ | ~~Loader byproduct. Mechanical summary of all 8 theories.~~ Done. `generate_registry_index()` + 29 tests. | Phase 4 |
-| 16 | Old format removal | After cutover: remove adapter layer, remove old loader code path, archive old monolithic modules. | Phase 4 |
+| ~~16~~ | ~~Old format removal~~ | ~~After cutover: remove adapter layer, remove old loader code path, archive old monolithic modules.~~ Done. Deleted theory_parser.py, adapter, old_format/, validation harnesses. Added score_all_packages() to activation.py. Pipeline + theories endpoints rewired to v8 packages. 675 tests (52 removed with scaffolding). | Phase 4 |
 
 ### Phase Boundaries (context-clearable)
 

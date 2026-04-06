@@ -1,6 +1,6 @@
 # theory.py — Pydantic models for parsed theory modules.
 # Depends on: nothing
-# Depended on by: engine/theory_parser.py, engine/activation.py, api/theories.py
+# Depended on by: engine/theory_loader.py, engine/activation.py, api/theories.py
 from __future__ import annotations
 
 from enum import Enum

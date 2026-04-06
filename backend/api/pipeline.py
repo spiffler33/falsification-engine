@@ -1,6 +1,6 @@
 # pipeline.py -- Pipeline status, prompt generation, and import endpoints.
 # Depends on: db/database.py, db/models.py, engine/prompt_builder.py, engine/output_parser.py,
-#             engine/theory_parser.py, engine/activation.py, engine/conviction.py
+#             engine/theory_loader.py, engine/activation.py, engine/conviction.py
 # Depended on by: main.py (router registration)
 from __future__ import annotations
 
@@ -16,15 +16,20 @@ from sqlalchemy.orm import Session
 from backend.db.database import get_db
 from backend.db.models import Hypothesis as HypothesisModel
 from backend.db.models import HypothesisThread, InboxItem, Run, RunPriceSnapshot, SectorFalsifierAudit
-from backend.engine import activation, conviction, regime, theory_parser
+from backend.engine import activation, conviction, regime
 from backend.engine.output_parser import ParseError, parse_elimination_output, parse_generation_output, parse_sector_falsifier_audits
-from backend.engine.prompt_builder import build_elimination_prompt, build_generation_prompt
+from backend.engine.prompt_builder import build_elimination_prompt_v8, build_generation_prompt_v8
 from backend.engine.sector_appendices import select_sector_appendices
 from backend.lifecycle import apply_untestable_escalation, compute_thread_staleness
 from backend.realization import compute_freshness_label
 from backend.schemas.briefing import BriefingPacket
 from backend.schemas.scoring import ConvictionInput
-from backend.engine.theory_loader import build_falsifier_registry, load_all_theory_packages
+from backend.engine.theory_loader import (
+    build_falsifier_registry,
+    filter_interaction_matrix,
+    load_all_theory_packages,
+    parse_interaction_matrix,
+)
 from backend.schemas.theory import FalsifierEntry
 
 router = APIRouter(tags=["pipeline"])
@@ -98,6 +103,16 @@ def _load_briefing() -> dict[str, Any]:
         if path.exists():
             return json.loads(path.read_text(encoding="utf-8"))
     return {}
+
+
+def _load_interaction_matrix() -> dict | None:
+    """Load and parse INTERACTION_MATRIX.md from the theories directory."""
+    from backend.config import THEORIES_DIR
+
+    matrix_path = THEORIES_DIR / "INTERACTION_MATRIX.md"
+    if not matrix_path.exists():
+        return None
+    return parse_interaction_matrix(matrix_path.read_text(encoding="utf-8"))
 
 
 def _assess_data_quality(briefing: dict) -> dict:
@@ -494,16 +509,16 @@ def get_pipeline_status(db: Session = Depends(get_db)):
 @router.get("/pipeline/prompt/generation")
 def get_generation_prompt(db: Session = Depends(get_db)):
     """Build and return the generation prompt text for copy-paste."""
-    # Load theories and briefing
-    theories = theory_parser.load_all_theories()
+    # Load theory packages and briefing
+    packages = load_all_theory_packages()
     briefing_data = _load_briefing()
     if not briefing_data:
         raise HTTPException(status_code=400, detail="No briefing packet available. Run the data agent first.")
 
     briefing = BriefingPacket(**briefing_data)
 
-    # Run activation scoring
-    activation_results = activation.score_all_theories(theories, briefing)
+    # Run activation scoring (package-native, no adapter)
+    activation_results = activation.score_all_packages(packages, briefing)
 
     # Get queued inbox items
     inbox_rows = db.query(InboxItem).filter(InboxItem.status == "queued").all()
@@ -564,11 +579,19 @@ def get_generation_prompt(db: Session = Depends(get_db)):
         if prior_hypotheses_list:
             prior_hypotheses = prior_hypotheses_list
 
-    prompt = build_generation_prompt(
-        theories=theories,
+    # Load and filter interaction matrix for active theories
+    active_ids = {ar.theory_id for ar in activation_results
+                  if (ar.tier if not ar.is_two_phase else ar.effective_tier)
+                  == activation.ActivationTier.ACTIVE}
+    matrix_raw = _load_interaction_matrix()
+    matrix = filter_interaction_matrix(matrix_raw, active_ids) if matrix_raw else None
+
+    prompt = build_generation_prompt_v8(
+        packages=packages,
         activation_results=activation_results,
         briefing=briefing_data,
         inbox_items=inbox_items,
+        interaction_matrix=matrix,
         active_regime_flags=active_flags,
         prior_hypotheses=prior_hypotheses,
         active_threads=active_threads if active_threads else None,
@@ -587,10 +610,10 @@ def get_elimination_prompt(db: Session = Depends(get_db)):
             detail="Generation output must be imported before generating the elimination prompt.",
         )
 
-    theories = theory_parser.load_all_theories()
+    packages = load_all_theory_packages()
     briefing_data = _load_briefing()
     briefing = BriefingPacket(**briefing_data)
-    activation_results = activation.score_all_theories(theories, briefing)
+    activation_results = activation.score_all_packages(packages, briefing)
 
     # Get generated hypotheses from the current run
     hyps = db.query(HypothesisModel).filter(HypothesisModel.run_id == latest_run.id).all()
@@ -627,11 +650,21 @@ def get_elimination_prompt(db: Session = Depends(get_db)):
     latest_run.sector_appendices_loaded = json.dumps(sector_ids) if sector_ids else None
     db.commit()
 
-    prompt = build_elimination_prompt(
+    # Load and filter interaction matrix for invoked theories
+    invoked_ids = set()
+    for h in hypothesis_dicts:
+        for tid in h.get("source_theories", [h.get("theory_id", "")]):
+            if tid:
+                invoked_ids.add(tid)
+    matrix_raw = _load_interaction_matrix()
+    matrix = filter_interaction_matrix(matrix_raw, invoked_ids) if matrix_raw else None
+
+    prompt = build_elimination_prompt_v8(
         hypotheses=hypothesis_dicts,
-        theories=theories,
+        packages=packages,
         activation_results=activation_results,
         briefing=briefing_data,
+        interaction_matrix=matrix,
         has_channel_tags=has_channel_tags,
         sector_appendices=selected_appendices,
         has_falsifier_lifecycle=has_falsifier_lifecycle,

@@ -18,6 +18,7 @@ from backend.schemas.theory import (
     Direction,
     Indicator,
     TheoryModule,
+    TheoryPackage,
 )
 
 # Tier thresholds from CLAUDE.md
@@ -378,3 +379,123 @@ def _score_to_tier(score: float) -> ActivationTier:
         return ActivationTier.ADJACENT
     else:
         return ActivationTier.INACTIVE
+
+
+# ---------------------------------------------------------------------------
+# Package-native scoring: accept TheoryPackage directly, no adapter needed
+# ---------------------------------------------------------------------------
+
+_DIRECTION_KEYWORDS: dict[str, str] = {
+    "above": "above",
+    "below": "below",
+    "rising": "rising",
+    "falling": "falling",
+    "between": "between",
+}
+
+
+def _parse_direction(raw: str) -> str:
+    """Map a direction string to a Direction enum value.
+
+    Handles compound directions (e.g. "above and rising") by matching the
+    first keyword — same heuristic the old parser used.
+    """
+    low = raw.lower().strip()
+    for keyword, value in _DIRECTION_KEYWORDS.items():
+        if keyword in low:
+            return value
+    return "above"
+
+
+def _entry_to_indicator(entry: dict) -> Indicator:
+    """Convert a parsed activation table dict to an Indicator object.
+
+    Re-injects the ``web search:`` prefix for web-search indicators so the
+    activation engine's ``_extract_metric_field`` resolves fields via
+    WEB_FIELD_MAP correctly.
+    """
+    direction = Direction(_parse_direction(entry["direction"]))
+    requires_web_search = entry.get("data_ownership") == "web-search"
+
+    metric_source = entry["metric_source"]
+    if requires_web_search and "web search" not in metric_source.lower():
+        metric_source = f"web search: {metric_source}"
+
+    return Indicator(
+        name=entry["indicator_name"],
+        metric_source=metric_source,
+        threshold=entry["threshold"],
+        direction=direction,
+        weight=entry["weight"],
+        rationale="",
+        requires_web_search=requires_web_search,
+        is_qualitative=False,
+    )
+
+
+def _build_phases_from_package(pkg: TheoryPackage) -> tuple[bool, list[ActivationPhase]]:
+    """Parse ACTIVATION.md text into ActivationPhase objects.
+
+    Returns (is_two_phase, phases).
+    """
+    from backend.engine.theory_loader import parse_activation_table
+
+    entries = parse_activation_table(pkg.activation)
+
+    phases_present = {e["phase"] for e in entries if e["phase"]}
+    is_two_phase = len(phases_present) >= 2
+
+    if is_two_phase:
+        phase_groups: dict[str, list[dict]] = {}
+        for entry in entries:
+            phase_groups.setdefault(entry["phase"], []).append(entry)
+
+        phases: list[ActivationPhase] = []
+        for phase_str in sorted(phase_groups):
+            if re.search(r"Phase\s*A\b", phase_str, re.IGNORECASE):
+                phase_name = "phase_a"
+            elif re.search(r"Phase\s*B\b", phase_str, re.IGNORECASE):
+                phase_name = "phase_b"
+            else:
+                phase_name = phase_str
+
+            label_match = re.search(r"Phase\s+[AB]:\s*(.+)", phase_str)
+            phase_label = label_match.group(1).strip() if label_match else phase_str
+
+            indicators = [_entry_to_indicator(e) for e in phase_groups[phase_str]]
+            phases.append(ActivationPhase(
+                phase_name=phase_name,
+                phase_label=phase_label,
+                indicators=indicators,
+            ))
+    else:
+        indicators = [_entry_to_indicator(e) for e in entries]
+        phases = [ActivationPhase(
+            phase_name="single",
+            phase_label="Active",
+            indicators=indicators,
+        )]
+
+    return is_two_phase, phases
+
+
+def score_package(pkg: TheoryPackage, briefing: BriefingPacket) -> ActivationResult:
+    """Score activation for a v8 TheoryPackage against a briefing packet.
+
+    Parses ACTIVATION.md internally — no adapter or TheoryModule needed.
+    """
+    is_two_phase, phases = _build_phases_from_package(pkg)
+    module = TheoryModule(
+        theory_id=pkg.theory_id,
+        is_two_phase=is_two_phase,
+        phases=phases,
+    )
+    return score_theory(module, briefing)
+
+
+def score_all_packages(
+    packages: list[TheoryPackage],
+    briefing: BriefingPacket,
+) -> list[ActivationResult]:
+    """Score activation for all v8 TheoryPackages against a briefing packet."""
+    return [score_package(pkg, briefing) for pkg in packages]
