@@ -284,10 +284,10 @@ def _extract_metric_field(metric_source: str) -> str | None:
 
         return field
 
-    # Handle plain metric names
-    if source and not source.startswith("web"):
-        return source
-
+    # No backtick field name and not a web-search source.
+    # Do NOT fall through to returning the whole string — that produces
+    # garbage field names that silently resolve to None downstream.
+    # Callers must handle None explicitly.
     return None
 
 
@@ -304,8 +304,12 @@ def _resolve_web_field(metric_source: str) -> str | None:
     return None
 
 
-def _normalize_computed_field(expr: str) -> str:
-    """Normalize a computed expression to a briefing field name."""
+def _normalize_computed_field(expr: str) -> str | None:
+    """Normalize a computed expression to a briefing field name.
+
+    Returns None for unrecognized expressions instead of producing
+    a generic garbage field name (BUG-04 fix).
+    """
     expr_lower = expr.lower().strip()
 
     # Known computed field mappings
@@ -316,10 +320,9 @@ def _normalize_computed_field(expr: str) -> str:
     if "spy" in expr_lower and "52w" in expr_lower:
         return "spy_drawdown_from_52w_high"
 
-    # Generic normalization: replace operators with underscores
-    normalized = re.sub(r"[^a-z0-9]", "_", expr_lower)
-    normalized = re.sub(r"_+", "_", normalized).strip("_")
-    return normalized
+    # No known mapping found.  Return None instead of a generic
+    # underscore-munged string that silently produces invalid field names.
+    return None
 
 
 def _check_threshold(value: float, indicator: Indicator) -> bool:

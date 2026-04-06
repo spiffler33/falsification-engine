@@ -369,3 +369,230 @@ class TestTwoPhaseScoring:
         assert result.effective_tier == ActivationTier.ACTIVE
         assert result.effective_phase == "Resolving"
         assert result.phase_tiers["Building"] == ActivationTier.INACTIVE
+
+
+# ---------------------------------------------------------------------------
+# v8 remediation Task 1: metric_source resolution fixes
+# ---------------------------------------------------------------------------
+
+
+class TestPassthroughRemoved:
+    """FRAGILITY-07: whole-string passthrough in _extract_metric_field
+    must be removed. Prose metric_source strings without backtick field
+    names must resolve to None, not to the whole string."""
+
+    def test_prose_without_backtick_returns_none(self):
+        """Prose metric_source that formerly passed through the whole string."""
+        result = _extract_metric_field(
+            "Computed: SPY earnings yield (1/PE) minus 10Y Treasury yield"
+        )
+        assert result is None
+
+    def test_fred_reference_without_backtick_returns_none(self):
+        result = _extract_metric_field(
+            "FRED: FYOINT (federal interest outlays), FGRECPT (federal receipts)"
+        )
+        assert result is None
+
+    def test_ticker_without_backtick_returns_none(self):
+        result = _extract_metric_field("DXY index")
+        assert result is None
+
+    def test_backtick_field_still_works(self):
+        result = _extract_metric_field("Computed: `equity_risk_premium`")
+        assert result == "equity_risk_premium"
+
+    def test_backtick_field_with_prose_still_works(self):
+        result = _extract_metric_field(
+            "`rates.fed_funds` (proxy: fed funds rate vs. SPY earnings yield)"
+        )
+        assert result == "rates.fed_funds"
+
+    def test_web_search_still_works(self):
+        result = _extract_metric_field("web search: Shiller CAPE ratio")
+        assert result == "shiller_cape"
+
+
+class TestGenericNormalizationRemoved:
+    """BUG-04: _normalize_computed_field generic fallback must not produce
+    garbage field names from arbitrary expressions."""
+
+    def test_known_mapping_vix_realized(self):
+        assert _normalize_computed_field("VIX - 20d_realized_vol") == "vix_vs_realized"
+
+    def test_known_mapping_qqq_iwm(self):
+        assert _normalize_computed_field("QQQ / IWM ratio") == "qqq_iwm_ratio"
+
+    def test_known_mapping_spy_52w(self):
+        assert _normalize_computed_field("SPY 52w high drawdown") == "spy_drawdown_from_52w_high"
+
+    def test_unknown_expression_returns_none(self):
+        """Previously returned a garbage underscore-munged string."""
+        result = _normalize_computed_field("SPY earnings yield / PE ratio")
+        assert result is None
+
+    def test_another_unknown_returns_none(self):
+        result = _normalize_computed_field("gold price / oil price")
+        assert result is None
+
+
+class TestFixedTheoryFieldResolution:
+    """BUG-01: The 3 affected theory packages must now resolve
+    metric_source fields correctly after backtick restoration."""
+
+    def test_valuation_mean_reversion_erp(self):
+        result = _extract_metric_field(
+            "Computed: `equity_risk_premium` (SPY earnings yield minus 10Y Treasury yield)"
+        )
+        assert result == "equity_risk_premium"
+
+    def test_valuation_mean_reversion_cash_yield(self):
+        result = _extract_metric_field(
+            "`rates.fed_funds` (proxy: fed funds rate vs. SPY earnings yield)"
+        )
+        assert result == "rates.fed_funds"
+
+    def test_valuation_mean_reversion_breadth(self):
+        result = _extract_metric_field(
+            "Computed: `qqq_iwm_ratio` + RSP vs. SPY relative performance"
+        )
+        assert result == "qqq_iwm_ratio"
+
+    def test_fiscal_arithmetic_interest_receipts(self):
+        result = _extract_metric_field(
+            "Computed: `interest_receipts_ratio` (FRED: FYOINT / FGRECPT annualized)"
+        )
+        assert result == "interest_receipts_ratio"
+
+    def test_fiscal_arithmetic_deficit_pace(self):
+        result = _extract_metric_field(
+            "Computed: `deficit_pace_annualized` (FRED: FYFSD trailing annualized)"
+        )
+        assert result == "deficit_pace_annualized"
+
+    def test_fiscal_arithmetic_gold_oil(self):
+        result = _extract_metric_field(
+            "Computed: `gold_oil_ratio` (gold price / oil price)"
+        )
+        assert result == "gold_oil_ratio"
+
+    def test_capital_flows_eem_3y(self):
+        result = _extract_metric_field(
+            "Computed: `eem_spy_3y_relative` (EEM vs. SPY cumulative rolling 3-year relative return)"
+        )
+        assert result == "eem_spy_3y_relative"
+
+    def test_capital_flows_usdcny(self):
+        result = _extract_metric_field("`usdcny` (USD/CNY spot rate)")
+        assert result == "usdcny"
+
+    def test_capital_flows_eem_3m(self):
+        result = _extract_metric_field(
+            "Computed: `eem_spy_3m_relative` (EEM vs. SPY 3-month relative return)"
+        )
+        assert result == "eem_spy_3m_relative"
+
+    def test_capital_flows_commodity(self):
+        result = _extract_metric_field(
+            "`commodity_index_3m_change` (broad commodity index, DBC or equivalent)"
+        )
+        assert result == "commodity_index_3m_change"
+
+    def test_capital_flows_fxi(self):
+        result = _extract_metric_field(
+            "`fxi_3m_return` (FXI 3-month return from low)"
+        )
+        assert result == "fxi_3m_return"
+
+
+class TestAffectedTheoryScoring:
+    """End-to-end scoring for the 3 theories that were broken by BUG-01.
+    Uses the real theory packages and a briefing with known values."""
+
+    @pytest.fixture()
+    def briefing(self):
+        """Briefing with values that reproduce the baseline test conditions."""
+        return BriefingPacket(
+            growth={"real_gdp": 0.65, "unemployment": 4.3, "ism_proxy": 51.1},
+            inflation={"cpi_yoy": 2.66, "core_pce": 3.06},
+            rates={"fed_funds": 3.64, "treasury_10y": 4.33, "treasury_2y": 3.81},
+            liquidity={"fed_balance_sheet": 6675344.0, "tga": 847718.0,
+                       "reverse_repo": 327.0},
+            credit={"hy_spread": 316.0, "ig_spread": 87.0},
+            sentiment={},
+            computed={
+                "equity_risk_premium": 0.17,
+                "qqq_iwm_ratio": 2.3279,
+                "gold_oil_ratio": 3.11,
+                "interest_receipts_ratio": 34.0,
+                "deficit_pace_annualized": 3690.0,
+                "interest_exceeds_defense": 287.0,
+                "eem_spy_3m_relative": 7.27,
+                "eem_spy_3y_relative": 9.5,
+                "commodity_index_3m_change": 31.17,
+                "fxi_3m_return": -7.13,
+                "net_liquidity": 5827299.0,
+            },
+            markets={},
+            web_sourced={
+                "shiller_cape": WebSourcedData(value=37.94, source="test"),
+                "insider_sell_buy_ratio": WebSourcedData(value=10.1111, source="test"),
+                "sp500_net_margin": WebSourcedData(value=8.8621, source="test"),
+                "cb_gold_purchases": WebSourcedData(value=1037.0, source="test"),
+                "weighted_avg_interest_rate": WebSourcedData(value=3.355, source="test"),
+                "china_credit_impulse": WebSourcedData(value=3.5, source="test"),
+                "em_dm_pe_gap": WebSourcedData(value=11.284, source="test"),
+                "usdcny": WebSourcedData(value=6.8947, source="test"),
+            },
+        )
+
+    @pytest.fixture()
+    def packages(self):
+        from backend.engine.theory_loader import load_all_theory_packages
+        return {p.theory_id: p for p in load_all_theory_packages()}
+
+    def test_valuation_mean_reversion_no_longer_inactive(self, briefing, packages):
+        """Was 0.294 Inactive (BUG-01), should be Active after fix."""
+        from backend.engine.activation import score_package
+        result = score_package(packages["valuation_mean_reversion"], briefing)
+        assert result.tier == ActivationTier.ACTIVE, (
+            f"Expected Active, got {result.tier} (score={result.score:.3f})"
+        )
+        # Score should be >0.60 (was 0.294 before fix)
+        assert result.score > 0.60
+
+    def test_fiscal_dominance_arithmetic_no_longer_inactive(self, briefing, packages):
+        """Was 0.056 Inactive (BUG-01), should be Adjacent (0.556) after fix."""
+        from backend.engine.activation import score_package
+        result = score_package(packages["fiscal_dominance_arithmetic"], briefing)
+        assert result.tier == ActivationTier.ADJACENT, (
+            f"Expected Adjacent, got {result.tier} (score={result.score:.3f})"
+        )
+        assert abs(result.score - 0.556) < 0.01
+
+    def test_capital_flows_no_longer_inactive(self, briefing, packages):
+        """Was N/A Inactive (BUG-01), should be Adjacent (Rotation, 0.450) after fix."""
+        from backend.engine.activation import score_package
+        result = score_package(packages["capital_flows"], briefing)
+        assert result.effective_tier == ActivationTier.ADJACENT, (
+            f"Expected Adjacent, got {result.effective_tier}"
+        )
+        assert result.effective_phase == "Rotation"
+
+    def test_valuation_erp_indicator_triggers(self, briefing, packages):
+        """equity_risk_premium=0.17 should trigger (below 1.0%)."""
+        from backend.engine.activation import score_package
+        result = score_package(packages["valuation_mean_reversion"], briefing)
+        erp_result = result.indicator_results.get("Equity risk premium compressed")
+        assert erp_result is not None, "ERP indicator missing from results"
+        assert erp_result["triggered"] is True
+        assert erp_result["metric_field"] == "equity_risk_premium"
+
+    def test_fiscal_interest_receipts_triggers(self, briefing, packages):
+        """interest_receipts_ratio=34.0 should trigger (above 20%)."""
+        from backend.engine.activation import score_package
+        result = score_package(packages["fiscal_dominance_arithmetic"], briefing)
+        ir_result = result.indicator_results.get("Interest expense / tax receipts ratio")
+        assert ir_result is not None
+        assert ir_result["triggered"] is True
+        assert ir_result["metric_field"] == "interest_receipts_ratio"

@@ -199,9 +199,14 @@ Each task below is intended to be executed in a separate Claude Code session aft
 - diff results against the Task 0 baseline artifact
 
 **Update status:**
-- [ ] Task 1 not started
-- [ ] Task 1 in progress
-- [ ] Task 1 complete
+- [x] Task 1 complete
+
+#### Completion note — 2026-04-06
+- Summary: Restored backtick-wrapped field names in 3 ACTIVATION.md files (10 indicators across valuation_mean_reversion, fiscal_dominance_arithmetic, capital_flows). Removed _extract_metric_field() whole-string passthrough (FRAGILITY-07). Removed _normalize_computed_field() generic garbage fallback (BUG-04). Updated equivalence script classifications: capital_flows and fiscal_dominance_arithmetic promoted from KNOWN_DIVERGED to EXACT_MATCH.
+- Files changed: `theories/THEORY_MODULE_valuation_mean_reversion_v2/ACTIVATION.md`, `theories/THEORY_MODULE_fiscal_dominance_arithmatic_v2/ACTIVATION.md`, `theories/THEORY_MODULE_capital_flows_v2/ACTIVATION.md`, `backend/engine/activation.py`, `scripts/v8_equivalence_check.py`, `backend/tests/test_activation_web_integration.py`
+- Validation run: `python -m pytest backend/tests/ -x -q` (702 passed), `python -m scripts.v8_equivalence_check` (ALL PASS, 3 runs), per-indicator trace for all 3 theories confirming field resolution
+- Result: fiscal_dominance_arithmetic 0.056→0.556 (EXACT v1 match), capital_flows N/A→0.450 Rotation (EXACT v1 match), valuation_mean_reversion 0.294→0.706 Active (TIER match — remaining gap is BUG-05 cash yield threshold, Task 2 scope). No regressions on 5 unaffected theories.
+- Residual risk: valuation_mean_reversion cash yield indicator resolves correctly (rates.fed_funds=3.64) but its v2 threshold text "SHY yield > SPY earnings yield" has no extractable number (v1 had "(1/PE)" → extracted "1"). This is BUG-05, Task 2 scope. DXY indicators in capital_flows remain pre-existing failures (failed in v1 too).
 
 ---
 
@@ -534,7 +539,7 @@ The remediation is done only when all of the following are true:
 ## 7. Master status board
 
 - [x] Task 0 complete
-- [ ] Task 1 complete
+- [x] Task 1 complete
 - [ ] Task 2 complete
 - [ ] Task 3 complete
 - [ ] Task 4 complete

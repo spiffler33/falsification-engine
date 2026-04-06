@@ -34,10 +34,16 @@ from backend.schemas.briefing import BriefingPacket
 OLD_CODE_COMMIT = "d7f3767"
 
 # Classification from Layer 1 automated tests (test_activation_equivalence.py).
-EXACT_MATCH = {"debt_cycle_short", "fiscal_dominance_liquidity", "structural_fragility"}
+EXACT_MATCH = {
+    "debt_cycle_short", "fiscal_dominance_liquidity", "structural_fragility",
+    "capital_flows", "fiscal_dominance_arithmetic",  # Fixed: v8 remediation Task 1
+}
 TIER_MATCH = {"debt_cycle_long", "monetary_architecture"}
 KNOWN_DIVERGED = {
-    "capital_flows", "fiscal_dominance_arithmetic", "valuation_mean_reversion",
+    # valuation_mean_reversion: field resolution fixed (Task 1) but threshold
+    # extraction for cash-yield indicator has no extractable number in v2
+    # threshold text (BUG-05, Task 2 scope).  Recovery scenario diverges.
+    "valuation_mean_reversion",
 }
 
 
