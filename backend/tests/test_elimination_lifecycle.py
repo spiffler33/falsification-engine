@@ -11,9 +11,9 @@ import pytest
 from backend.engine.prompt_builder import (
     _elimination_output_schema,
     _falsifier_lifecycle_instructions,
-    build_elimination_prompt,
+    build_elimination_prompt_v8,
 )
-from backend.schemas.theory import ActivationResult, ActivationTier, TheoryModule
+from backend.schemas.theory import ActivationResult, ActivationTier, TheoryPackage
 
 
 # ---------------------------------------------------------------------------
@@ -21,15 +21,15 @@ from backend.schemas.theory import ActivationResult, ActivationTier, TheoryModul
 # ---------------------------------------------------------------------------
 
 
-def _make_theory(theory_id: str, raw_md: str = "# Theory\nTest content") -> TheoryModule:
-    return TheoryModule(
+def _make_package(theory_id: str) -> TheoryPackage:
+    return TheoryPackage(
         theory_id=theory_id,
-        is_two_phase=False,
-        raw_markdown=raw_md,
-        phases=[],
-        hard_falsifiers=[],
-        soft_falsifiers=[],
-        metadata={"theory_id": theory_id, "version": 1},
+        core="# CORE content",
+        activation="# ACTIVATION content",
+        tactical="# TACTICAL content",
+        playbook="# PLAYBOOK content",
+        context_flags=[],
+        falsifier_registry=[],
     )
 
 
@@ -157,19 +157,19 @@ class TestEliminationOutputSchemaLifecycle:
 
 
 # ===================================================================
-# build_elimination_prompt — lifecycle integration
+# build_elimination_prompt_v8 — lifecycle integration
 # ===================================================================
 
 
 class TestBuildEliminationPromptLifecycle:
     def _build(self, hypotheses=None, has_falsifier_lifecycle=False):
-        theories = [_make_theory("fiscal_dominance_liquidity")]
+        packages = [_make_package("fiscal_dominance_liquidity")]
         activation_results = [
             _make_activation("fiscal_dominance_liquidity", ActivationTier.ACTIVE),
         ]
-        return build_elimination_prompt(
+        return build_elimination_prompt_v8(
             hypotheses=hypotheses or [_make_hypothesis()],
-            theories=theories,
+            packages=packages,
             activation_results=activation_results,
             briefing=MINIMAL_BRIEFING,
             has_falsifier_lifecycle=has_falsifier_lifecycle,
@@ -249,13 +249,13 @@ class TestBuildEliminationPromptLifecycle:
 
     def test_all_features_coexist(self):
         """Lifecycle + channels + sectors all render without collision."""
-        theories = [_make_theory("fiscal_dominance_liquidity")]
+        packages = [_make_package("fiscal_dominance_liquidity")]
         activation_results = [
             _make_activation("fiscal_dominance_liquidity", ActivationTier.ACTIVE),
         ]
-        prompt = build_elimination_prompt(
+        prompt = build_elimination_prompt_v8(
             hypotheses=[_make_hypothesis()],
-            theories=theories,
+            packages=packages,
             activation_results=activation_results,
             briefing=MINIMAL_BRIEFING,
             has_channel_tags=True,

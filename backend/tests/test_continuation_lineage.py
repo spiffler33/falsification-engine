@@ -4,7 +4,8 @@ import json
 import pytest
 
 from backend.engine.output_parser import parse_generation_output
-from backend.engine.prompt_builder import build_generation_prompt, _prior_hypotheses_section
+from backend.engine.prompt_builder import build_generation_prompt_v8, _prior_hypotheses_section
+from backend.schemas.theory import TheoryPackage
 
 
 def _make_generation_json(hypotheses: list[dict]) -> str:
@@ -260,10 +261,7 @@ class TestPriorHypothesesSection:
         assert "Realization vs lower" not in section
 
     def test_prompt_includes_prior_section_when_provided(self):
-        """build_generation_prompt includes PRIOR HYPOTHESES section when priors exist."""
-        # Minimal valid inputs
-        from backend.schemas.theory import ActivationResult, ActivationTier
-
+        """build_generation_prompt_v8 includes PRIOR HYPOTHESES section when priors exist."""
         priors = [{
             "id": "H-20260315-03",
             "short_name": "Test prior",
@@ -281,8 +279,8 @@ class TestPriorHypothesesSection:
             "continuation_of": None,
         }]
 
-        prompt = build_generation_prompt(
-            theories=[],
+        prompt = build_generation_prompt_v8(
+            packages=[],
             activation_results=[],
             briefing={"growth": {}},
             inbox_items=[],
@@ -296,9 +294,9 @@ class TestPriorHypothesesSection:
         assert "GENERATE A CONTINUATION" in prompt
 
     def test_prompt_omits_prior_section_when_none(self):
-        """build_generation_prompt omits PRIOR HYPOTHESES section when no priors."""
-        prompt = build_generation_prompt(
-            theories=[],
+        """build_generation_prompt_v8 omits PRIOR HYPOTHESES section when no priors."""
+        prompt = build_generation_prompt_v8(
+            packages=[],
             activation_results=[],
             briefing={"growth": {}},
             inbox_items=[],

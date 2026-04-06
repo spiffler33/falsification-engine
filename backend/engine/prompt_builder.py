@@ -3,9 +3,9 @@
 # Depended on by: api/pipeline.py
 #
 # The prompts are the interface between the mechanical system and the LLM.
-# They include full theory module text (not just structured data), the briefing
-# packet, and queued inbox items. Output specifies the exact JSON schema the
-# output_parser expects.
+# They compose per-file content from TheoryPackage (CORE.md, TACTICAL.md,
+# PLAYBOOK.md, ACTIVATION.md) plus the briefing packet and inbox items.
+# Output specifies the exact JSON schema the output_parser expects.
 from __future__ import annotations
 
 import json
@@ -14,7 +14,6 @@ from typing import Any
 from backend.schemas.theory import (
     ActivationResult,
     ActivationTier,
-    TheoryModule,
     TheoryPackage,
 )
 
@@ -31,164 +30,8 @@ THEORY_LABEL_MAP = {
 }
 
 
-def build_generation_prompt(
-    theories: list[TheoryModule],
-    activation_results: list[ActivationResult],
-    briefing: dict[str, Any],
-    inbox_items: list[dict[str, Any]],
-    max_adjacent: int = 1,
-    active_regime_flags: list[dict[str, Any]] | None = None,
-    prior_hypotheses: list[dict[str, Any]] | None = None,
-    active_threads: list[dict[str, Any]] | None = None,
-) -> str:
-    """Build the generation prompt for Pass 2.
-
-    Includes Active theories (full markdown), up to 1 Adjacent wildcard,
-    the briefing packet, and queued inbox items.
-
-    v7: When active_threads is provided, injects thread context with lifecycle
-    taxonomy (CONFIRM/UPDATE/RENEW/RETIRE) and NEW hypothesis section.
-    Falls back to legacy prior_hypotheses + continuation contract when no threads.
-    """
-    has_threads = bool(active_threads)
-
-    active_theories = []
-    adjacent_theories = []
-    activation_map = {}
-
-    for ar in activation_results:
-        tier = ar.tier if not ar.is_two_phase else ar.effective_tier
-        activation_map[ar.theory_id] = ar
-        if tier == ActivationTier.ACTIVE:
-            active_theories.append(ar.theory_id)
-        elif tier == ActivationTier.ADJACENT:
-            adjacent_theories.append(ar.theory_id)
-
-    # Build theory lookup
-    theory_map = {t.theory_id: t for t in theories}
-
-    # --- System instructions ---
-    parts = []
-    parts.append(_generation_system_instructions(has_threads=has_threads))
-
-    # --- v7 Thread context (replaces prior_hypotheses + continuation contract) ---
-    if has_threads:
-        parts.append("\n\n## ACTIVE THREADS (from prior run)\n")
-        parts.append(_thread_context_section(active_threads))
-        parts.append("\n\n## LIFECYCLE CONTRACT\n")
-        parts.append(_thread_lifecycle_contract())
-
-    # --- Active theories ---
-    parts.append("\n\n## ACTIVE THEORIES\n")
-    for tid in active_theories:
-        t = theory_map.get(tid)
-        ar = activation_map.get(tid)
-        if t:
-            score = ar.score if ar and not ar.is_two_phase else None
-            phase = ar.effective_phase if ar and ar.is_two_phase else None
-            phase_score = None
-            if ar and ar.is_two_phase and ar.phase_scores and phase:
-                phase_score = ar.phase_scores.get(phase)
-            label = THEORY_LABEL_MAP.get(tid, tid)
-            score_display = phase_score if phase_score is not None else (score if score is not None else 0)
-            phase_display = f" (Phase: {phase})" if phase else ""
-            parts.append(f"\n### {label}{phase_display} -- Activation: {score_display:.0%}\n")
-            parts.append(t.raw_markdown[:8000] if t.raw_markdown else f"[Theory module text for {tid}]")
-
-    # --- Adjacent wildcard ---
-    if adjacent_theories:
-        selected = adjacent_theories[:max_adjacent]
-        parts.append("\n\n## ADJACENT THEORY (WILDCARD -- use at most 1)\n")
-        for tid in selected:
-            t = theory_map.get(tid)
-            ar = activation_map.get(tid)
-            if t:
-                label = THEORY_LABEL_MAP.get(tid, tid)
-                parts.append(f"\n### {label}\n")
-                parts.append(t.raw_markdown[:4000] if t.raw_markdown else f"[Theory module text for {tid}]")
-
-    # --- Inbox items ---
-    if inbox_items:
-        parts.append("\n\n## INBOX ITEMS (new since last run)\n")
-        for item in inbox_items:
-            date = item.get("date", "")
-            content = item.get("content", "")
-            source = item.get("source", "")
-            theories_tagged = item.get("theories", [])
-            tags = f" [{', '.join(theories_tagged)}]" if theories_tagged else ""
-            parts.append(f"- [{date}] {content}")
-            if source:
-                parts.append(f"  Source: {source}")
-            if tags:
-                parts.append(f"  Tags: {tags}")
-            parts.append("")
-
-    # --- Regime flags (Pass 1.5 context) ---
-    if active_regime_flags:
-        active_or_adjacent = set(active_theories + adjacent_theories[:max_adjacent])
-        parts.append("\n\n## REGIME FLAGS\n")
-        parts.append(
-            "The following regime flags are active based on current theory activation states.\n"
-            "Use the channel context below when constructing hypotheses for the affected theories.\n"
-        )
-        for flag in active_regime_flags:
-            parts.append(f"REGIME FLAG: {flag['flag_id']}")
-            parts.append(f"Triggered by: {flag['flag_id'].replace('_active', '').replace('_', ' ')} is Active\n")
-            parts.append("Channel context for affected theories:")
-            for module_id, context in flag.get("channel_context", {}).items():
-                if module_id in active_or_adjacent:
-                    label = THEORY_LABEL_MAP.get(module_id, module_id)
-                    parts.append(f"  - {label}: {context}")
-            parts.append("")
-
-    # --- v7 NEW hypothesis section (for theories not in carried-forward threads) ---
-    if has_threads:
-        represented_theories = {t.get("source_theory") for t in active_threads}
-        active_scores = {}
-        for tid in active_theories:
-            ar = activation_map.get(tid)
-            if ar:
-                if ar.is_two_phase and ar.phase_scores and ar.effective_phase:
-                    active_scores[tid] = ar.phase_scores.get(ar.effective_phase, 0.0)
-                else:
-                    active_scores[tid] = ar.score if ar.score is not None else 0.0
-        parts.append("\n\n## NEW HYPOTHESIS GENERATION\n")
-        parts.append(_new_hypothesis_section(
-            active_theories=active_theories,
-            active_scores=active_scores,
-            represented_theories=represented_theories,
-            adjacent_theories=adjacent_theories[:max_adjacent] if adjacent_theories else None,
-        ))
-
-    # --- Legacy: Prior hypotheses with realization data (pre-v7 backward compat) ---
-    if not has_threads and prior_hypotheses:
-        parts.append("\n\n## PRIOR HYPOTHESES (from previous runs)\n")
-        parts.append(_prior_hypotheses_section(prior_hypotheses))
-        parts.append("\n\n## CONTINUATION CONTRACT\n")
-        parts.append(_continuation_contract_instructions())
-
-    # --- Resolution channel requirement ---
-    parts.append("\n\n## RESOLUTION CHANNEL REQUIREMENT\n")
-    parts.append(_resolution_channel_instructions())
-
-    # --- Data briefing ---
-    parts.append("\n\n## DATA BRIEFING\n")
-    parts.append("```json")
-    parts.append(json.dumps(briefing, indent=2, default=str))
-    parts.append("```")
-
-    # --- Output schema ---
-    parts.append("\n\n## OUTPUT FORMAT\n")
-    if has_threads:
-        parts.append(_generation_output_schema_v7())
-    else:
-        parts.append(_generation_output_schema_legacy())
-
-    return "\n".join(parts)
-
-
 # ---------------------------------------------------------------------------
-# v8 prompt composition — TheoryPackage-based
+# Prompt composition — TheoryPackage-based
 # ---------------------------------------------------------------------------
 
 
@@ -421,95 +264,6 @@ def _format_interaction_matrix_for_generation(matrix_data: dict) -> str:
             lines.append("")
 
     return "\n".join(lines)
-
-
-def build_elimination_prompt(
-    hypotheses: list[dict[str, Any]],
-    theories: list[TheoryModule],
-    activation_results: list[ActivationResult],
-    briefing: dict[str, Any],
-    has_channel_tags: bool = False,
-    sector_appendices: list[dict[str, Any]] | None = None,
-    has_falsifier_lifecycle: bool = False,
-) -> str:
-    """Build the elimination prompt for Pass 3.
-
-    Includes the generated hypotheses, theory modules they invoke,
-    and the current briefing packet.  When *sector_appendices* is a
-    non-empty list the sector falsifier section and structured audit
-    output format are appended; when empty or None they are omitted
-    entirely — the prompt is unchanged from v3.
-
-    When *has_falsifier_lifecycle* is True (v7), the prompt includes
-    falsifier lifecycle instructions: staleness interpretation,
-    emergent risk slot, and UNTESTABLE counter awareness.  Hypothesis
-    dicts are expected to carry per-falsifier lifecycle metadata
-    (staleness_flag, untestable_consecutive).
-    """
-    theory_map = {t.theory_id: t for t in theories}
-
-    parts = []
-    parts.append(_elimination_system_instructions())
-
-    # --- Hypotheses to attack ---
-    parts.append("\n\n## HYPOTHESES TO ATTACK\n")
-    parts.append("```json")
-    parts.append(json.dumps(hypotheses, indent=2, default=str))
-    parts.append("```")
-
-    # --- Relevant theory modules ---
-    invoked_theories = set()
-    for h in hypotheses:
-        invoked_theories.add(h.get("source_theory", ""))
-        for st in h.get("source_theories", []):
-            invoked_theories.add(st)
-    invoked_theories.discard("")
-
-    parts.append("\n\n## THEORY MODULES (for falsifier reference)\n")
-    for tid in sorted(invoked_theories):
-        t = theory_map.get(tid)
-        if t:
-            label = THEORY_LABEL_MAP.get(tid, tid)
-            parts.append(f"\n### {label}\n")
-            # Include falsifier sections specifically
-            parts.append(_extract_falsifier_section(t))
-
-    # --- Activation state for cross-theory attacks ---
-    parts.append("\n\n## CURRENT ACTIVATION STATE\n")
-    for ar in activation_results:
-        tier = ar.tier if not ar.is_two_phase else ar.effective_tier
-        label = THEORY_LABEL_MAP.get(ar.theory_id, ar.theory_id)
-        phase = f" ({ar.effective_phase})" if ar.is_two_phase and ar.effective_phase else ""
-        parts.append(f"- {label}{phase}: {tier.value if tier else 'Unknown'}")
-
-    # --- Data briefing ---
-    parts.append("\n\n## DATA BRIEFING\n")
-    parts.append("```json")
-    parts.append(json.dumps(briefing, indent=2, default=str))
-    parts.append("```")
-
-    # --- Falsifier lifecycle instructions (v7) ---
-    if has_falsifier_lifecycle:
-        parts.append("\n\n" + _falsifier_lifecycle_instructions())
-
-    # --- Channel verification (when hypotheses have channel tags) ---
-    if has_channel_tags:
-        parts.append("\n\n## CHANNEL VERIFICATION\n")
-        parts.append(_channel_verification_instructions())
-
-    # --- Sector falsifier appendices (v4 — conditional on ticker match) ---
-    if sector_appendices:
-        parts.append("\n\n" + _format_sector_appendices_section(sector_appendices))
-
-    # --- Output schema ---
-    parts.append("\n\n## OUTPUT FORMAT\n")
-    parts.append(_elimination_output_schema(
-        has_channel_tags=has_channel_tags,
-        has_sector_appendices=bool(sector_appendices),
-        has_falsifier_lifecycle=has_falsifier_lifecycle,
-    ))
-
-    return "\n".join(parts)
 
 
 def _format_falsifier_registry_block(registry: list) -> str:
@@ -1181,29 +935,6 @@ def _format_sector_appendices_section(appendices: list[dict]) -> str:
     lines.append("--- END SECTOR APPENDICES ---")
 
     return "\n".join(lines)
-
-
-def _extract_falsifier_section(theory: TheoryModule) -> str:
-    """Extract falsifier information from a theory module for the elimination prompt."""
-    lines = []
-
-    if theory.hard_falsifiers:
-        lines.append("**Hard Falsifiers:**")
-        for hf in theory.hard_falsifiers:
-            lines.append(f"- [{hf.id}] {hf.condition}")
-            if hf.metric:
-                lines.append(f"  Metric: {hf.metric}, Threshold: {hf.threshold}")
-
-    if theory.soft_falsifiers:
-        lines.append("\n**Soft Falsifiers:**")
-        for sf in theory.soft_falsifiers:
-            lines.append(f"- [{sf.id}] ({sf.severity.value}) {sf.condition}")
-            if sf.metric:
-                lines.append(f"  Metric: {sf.metric}, Threshold: {sf.threshold}")
-            if sf.implication:
-                lines.append(f"  Implication: {sf.implication}")
-
-    return "\n".join(lines) if lines else "[No falsifiers specified]"
 
 
 def _resolution_channel_instructions() -> str:

@@ -14,9 +14,9 @@ from backend.engine.prompt_builder import (
     _new_hypothesis_section,
     _thread_context_section,
     _thread_lifecycle_contract,
-    build_generation_prompt,
+    build_generation_prompt_v8,
 )
-from backend.schemas.theory import ActivationResult, ActivationTier, TheoryModule
+from backend.schemas.theory import ActivationResult, ActivationTier, TheoryPackage
 
 
 # ---------------------------------------------------------------------------
@@ -24,15 +24,15 @@ from backend.schemas.theory import ActivationResult, ActivationTier, TheoryModul
 # ---------------------------------------------------------------------------
 
 
-def _make_theory(theory_id: str, raw_md: str = "# Theory\nTest content") -> TheoryModule:
-    return TheoryModule(
+def _make_package(theory_id: str) -> TheoryPackage:
+    return TheoryPackage(
         theory_id=theory_id,
-        is_two_phase=False,
-        raw_markdown=raw_md,
-        phases=[],
-        hard_falsifiers=[],
-        soft_falsifiers=[],
-        metadata={"theory_id": theory_id, "version": 1},
+        core="# CORE content",
+        activation="# ACTIVATION content",
+        tactical="# TACTICAL content",
+        playbook="# PLAYBOOK content",
+        context_flags=[],
+        falsifier_registry=[],
     )
 
 
@@ -268,7 +268,7 @@ class TestNewHypothesisSection:
 
 
 # ===================================================================
-# build_generation_prompt — integration with thread context
+# build_generation_prompt_v8 — integration with thread context
 # ===================================================================
 
 
@@ -276,17 +276,17 @@ class TestBuildGenerationPromptWithThreads:
     """Test the full prompt assembly with active_threads parameter."""
 
     def _build_prompt(self, active_threads=None, prior_hypotheses=None):
-        theories = [
-            _make_theory("fiscal_dominance_liquidity"),
-            _make_theory("valuation_mean_reversion"),
+        packages = [
+            _make_package("fiscal_dominance_liquidity"),
+            _make_package("valuation_mean_reversion"),
         ]
         activations = [
             _make_activation("fiscal_dominance_liquidity", ActivationTier.ACTIVE, 0.75),
             _make_activation("valuation_mean_reversion", ActivationTier.ACTIVE, 0.68),
         ]
         briefing = {"growth": {"gdp_now": 2.1}, "timestamp": "2026-04-03"}
-        return build_generation_prompt(
-            theories=theories,
+        return build_generation_prompt_v8(
+            packages=packages,
             activation_results=activations,
             briefing=briefing,
             inbox_items=[],

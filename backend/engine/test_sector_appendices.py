@@ -310,20 +310,25 @@ def test_select_defaults_to_sector_appendices_registry():
 # Prompt injection tests (v4 Component 3 — evaluator prompt update)
 # ===========================================================================
 
-from backend.engine.prompt_builder import build_elimination_prompt
+from backend.engine.prompt_builder import build_elimination_prompt_v8
 from backend.schemas.theory import (
     ActivationResult,
     ActivationTier,
-    TheoryModule,
+    TheoryPackage,
 )
 
 
-def _stub_theories():
-    """Minimal TheoryModule list sufficient for build_elimination_prompt."""
+def _stub_packages():
+    """Minimal TheoryPackage list sufficient for build_elimination_prompt_v8."""
     return [
-        TheoryModule(
+        TheoryPackage(
             theory_id="valuation_mean_reversion",
-            title="Valuation Mean Reversion",
+            core="# Valuation Mean Reversion",
+            activation="",
+            tactical="",
+            playbook="",
+            context_flags=[],
+            falsifier_registry=[],
         ),
     ]
 
@@ -359,16 +364,16 @@ def _stub_hypotheses():
 
 def test_prompt_without_appendices_matches_v3():
     """When sector_appendices is None or empty, the prompt has no sector section."""
-    prompt_none = build_elimination_prompt(
+    prompt_none = build_elimination_prompt_v8(
         hypotheses=_stub_hypotheses(),
-        theories=_stub_theories(),
+        packages=_stub_packages(),
         activation_results=_stub_activation_results(),
         briefing=_stub_briefing(),
         sector_appendices=None,
     )
-    prompt_empty = build_elimination_prompt(
+    prompt_empty = build_elimination_prompt_v8(
         hypotheses=_stub_hypotheses(),
-        theories=_stub_theories(),
+        packages=_stub_packages(),
         activation_results=_stub_activation_results(),
         briefing=_stub_briefing(),
         sector_appendices=[],
@@ -390,9 +395,9 @@ def test_prompt_without_appendices_matches_v3():
 
 def test_prompt_with_tech_appendix_includes_sector_section():
     """Injecting the tech_ai appendix adds the full sector block."""
-    prompt = build_elimination_prompt(
+    prompt = build_elimination_prompt_v8(
         hypotheses=_stub_hypotheses(),
-        theories=_stub_theories(),
+        packages=_stub_packages(),
         activation_results=_stub_activation_results(),
         briefing=_stub_briefing(),
         sector_appendices=[TECH_AI_APPENDIX],
@@ -430,9 +435,9 @@ def test_prompt_with_tech_appendix_includes_sector_section():
 
 def test_prompt_tech_falsifier_details():
     """Verify specific falsifier content is rendered correctly."""
-    prompt = build_elimination_prompt(
+    prompt = build_elimination_prompt_v8(
         hypotheses=_stub_hypotheses(),
-        theories=_stub_theories(),
+        packages=_stub_packages(),
         activation_results=_stub_activation_results(),
         briefing=_stub_briefing(),
         sector_appendices=[TECH_AI_APPENDIX],
@@ -452,9 +457,9 @@ def test_prompt_tech_falsifier_details():
 
 def test_prompt_with_all_three_appendices():
     """All three sectors appear when all three appendices are injected."""
-    prompt = build_elimination_prompt(
+    prompt = build_elimination_prompt_v8(
         hypotheses=_stub_hypotheses(),
-        theories=_stub_theories(),
+        packages=_stub_packages(),
         activation_results=_stub_activation_results(),
         briefing=_stub_briefing(),
         sector_appendices=[TECH_AI_APPENDIX, ENERGY_APPENDIX, FINANCIALS_APPENDIX],
@@ -484,16 +489,16 @@ def test_prompt_with_all_three_appendices():
 def test_prompt_output_schema_includes_sector_fields_when_appendices():
     """The JSON output schema includes sector_falsifier_audit and
     attack_vector_findings only when appendices are present."""
-    prompt_with = build_elimination_prompt(
+    prompt_with = build_elimination_prompt_v8(
         hypotheses=_stub_hypotheses(),
-        theories=_stub_theories(),
+        packages=_stub_packages(),
         activation_results=_stub_activation_results(),
         briefing=_stub_briefing(),
         sector_appendices=[TECH_AI_APPENDIX],
     )
-    prompt_without = build_elimination_prompt(
+    prompt_without = build_elimination_prompt_v8(
         hypotheses=_stub_hypotheses(),
-        theories=_stub_theories(),
+        packages=_stub_packages(),
         activation_results=_stub_activation_results(),
         briefing=_stub_briefing(),
         sector_appendices=None,
@@ -513,9 +518,9 @@ def test_prompt_output_schema_includes_sector_fields_when_appendices():
 
 def test_prompt_with_channels_and_appendices():
     """Both channel verification and sector appendices can be present."""
-    prompt = build_elimination_prompt(
+    prompt = build_elimination_prompt_v8(
         hypotheses=_stub_hypotheses(),
-        theories=_stub_theories(),
+        packages=_stub_packages(),
         activation_results=_stub_activation_results(),
         briefing=_stub_briefing(),
         has_channel_tags=True,
@@ -535,9 +540,9 @@ def test_prompt_with_channels_and_appendices():
 
 def test_prompt_instructions_match_spec():
     """The five-step instruction list from plan_v4.md Component 2."""
-    prompt = build_elimination_prompt(
+    prompt = build_elimination_prompt_v8(
         hypotheses=_stub_hypotheses(),
-        theories=_stub_theories(),
+        packages=_stub_packages(),
         activation_results=_stub_activation_results(),
         briefing=_stub_briefing(),
         sector_appendices=[TECH_AI_APPENDIX],
