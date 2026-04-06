@@ -16,6 +16,7 @@ from backend.engine.prompt_builder import (
     build_elimination_prompt_v8,
     build_generation_prompt_v8,
 )
+from backend.engine.theory_loader import package_to_theory_module
 from backend.schemas.theory import (
     ActivationResult,
     ActivationTier,
@@ -867,3 +868,135 @@ class TestEliminationPromptV8TwoPhase:
         hypotheses = _sample_hypotheses("structural_fragility")
         prompt = build_elimination_prompt_v8(hypotheses, [pkg], [ar], _basic_briefing())
         assert "(Resolving)" in prompt
+
+
+# ===========================================================================
+# Pass 1 — Activation Data Path (Component 12: Layer 3)
+# ===========================================================================
+# Pass 1 is mechanical Python, not an LLM prompt. The "prompt assembly"
+# test verifies that only ACTIVATION.md content reaches the activation
+# scorer via the TheoryPackage → TheoryModule adapter.
+
+
+_SINGLE_PHASE_ACTIVATION = """\
+## activation_table
+
+| Indicator | Metric Source | Data Ownership | Threshold | Direction | Weight | Calibration Rationale |
+|-----------|--------------|---------------|-----------|-----------|--------|----------------------|
+| GDP Growth | fred: gdp_yoy | mechanical | 2.0% | above | 0.25 | Standard threshold |
+| Core Inflation | fred: core_cpi_yoy | mechanical | 3.0% | above | 0.35 | Target deviation |
+| Fed Funds Rate | fred: fed_funds | mechanical | 5.0% | above | 0.40 | Restriction threshold |
+"""
+
+_TWO_PHASE_ACTIVATION = """\
+## activation_table
+
+### Phase A: Expansion
+
+| Indicator | Metric Source | Data Ownership | Threshold | Direction | Weight | Calibration Rationale |
+|-----------|--------------|---------------|-----------|-----------|--------|----------------------|
+| Credit Growth | fred: credit_growth | mechanical | 5.0% | above | 0.50 | Credit expansion signal |
+| Consumer Confidence | web search: Conference Board | web-search | 100 | above | 0.50 | Sentiment gauge |
+
+### Phase B: Contraction
+
+| Indicator | Metric Source | Data Ownership | Threshold | Direction | Weight | Calibration Rationale |
+|-----------|--------------|---------------|-----------|-----------|--------|----------------------|
+| Credit Spreads | fred: hy_spread | mechanical | 500bp | above | 0.60 | Stress threshold |
+| Bank Lending | fred: bank_lending | mechanical | 0% | below | 0.40 | Contraction signal |
+"""
+
+
+class TestActivationDataPathV8:
+    """Layer 3 snapshot: Pass 1 reads ACTIVATION.md content exclusively."""
+
+    def test_adapter_extracts_indicators_from_activation_field(self):
+        pkg = _make_package("test_theory", activation=_SINGLE_PHASE_ACTIVATION)
+        module = package_to_theory_module(pkg)
+        assert module.theory_id == "test_theory"
+        assert not module.is_two_phase
+        assert len(module.phases) == 1
+        indicators = module.phases[0].indicators
+        assert len(indicators) == 3
+        names = {ind.name for ind in indicators}
+        assert "GDP Growth" in names
+        assert "Core Inflation" in names
+        assert "Fed Funds Rate" in names
+
+    def test_adapter_ignores_core_tactical_playbook(self):
+        """Changing core/tactical/playbook does not affect the TheoryModule —
+        Pass 1 reads only ACTIVATION.md."""
+        pkg_a = _make_package(
+            "test_theory",
+            core="CORE version A — long essay about causal mechanisms",
+            tactical="TACTICAL version A — ETF mappings for equities",
+            playbook="PLAYBOOK version A — generator guidance for credit",
+            activation=_SINGLE_PHASE_ACTIVATION,
+        )
+        pkg_b = _make_package(
+            "test_theory",
+            core="Entirely different CORE content",
+            tactical="Entirely different TACTICAL content",
+            playbook="Entirely different PLAYBOOK content",
+            activation=_SINGLE_PHASE_ACTIVATION,
+        )
+        module_a = package_to_theory_module(pkg_a)
+        module_b = package_to_theory_module(pkg_b)
+        assert module_a.theory_id == module_b.theory_id
+        assert module_a.is_two_phase == module_b.is_two_phase
+        assert len(module_a.phases) == len(module_b.phases)
+        for phase_a, phase_b in zip(module_a.phases, module_b.phases):
+            assert phase_a.phase_name == phase_b.phase_name
+            assert len(phase_a.indicators) == len(phase_b.indicators)
+            for ind_a, ind_b in zip(phase_a.indicators, phase_b.indicators):
+                assert ind_a.name == ind_b.name
+                assert ind_a.weight == ind_b.weight
+                assert ind_a.direction == ind_b.direction
+
+    def test_single_phase_produces_one_activation_phase(self):
+        pkg = _make_package("test_theory", activation=_SINGLE_PHASE_ACTIVATION)
+        module = package_to_theory_module(pkg)
+        assert len(module.phases) == 1
+        assert module.phases[0].phase_name == "single"
+        assert not module.is_two_phase
+
+    def test_two_phase_produces_two_activation_phases(self):
+        pkg = _make_package("debt_cycle_short", activation=_TWO_PHASE_ACTIVATION)
+        module = package_to_theory_module(pkg)
+        assert module.is_two_phase
+        assert len(module.phases) == 2
+        phase_names = {p.phase_name for p in module.phases}
+        assert "phase_a" in phase_names
+        assert "phase_b" in phase_names
+
+    def test_indicator_weights_preserved_through_adapter(self):
+        pkg = _make_package("test_theory", activation=_SINGLE_PHASE_ACTIVATION)
+        module = package_to_theory_module(pkg)
+        indicators = module.phases[0].indicators
+        weight_map = {ind.name: ind.weight for ind in indicators}
+        assert weight_map["GDP Growth"] == 0.25
+        assert weight_map["Core Inflation"] == 0.35
+        assert weight_map["Fed Funds Rate"] == 0.40
+
+    def test_two_phase_indicators_separated_by_phase(self):
+        pkg = _make_package("debt_cycle_short", activation=_TWO_PHASE_ACTIVATION)
+        module = package_to_theory_module(pkg)
+        phase_map = {p.phase_name: p for p in module.phases}
+        phase_a_names = {ind.name for ind in phase_map["phase_a"].indicators}
+        phase_b_names = {ind.name for ind in phase_map["phase_b"].indicators}
+        assert "Credit Growth" in phase_a_names
+        assert "Consumer Confidence" in phase_a_names
+        assert "Credit Spreads" in phase_b_names
+        assert "Bank Lending" in phase_b_names
+        # No cross-contamination
+        assert phase_a_names.isdisjoint(phase_b_names)
+
+    def test_web_search_prefix_injected_for_web_search_indicators(self):
+        """The adapter re-injects 'web search:' prefix for web-search
+        indicators so the activation engine resolves fields via WEB_FIELD_MAP."""
+        pkg = _make_package("debt_cycle_short", activation=_TWO_PHASE_ACTIVATION)
+        module = package_to_theory_module(pkg)
+        phase_a = next(p for p in module.phases if p.phase_name == "phase_a")
+        conf_ind = next(i for i in phase_a.indicators if i.name == "Consumer Confidence")
+        assert conf_ind.requires_web_search is True
+        assert conf_ind.metric_source.lower().startswith("web search:")

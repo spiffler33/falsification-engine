@@ -469,9 +469,9 @@ These are implementation-facing questions. The plan specifies WHAT changes; Clau
 - [x] 5 structurally-divergent theories documented (reorganisation changed indicator count/metric_source format)
 
 ### Prompt Assembly
-- [ ] Pass 1 prompt contains ACTIVATION.md content per theory
-- [ ] Pass 2 prompt contains CORE + TACTICAL + PLAYBOOK per Active/Adjacent theory
-- [ ] Pass 2 prompt contains filtered INTERACTION_MATRIX
+- [x] Pass 1 prompt contains ACTIVATION.md content per theory
+- [x] Pass 2 prompt contains CORE + TACTICAL + PLAYBOOK per Active/Adjacent theory
+- [x] Pass 2 prompt contains filtered INTERACTION_MATRIX
 - [x] Pass 3 prompt contains all four files per invoked theory
 - [x] Pass 3 prompt contains falsifier registry block
 - [x] Pass 3 prompt contains filtered INTERACTION_MATRIX with Shared Upstream Cause Warnings
@@ -506,4 +506,4 @@ These are implementation-facing questions. The plan specifies WHAT changes; Clau
 
 ---
 
-## Status: Phase 3 in progress — Component 11 done (enrichment + Layer 2 loader contract tests, 280 cumulative tests, 816 total). Next: Component 12 (Layer 3 prompt assembly snapshots).
+## Status: Phase 3 in progress — Component 12 done (Layer 3 prompt assembly snapshots, 287 cumulative tests, 823 total). Next: Component 13 (Layer 4 run-level comparison).
