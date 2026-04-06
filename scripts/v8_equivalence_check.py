@@ -1,6 +1,22 @@
 #!/usr/bin/env python
 """v8_equivalence_check.py -- Post-remediation equivalence validation.
 
+DEPRECATED (2026-04-06, post-v8 audit Task 6):
+    This script was a migration-era tool used during the v8 parser remediation
+    to compare old (v1) and new (v8) activation scoring. It is NOT part of the
+    current regression surface. The canonical regression command is:
+
+        python -m scripts.regression_check
+
+    The frozen correctness harness (backend/tests/test_activation_correctness.py)
+    now subsumes the regression-detection role this script served during migration.
+
+    Retained for archaeological reference only. Do not add this to regression_check.py.
+
+---
+
+Original description:
+
 Restores old theory_parser.py and old_format/ theory files from git history,
 runs activation scoring through both old and new loaders on multiple briefing
 packets, and prints comparison tables for human review.

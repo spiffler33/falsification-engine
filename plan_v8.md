@@ -59,7 +59,7 @@ Each monolithic module mixes invariant theory, activation logic, market expressi
 
 ```
 theories/
-  old_format/                          ← archived originals, nothing reads from here
+  old_format/                          ← archived originals, reference only — DO NOT DELETE (see V8_DIVERGENCE_DOCKET.md)
     THEORY_MODULE_structural_fragility_v1.md
     ... (8 files)
   structural_fragility/
@@ -405,7 +405,7 @@ The updated contract replaces the current one. The old contract is archived alon
 | 13 | Validation: Layer 4 (run-level comparison) | Full pipeline runs with human comparison. 2-3 runs minimum. | Phase 3 |
 | ~~14~~ | ~~Interface contract update~~ | ~~Update ECONOMIC_THEORIES_INTERFACE_CONTRACT.md to reflect new structure.~~ Done (v2.0). | Phase 4 |
 | ~~15~~ | ~~REGISTRY_INDEX.md generation~~ | ~~Loader byproduct. Mechanical summary of all 8 theories.~~ Done. `generate_registry_index()` + 29 tests. | Phase 4 |
-| ~~16~~ | ~~Old format removal~~ | ~~After cutover: remove adapter layer, remove old loader code path, archive old monolithic modules.~~ Done. Deleted theory_parser.py, adapter, old_format/, validation harnesses. Added score_all_packages() to activation.py. Pipeline + theories endpoints rewired to v8 packages. 675 tests (52 removed with scaffolding). | Phase 4 |
+| ~~16~~ | ~~Old format removal~~ | ~~After cutover: remove adapter layer, remove old loader code path, archive old monolithic modules.~~ Done. Deleted theory_parser.py, adapter, validation harnesses. Added score_all_packages() to activation.py. Pipeline + theories endpoints rewired to v8 packages. 675 tests (52 removed with scaffolding). **Note:** `theories/old_format/` reinstated as reference archive — required for divergence investigation and equivalence checks. See `docs/V8_DIVERGENCE_DOCKET.md`. Do not delete. | Phase 4 |
 | ~~17~~ | ~~Dead code cleanup~~ | ~~Remove old build_generation_prompt/build_elimination_prompt/\_extract\_falsifier\_section from prompt\_builder.py. Migrate 30 integration tests to v8 builders.~~ Done. 266 lines removed. 815 tests pass. | Post-cutover |
 
 ### Phase Boundaries (context-clearable)
@@ -466,8 +466,8 @@ These are implementation-facing questions. The plan specifies WHAT changes; Clau
 - [x] Old loader and new loader produce identical activation scores for 3/8 structurally-matched theories on the same briefing packet
 - [x] Same Active/Adjacent/Inactive assignments for structurally-matched theories
 - [x] Same phase assignments for two-phase theories (debt_cycle_short, structural_fragility)
-- [ ] Run this on at least 2 different briefing packets
-- [x] 5 structurally-divergent theories documented (reorganisation changed indicator count/metric_source format)
+- [x] Run on 3 different briefing packets (real + stress + recovery scenarios via `scripts/v8_equivalence_check.py`). All 3 pass.
+- [x] 5 structurally-divergent theories documented — **3 of 5 found to be bugs, not intentional divergence.** `valuation_mean_reversion`, `fiscal_dominance_arithmetic`, `capital_flows` have broken metric_source field resolution in v2 ACTIVATION.md files. Full investigation in `docs/V8_DIVERGENCE_DOCKET.md`. Docket sent for review.
 
 ### Prompt Assembly
 - [x] Pass 1 prompt contains ACTIVATION.md content per theory
@@ -487,7 +487,7 @@ These are implementation-facing questions. The plan specifies WHAT changes; Clau
 
 ### End-to-End
 - [x] Full pipeline run with new loader produces output (scripts/compare_loaders.py builds prompts end-to-end)
-- [ ] 2-3 comparison runs vs. old loader show substantive equivalence (harness built; human review pending)
+- [x] 3 comparison runs vs. old loader completed (`scripts/v8_equivalence_check.py`). EXACT_MATCH and TIER_MATCH theories pass on all 3 packets. 3 KNOWN_DIVERGED theories confirmed as bugs in v2 ACTIVATION.md metric_source formatting — see `docs/V8_DIVERGENCE_DOCKET.md`.
 - [x] REGISTRY_INDEX.md generated correctly after loader completes
 
 ---
@@ -507,4 +507,8 @@ These are implementation-facing questions. The plan specifies WHAT changes; Clau
 
 ---
 
-## Status: COMPLETE. All 16 components + post-cutover cleanup done. 815 tests pass. No old-format code remains in prompt_builder.py or pipeline.py.
+## Status: COMPLETE with known issues. All 16 components + post-cutover cleanup done. 815 tests pass. No old-format code remains in prompt_builder.py or pipeline.py.
+
+### Open Issue: ACTIVATION.md Field Resolution Bugs
+
+Three theories have broken activation scoring due to v2 ACTIVATION.md metric_source strings losing machine-parseable formatting (backtick field names, "Web search:" prefixes). Docket: `docs/V8_DIVERGENCE_DOCKET.md`. Reference files: `theories/old_format/` (reinstated, do not delete). Equivalence script: `scripts/v8_equivalence_check.py`.

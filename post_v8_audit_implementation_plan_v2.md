@@ -1,11 +1,13 @@
 # post_v8_audit_implementation_plan_v2.md — Post-v8 Semantic Remediation Plan
 
-## Status
+## Status: COMPLETE
 
-**Date:** 2026-04-06  
-**Scope:** Fix the concrete semantic bugs and missing regression defenses identified in `POST_V8_AUDIT.md`, without drifting into v9 architecture work.  
-**Execution mode:** One task per Claude Code session after context clear.  
+**Date:** 2026-04-06
+**Closed:** 2026-04-06
+**Scope:** Fix the concrete semantic bugs and missing regression defenses identified in `POST_V8_AUDIT.md`, without drifting into v9 architecture work.
+**Execution mode:** One task per Claude Code session after context clear.
 **Success standard:** Known audited semantic bugs fixed; missing-data scoring policy made explicit; frozen correctness harness added; one-command regression added; v9 boundary documented.
+**Closure artifact:** `docs/POST_V8_AUDIT_CLOSURE.md`
 
 ---
 
@@ -256,14 +258,14 @@ This task must run **after Task 1**. If unit-suffix scaling lands before the fie
 - manually review expected outputs for the highest-weight indicators
 
 **Update status:**
-- [ ] Task 4 complete
+- [x] Task 4 complete
 
-#### Completion note — YYYY-MM-DD
-- Summary:
-- Files changed:
-- Validation run:
-- Result:
-- Residual risk:
+#### Completion note — 2026-04-06
+- Summary: Built 70-test frozen expected-output correctness harness covering all 8 theories. Freezes per-theory scores, per-indicator trigger states, field resolution, threshold parsing, coverage metrics, and ceiling-hit visibility for fiscal_dominance_arithmetic (1.000) and debt_cycle_short/Expansion (1.000).
+- Files changed: `backend/tests/test_activation_correctness.py` (new), `docs/POST_V8_TASK4_CORRECTNESS_HARNESS_RESULTS.md` (new)
+- Validation run: 937 tests passing (867 + 70 new)
+- Result: All 8 theories frozen. 3 deliberate perturbations proved harness catches semantic drift. 22 threshold parsing extractions frozen (18 numeric + 4 not-evaluable).
+- Residual risk: BUG-03 temporal phrases frozen as-is. TGA $M/$B mismatch frozen. Wealth inequality threshold extraction frozen.
 
 ---
 
@@ -291,14 +293,14 @@ This task must run **after Task 1**. If unit-suffix scaling lands before the fie
 - confirm required coverage is included
 
 **Update status:**
-- [ ] Task 5 complete
+- [x] Task 5 complete
 
-#### Completion note — YYYY-MM-DD
-- Summary:
-- Files changed:
-- Validation run:
-- Result:
-- Residual risk:
+#### Completion note — 2026-04-06
+- Summary: Created `scripts/regression_check.py` as canonical one-command regression entrypoint. Two stages: Stage 1 (correctness harness, semantic gate) and Stage 2 (full backend suite). Excluded v8_equivalence_check.py from regression surface -- it is a migration-era tool, superseded by the correctness harness.
+- Files changed: `scripts/regression_check.py` (new), `docs/POST_V8_TASK5_REGRESSION_COMMAND_RESULTS.md` (new)
+- Validation run: 937 tests passing via `python -m scripts.regression_check`
+- Result: Both stages pass. Failure propagation verified (exit code 1 on synthetic failure). Subprocess output visible on failure.
+- Residual risk: v8_equivalence_check.py still exists (Task 6 will disposition). No CI integration (out of scope).
 
 ---
 
@@ -328,14 +330,14 @@ This task must run **after Task 1**. If unit-suffix scaling lands before the fie
 - compare final state to Task 0 baseline artifact
 
 **Update status:**
-- [ ] Task 6 complete
+- [x] Task 6 complete
 
-#### Completion note — YYYY-MM-DD
-- Summary:
-- Files changed:
-- Validation run:
-- Result:
-- Residual risk:
+#### Completion note — 2026-04-06
+- Summary: Closed post-v8 audit phase. Produced disposition inventory of all migration-era artifacts. Marked v8_equivalence_check.py as deprecated (header added). Updated theories/old_format/README.md. Created POST_V8_AUDIT_CLOSURE.md with resolved/frozen/deferred sections and explicit v9 handoff. Updated all plan completion notes and master status board.
+- Files changed: `docs/POST_V8_AUDIT_CLOSURE.md` (new), `scripts/v8_equivalence_check.py` (deprecation header), `theories/old_format/README.md` (updated), `post_v8_audit_implementation_plan_v2.md` (completion notes + status)
+- Validation run: `python -m scripts.regression_check` -- 937 tests passing
+- Result: Phase closed. All loose ends dispositioned. Regression passes. v9 boundary explicit.
+- Residual risk: All residual risks are explicitly enumerated in POST_V8_AUDIT_CLOSURE.md Sections 3-4. No new risks introduced.
 
 ---
 
@@ -356,10 +358,12 @@ This plan is complete when all of the following are true:
 ## Master status board
 
 - [x] Task 0 — Freeze semantic baseline (2026-04-06, commit 86a45f5)
-- [ ] Task 1 — Fix all field wiring and unit-alignment bugs
-- [ ] Task 2 — Make data-gap policy explicit and fair
-- [ ] Task 3 — Add unit-suffix scaling to `_extract_number()`
-- [ ] Task 4 — Build frozen expected-output correctness harness
-- [ ] Task 5 — Create a single regression command
-- [ ] Task 6 — Cleanup, closure, and explicit handoff to v9
+- [x] Task 1 — Fix all field wiring and unit-alignment bugs (2026-04-06, commit 9c96399)
+- [x] Task 2 — Make data-gap policy explicit and fair (2026-04-06, commit fa8bef8)
+- [x] Task 3 — Add unit-suffix scaling to `_extract_number()` (2026-04-06, commit f032702)
+- [x] Task 4 — Build frozen expected-output correctness harness (2026-04-06)
+- [x] Task 5 — Create a single regression command (2026-04-06)
+- [x] Task 6 — Cleanup, closure, and explicit handoff to v9 (2026-04-06)
+
+**Plan complete.**
 
