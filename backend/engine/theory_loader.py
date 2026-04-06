@@ -14,8 +14,10 @@ from pathlib import Path
 from backend.config import THEORIES_DIR
 from backend.schemas.theory import (
     ActivationPhase,
+    ContextFlag,
     FalsifierEntry,
     Indicator,
+    IndicatorOwnership,
     Severity,
     TheoryModule,
     TheoryPackage,
@@ -1319,3 +1321,52 @@ def package_to_theory_module(pkg: TheoryPackage) -> TheoryModule:
         is_two_phase=is_two_phase,
         phases=activation_phases,
     )
+
+
+# ---------------------------------------------------------------------------
+# Unit 11: Theory package enrichment — typed objects on TheoryPackage
+# ---------------------------------------------------------------------------
+
+
+def build_indicator_ownership(activation_text: str) -> list[IndicatorOwnership]:
+    """Convert parsed activation table entries into IndicatorOwnership objects.
+
+    Each scored indicator in the activation_table becomes an IndicatorOwnership
+    record.  Qualitative indicators never appear — ``parse_activation_table``
+    rejects them with a hard error.
+    """
+    entries = parse_activation_table(activation_text)
+    return [
+        IndicatorOwnership(
+            indicator_name=e["indicator_name"],
+            metric_source=e["metric_source"],
+            data_ownership=e["data_ownership"],
+        )
+        for e in entries
+    ]
+
+
+def build_context_flag_list(activation_text: str) -> list[ContextFlag]:
+    """Convert parsed context flag entries into ContextFlag objects."""
+    entries = parse_context_flags(activation_text)
+    return [ContextFlag(**e) for e in entries]
+
+
+def enrich_theory_package(pkg: TheoryPackage) -> TheoryPackage:
+    """Populate enrichment fields on a loaded theory package.
+
+    Attaches:
+    - falsifier_registry: pre-joined FalsifierEntry objects (CORE + ACTIVATION)
+    - data_ownership: IndicatorOwnership objects from activation_table
+    - context_flags: ContextFlag objects from context_flags section
+
+    Returns a new TheoryPackage; the original is not modified.
+    """
+    registry = build_falsifier_registry(pkg.core, pkg.activation)
+    ownership = build_indicator_ownership(pkg.activation)
+    flags = build_context_flag_list(pkg.activation)
+    return pkg.model_copy(update={
+        "falsifier_registry": registry,
+        "data_ownership": ownership,
+        "context_flags": flags,
+    })

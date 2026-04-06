@@ -442,24 +442,24 @@ These are implementation-facing questions. The plan specifies WHAT changes; Clau
 ## Testing Checklist
 
 ### Loader
-- [ ] All 8 theory directories load successfully
-- [ ] Missing file raises hard error (test by removing one file)
-- [ ] TheoryPackage contains all four file texts
-- [ ] Falsifier registry contains all falsifiers from CORE.md + ACTIVATION.md
-- [ ] No orphan falsifiers in either direction
-- [ ] State-level falsifiers (ACTIVATION.md-only) included in registry
+- [x] All 8 theory directories load successfully
+- [x] Missing file raises hard error (test by removing one file)
+- [x] TheoryPackage contains all four file texts
+- [x] Falsifier registry contains all falsifiers from CORE.md + ACTIVATION.md
+- [x] No orphan falsifiers in either direction
+- [x] State-level falsifiers (ACTIVATION.md-only) included in registry
 - [x] Data ownership parsed for all indicators
 - [x] Qualitative indicator in activation_table raises hard error
-- [ ] Context flags parsed into separate list, not in scored indicators
+- [x] Context flags parsed into separate list, not in scored indicators
 - [x] Two-phase theories produce correct per-phase activation tables
 
 ### INTERACTION_MATRIX
-- [ ] Full matrix parses into structured entries
-- [ ] Shared Upstream Cause Warnings parse into separate list
-- [ ] Filtering with 3 Active theories returns only rows involving those theories
-- [ ] Active × Adjacent rows survive filtering
-- [ ] Inactive × Inactive rows excluded
-- [ ] Shared Upstream Cause Warnings filtered to entries with ≥2 Active affected theories
+- [x] Full matrix parses into structured entries
+- [x] Shared Upstream Cause Warnings parse into separate list
+- [x] Filtering with 3 Active theories returns only rows involving those theories
+- [x] Active × Adjacent rows survive filtering
+- [x] Inactive × Inactive rows excluded
+- [x] Shared Upstream Cause Warnings filtered to entries with ≥2 Active affected theories
 
 ### Activation Equivalence
 - [x] Old loader and new loader produce identical activation scores for 3/8 structurally-matched theories on the same briefing packet
@@ -506,4 +506,4 @@ These are implementation-facing questions. The plan specifies WHAT changes; Clau
 
 ---
 
-## Status: Phase 3 in progress — Component 10 done (activation equivalence, 263 cumulative tests). Next: Component 11 (Layer 2 loader contract gap-fill).
+## Status: Phase 3 in progress — Component 11 done (enrichment + Layer 2 loader contract tests, 280 cumulative tests, 816 total). Next: Component 12 (Layer 3 prompt assembly snapshots).

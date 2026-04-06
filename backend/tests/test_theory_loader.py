@@ -6,8 +6,11 @@ import pytest
 
 from backend.config import THEORIES_DIR
 from backend.engine.theory_loader import (
+    build_context_flag_list,
     build_falsifier_registry,
+    build_indicator_ownership,
     discover_theory_dirs,
+    enrich_theory_package,
     filter_interaction_matrix,
     load_all_theory_packages,
     load_theory_package,
@@ -19,7 +22,7 @@ from backend.engine.theory_loader import (
     parse_interaction_pairwise,
     parse_shared_upstream_warnings,
 )
-from backend.schemas.theory import FalsifierEntry
+from backend.schemas.theory import ContextFlag, FalsifierEntry, IndicatorOwnership
 
 EXPECTED_THEORY_IDS = {
     "capital_flows",
@@ -1855,3 +1858,177 @@ class TestFilterInteractionMatrix:
         assert "theory_b" in entry
         assert "relationship" in entry
         assert "invariant_logic" in entry
+
+
+# ---------------------------------------------------------------------------
+# build_indicator_ownership — Unit 11
+# ---------------------------------------------------------------------------
+
+
+class TestBuildIndicatorOwnershipLive:
+    """Tests against all 8 real ACTIVATION.md files."""
+
+    @pytest.fixture()
+    def all_activation_texts(self):
+        return {
+            load_theory_package(d).theory_id: load_theory_package(d).activation
+            for d in discover_theory_dirs()
+        }
+
+    def test_all_eight_produce_objects(self, all_activation_texts):
+        for tid, text in all_activation_texts.items():
+            result = build_indicator_ownership(text)
+            assert len(result) > 0, f"{tid}: no indicators"
+            for obj in result:
+                assert isinstance(obj, IndicatorOwnership), f"{tid}: not IndicatorOwnership"
+
+    def test_indicator_names_nonempty(self, all_activation_texts):
+        for tid, text in all_activation_texts.items():
+            for obj in build_indicator_ownership(text):
+                assert obj.indicator_name.strip(), f"{tid}: empty indicator_name"
+
+    def test_data_ownership_values_valid(self, all_activation_texts):
+        valid = {"mechanical", "computed-mechanical", "web-search"}
+        for tid, text in all_activation_texts.items():
+            for obj in build_indicator_ownership(text):
+                assert obj.data_ownership in valid, (
+                    f"{tid}: invalid data_ownership {obj.data_ownership!r}"
+                )
+
+    def test_no_qualitative_in_ownership(self, all_activation_texts):
+        """Qualitative indicators must NOT appear — they belong in context_flags."""
+        for tid, text in all_activation_texts.items():
+            for obj in build_indicator_ownership(text):
+                assert obj.data_ownership != "qualitative", (
+                    f"{tid}: qualitative indicator {obj.indicator_name!r} in ownership list"
+                )
+
+    def test_count_matches_activation_table(self, all_activation_texts):
+        """IndicatorOwnership count must match parse_activation_table row count."""
+        for tid, text in all_activation_texts.items():
+            raw = parse_activation_table(text)
+            typed = build_indicator_ownership(text)
+            assert len(typed) == len(raw), (
+                f"{tid}: {len(typed)} IndicatorOwnership vs {len(raw)} raw entries"
+            )
+
+
+# ---------------------------------------------------------------------------
+# build_context_flag_list — Unit 11
+# ---------------------------------------------------------------------------
+
+
+class TestBuildContextFlagListLive:
+    """Tests against all 8 real ACTIVATION.md files."""
+
+    @pytest.fixture()
+    def all_activation_texts(self):
+        return {
+            load_theory_package(d).theory_id: load_theory_package(d).activation
+            for d in discover_theory_dirs()
+        }
+
+    def test_all_eight_produce_objects(self, all_activation_texts):
+        for tid, text in all_activation_texts.items():
+            result = build_context_flag_list(text)
+            assert len(result) > 0, f"{tid}: no context flags"
+            for obj in result:
+                assert isinstance(obj, ContextFlag), f"{tid}: not ContextFlag"
+
+    def test_flag_names_nonempty(self, all_activation_texts):
+        for tid, text in all_activation_texts.items():
+            for obj in build_context_flag_list(text):
+                assert obj.flag_name.strip(), f"{tid}: empty flag_name"
+
+    def test_data_ownership_values_valid(self, all_activation_texts):
+        valid = {"qualitative", "web-search"}
+        for tid, text in all_activation_texts.items():
+            for obj in build_context_flag_list(text):
+                assert obj.data_ownership in valid, (
+                    f"{tid}: invalid data_ownership {obj.data_ownership!r}"
+                )
+
+    def test_count_matches_parse_context_flags(self, all_activation_texts):
+        """ContextFlag count must match parse_context_flags row count."""
+        for tid, text in all_activation_texts.items():
+            raw = parse_context_flags(text)
+            typed = build_context_flag_list(text)
+            assert len(typed) == len(raw), (
+                f"{tid}: {len(typed)} ContextFlag vs {len(raw)} raw entries"
+            )
+
+
+# ---------------------------------------------------------------------------
+# enrich_theory_package — Unit 11 end-to-end
+# ---------------------------------------------------------------------------
+
+
+class TestEnrichTheoryPackage:
+    """End-to-end enrichment: load + enrich → typed objects on TheoryPackage."""
+
+    @pytest.fixture()
+    def all_enriched(self):
+        return [enrich_theory_package(load_theory_package(d))
+                for d in discover_theory_dirs()]
+
+    def test_all_eight_enrich_successfully(self, all_enriched):
+        assert len(all_enriched) == 8
+
+    def test_falsifier_registry_populated(self, all_enriched):
+        for pkg in all_enriched:
+            assert len(pkg.falsifier_registry) > 0, (
+                f"{pkg.theory_id}: falsifier_registry empty after enrichment"
+            )
+            for entry in pkg.falsifier_registry:
+                assert isinstance(entry, FalsifierEntry)
+
+    def test_data_ownership_populated(self, all_enriched):
+        for pkg in all_enriched:
+            assert len(pkg.data_ownership) > 0, (
+                f"{pkg.theory_id}: data_ownership empty after enrichment"
+            )
+            for obj in pkg.data_ownership:
+                assert isinstance(obj, IndicatorOwnership)
+
+    def test_context_flags_populated(self, all_enriched):
+        for pkg in all_enriched:
+            assert len(pkg.context_flags) > 0, (
+                f"{pkg.theory_id}: context_flags empty after enrichment"
+            )
+            for obj in pkg.context_flags:
+                assert isinstance(obj, ContextFlag)
+
+    def test_context_flags_excluded_from_indicator_ownership(self, all_enriched):
+        """Core Layer 2 contract: context flag names must NOT appear in IndicatorOwnership."""
+        for pkg in all_enriched:
+            indicator_names = {o.indicator_name for o in pkg.data_ownership}
+            flag_names = {f.flag_name for f in pkg.context_flags}
+            overlap = indicator_names & flag_names
+            assert not overlap, (
+                f"{pkg.theory_id}: context flags leaked into IndicatorOwnership: {overlap}"
+            )
+
+    def test_no_qualitative_in_indicator_ownership(self, all_enriched):
+        for pkg in all_enriched:
+            for obj in pkg.data_ownership:
+                assert obj.data_ownership != "qualitative", (
+                    f"{pkg.theory_id}: qualitative in IndicatorOwnership: {obj.indicator_name}"
+                )
+
+    def test_original_package_unmodified(self):
+        """enrich_theory_package returns a copy, not a mutation."""
+        d = discover_theory_dirs()[0]
+        original = load_theory_package(d)
+        enriched = enrich_theory_package(original)
+        assert original.falsifier_registry == []
+        assert original.data_ownership == []
+        assert original.context_flags == []
+        assert len(enriched.falsifier_registry) > 0
+
+    def test_raw_text_fields_preserved(self, all_enriched):
+        """Enrichment must not alter the raw text fields."""
+        for pkg in all_enriched:
+            assert pkg.core.strip(), f"{pkg.theory_id}: core empty"
+            assert pkg.activation.strip(), f"{pkg.theory_id}: activation empty"
+            assert pkg.tactical.strip(), f"{pkg.theory_id}: tactical empty"
+            assert pkg.playbook.strip(), f"{pkg.theory_id}: playbook empty"
