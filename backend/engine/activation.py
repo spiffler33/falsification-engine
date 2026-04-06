@@ -312,6 +312,8 @@ def _normalize_computed_field(expr: str) -> str:
         return "vix_vs_realized"
     if "qqq" in expr_lower and "iwm" in expr_lower:
         return "qqq_iwm_ratio"
+    if "spy" in expr_lower and "52w" in expr_lower:
+        return "spy_drawdown_from_52w_high"
 
     # Generic normalization: replace operators with underscores
     normalized = re.sub(r"[^a-z0-9]", "_", expr_lower)

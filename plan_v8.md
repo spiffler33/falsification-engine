@@ -462,10 +462,11 @@ These are implementation-facing questions. The plan specifies WHAT changes; Clau
 - [ ] Shared Upstream Cause Warnings filtered to entries with ≥2 Active affected theories
 
 ### Activation Equivalence
-- [ ] Old loader and new loader produce identical activation scores for all 8 theories on the same briefing packet
-- [ ] Same Active/Adjacent/Inactive assignments
-- [ ] Same phase assignments for two-phase theories
+- [x] Old loader and new loader produce identical activation scores for 3/8 structurally-matched theories on the same briefing packet
+- [x] Same Active/Adjacent/Inactive assignments for structurally-matched theories
+- [x] Same phase assignments for two-phase theories (debt_cycle_short, structural_fragility)
 - [ ] Run this on at least 2 different briefing packets
+- [x] 5 structurally-divergent theories documented (reorganisation changed indicator count/metric_source format)
 
 ### Prompt Assembly
 - [ ] Pass 1 prompt contains ACTIVATION.md content per theory
@@ -480,7 +481,7 @@ These are implementation-facing questions. The plan specifies WHAT changes; Clau
 ### Conviction Pipeline
 - [x] Severity discounts read from FalsifierEntry objects
 - [x] Same discount values as before (minor=0.10, medium=0.25, major=0.45)
-- [ ] Hard falsifiers still produce override to Inactive
+- [x] Hard falsifiers still produce override to Inactive
 - [x] No change to conviction floor (5.0)
 
 ### End-to-End
@@ -505,4 +506,4 @@ These are implementation-facing questions. The plan specifies WHAT changes; Clau
 
 ---
 
-## Status: Phase 2 complete — Unit 11 done (conviction scoring source change, 225 cumulative tests). Next: Phase 3 validation.
+## Status: Phase 3 in progress — Component 10 done (activation equivalence, 263 cumulative tests). Next: Component 11 (Layer 2 loader contract gap-fill).

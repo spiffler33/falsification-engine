@@ -12,7 +12,14 @@ import re
 from pathlib import Path
 
 from backend.config import THEORIES_DIR
-from backend.schemas.theory import FalsifierEntry, Severity, TheoryPackage
+from backend.schemas.theory import (
+    ActivationPhase,
+    FalsifierEntry,
+    Indicator,
+    Severity,
+    TheoryModule,
+    TheoryPackage,
+)
 
 REQUIRED_FILES = ("CORE.md", "ACTIVATION.md", "TACTICAL.md", "PLAYBOOK.md")
 
@@ -1197,3 +1204,118 @@ def filter_interaction_matrix(
         "pairwise": filtered_pairwise,
         "shared_upstream_warnings": filtered_warnings,
     }
+
+
+# ---------------------------------------------------------------------------
+# Adapter: TheoryPackage → TheoryModule (activation equivalence validation)
+# ---------------------------------------------------------------------------
+
+
+_DIRECTION_MAP: dict[str, str] = {
+    "above": "above",
+    "below": "below",
+    "rising": "rising",
+    "falling": "falling",
+    "between": "between",
+}
+
+
+def _parse_direction_for_adapter(raw: str) -> str:
+    """Map a direction string to the Direction enum value.
+
+    The activation engine's ``_check_threshold`` uses Direction enum values
+    (above/below/rising/falling/between). The old parser maps compound
+    directions (e.g. "above and rising") by looking for the first keyword.
+    We replicate the same heuristic so scores match.
+    """
+    low = raw.lower().strip()
+    for keyword, value in _DIRECTION_MAP.items():
+        if keyword in low:
+            return value
+    return "above"  # fallback matches theory_parser._parse_direction
+
+
+def _entry_to_indicator(entry: dict) -> Indicator:
+    """Convert a ``parse_activation_table`` dict to an ``Indicator`` object.
+
+    The v2 ACTIVATION.md files removed the ``web search:`` prefix from
+    metric_source, relying on the Data Ownership column instead.  The
+    activation engine's ``_extract_metric_field`` still needs that prefix
+    to route through ``WEB_FIELD_MAP``.  The adapter re-injects the prefix
+    for web-search indicators so the engine resolves fields identically.
+    """
+    from backend.schemas.theory import Direction
+
+    direction_str = _parse_direction_for_adapter(entry["direction"])
+    direction = Direction(direction_str)
+    requires_web_search = entry.get("data_ownership") == "web-search"
+
+    metric_source = entry["metric_source"]
+    if requires_web_search and "web search" not in metric_source.lower():
+        metric_source = f"web search: {metric_source}"
+
+    return Indicator(
+        name=entry["indicator_name"],
+        metric_source=metric_source,
+        threshold=entry["threshold"],
+        direction=direction,
+        weight=entry["weight"],
+        rationale="",
+        requires_web_search=requires_web_search,
+        is_qualitative=False,
+    )
+
+
+def package_to_theory_module(pkg: TheoryPackage) -> TheoryModule:
+    """Adapter: convert a v8 TheoryPackage to a v1 TheoryModule.
+
+    Parses ACTIVATION.md indicators via ``parse_activation_table`` and builds
+    the ``ActivationPhase`` / ``Indicator`` objects that ``activation.score_theory``
+    expects. This is temporary scaffolding for Layer 1 activation equivalence
+    validation — removed after cutover.
+    """
+    entries = parse_activation_table(pkg.activation)
+
+    # Detect two-phase from parsed entries
+    phases_present = {e["phase"] for e in entries if e["phase"]}
+    is_two_phase = len(phases_present) >= 2
+
+    if is_two_phase:
+        # Group by phase string
+        phase_groups: dict[str, list[dict]] = {}
+        for entry in entries:
+            phase_groups.setdefault(entry["phase"], []).append(entry)
+
+        activation_phases: list[ActivationPhase] = []
+        for phase_str in sorted(phase_groups):
+            # Determine phase_name (engine dispatches on "phase_a"/"phase_b")
+            if re.search(r"Phase\s*A\b", phase_str, re.IGNORECASE):
+                phase_name = "phase_a"
+            elif re.search(r"Phase\s*B\b", phase_str, re.IGNORECASE):
+                phase_name = "phase_b"
+            else:
+                phase_name = phase_str
+
+            # Extract label: everything after "Phase X: "
+            label_match = re.search(r"Phase\s+[AB]:\s*(.+)", phase_str)
+            phase_label = label_match.group(1).strip() if label_match else phase_str
+
+            indicators = [_entry_to_indicator(e) for e in phase_groups[phase_str]]
+            activation_phases.append(ActivationPhase(
+                phase_name=phase_name,
+                phase_label=phase_label,
+                indicators=indicators,
+            ))
+    else:
+        indicators = [_entry_to_indicator(e) for e in entries]
+        activation_phases = [ActivationPhase(
+            phase_name="single",
+            phase_label="Active",
+            indicators=indicators,
+        )]
+
+    return TheoryModule(
+        theory_id=pkg.theory_id,
+        is_two_phase=is_two_phase,
+        phases=activation_phases,
+    )
