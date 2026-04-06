@@ -502,9 +502,9 @@ Each task below is intended to be executed in a separate Claude Code session aft
 #### Completion note -- 2026-04-06
 - Summary: Closed the v8 remediation loop. Re-ran equivalence across 3 scenarios (real, stress, recovery) -- ALL PASS. Renamed `KNOWN_DIVERGED` classification to `V8_CORRECTED` with traced causal explanations (v1 bugs, not v8 regressions). Produced closure document (`docs/V8_REMEDIATION_CLOSURE.md`) with before/after comparison table, honest divergence classification, 5 documented design limitations, 3-sentence novice explanation, and philosophical alignment statement. No code changes to parsers or scorers -- this task is documentation and verification only.
 - Files changed: `scripts/v8_equivalence_check.py` (classification rename + updated docstring), `docs/V8_REMEDIATION_CLOSURE.md` (new), `v8_fix.md` (this file)
-- Validation run: `python -m pytest backend/tests/ -x -q` (843 passed), `python -m scripts.v8_equivalence_check` (ALL PASS, 3 runs, updated classifications)
+- Validation run: `python -m pytest backend/ -x -q` (983 passed — full backend suite including engine/ and db/ test files), `python -m scripts.v8_equivalence_check` (ALL PASS, 3 runs, updated classifications). Note: initial Task 8 run used the narrower path `backend/tests/` (843 tests); corrected to `backend/` to match Task 7's scope.
 - Result: Every previously flagged issue is either fixed (6 bugs, 11 fragilities) or explicitly documented as a deliberate design limitation (5 items in closure document Section 4). No silent parser-scoring contract issues remain. The equivalence script now uses honest classification labels (V8_FIX/V8_CORRECTED instead of DIVERGED/KNOWN_DIVERGED).
-- Residual risk: None. All remediation work is complete. The 5 design limitations are bounded, documented, and non-blocking.
+- Residual risk: No open remediation items. 5 documented design limitations remain as bounded, non-blocking known constraints (see closure document Section 4).
 
 ---
 
