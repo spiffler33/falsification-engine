@@ -6,12 +6,15 @@ import pytest
 
 from backend.config import THEORIES_DIR
 from backend.engine.theory_loader import (
+    _extract_phase_summary,
+    _extract_stability_class,
     build_context_flag_list,
     build_falsifier_registry,
     build_indicator_ownership,
     discover_theory_dirs,
     enrich_theory_package,
     filter_interaction_matrix,
+    generate_registry_index,
     load_all_theory_packages,
     load_theory_package,
     parse_activation_table,
@@ -22,7 +25,13 @@ from backend.engine.theory_loader import (
     parse_interaction_pairwise,
     parse_shared_upstream_warnings,
 )
-from backend.schemas.theory import ContextFlag, FalsifierEntry, IndicatorOwnership
+from backend.schemas.theory import (
+    ContextFlag,
+    FalsifierEntry,
+    IndicatorOwnership,
+    Severity,
+    TheoryPackage,
+)
 
 EXPECTED_THEORY_IDS = {
     "capital_flows",
@@ -2032,3 +2041,369 @@ class TestEnrichTheoryPackage:
             assert pkg.activation.strip(), f"{pkg.theory_id}: activation empty"
             assert pkg.tactical.strip(), f"{pkg.theory_id}: tactical empty"
             assert pkg.playbook.strip(), f"{pkg.theory_id}: playbook empty"
+
+
+# ---------------------------------------------------------------------------
+# _extract_stability_class (synthetic)
+# ---------------------------------------------------------------------------
+
+class TestExtractStabilityClassSynthetic:
+    """Unit tests for stability_class extraction from CORE.md text."""
+
+    def test_section_header_persistent(self):
+        text = "## core_claim\n\nSome text.\n\n## stability_class\n\n**persistent** — explanation.\n"
+        assert _extract_stability_class(text) == "persistent"
+
+    def test_section_header_cyclical_backtick(self):
+        text = "## core_claim\n\nText.\n\n## stability_class\n\n`cyclical` — toggles.\n"
+        assert _extract_stability_class(text) == "cyclical"
+
+    def test_section_header_cyclical_bold(self):
+        text = "## stability_class\n\n**Cyclical.** Explanation here.\n"
+        assert _extract_stability_class(text) == "cyclical"
+
+    def test_frontmatter_cyclical(self):
+        text = "*stability_class: cyclical*\n\n---\n\n## core_claim\nText.\n"
+        assert _extract_stability_class(text) == "cyclical"
+
+    def test_frontmatter_title_case(self):
+        text = "*Stability Class: cyclical*\n\n---\n"
+        assert _extract_stability_class(text) == "cyclical"
+
+    def test_frontmatter_persistent_with_bold(self):
+        text = (
+            "*stability_class: **persistent** — the arithmetic relationship "
+            "between purchase price and forward returns.*\n"
+        )
+        assert _extract_stability_class(text) == "persistent"
+
+    def test_unknown_when_no_marker(self):
+        text = "## core_claim\n\nJust a theory with no stability class.\n"
+        assert _extract_stability_class(text) == "unknown"
+
+    def test_unknown_when_marker_but_no_keyword(self):
+        text = "## stability_class\n\nSomething else entirely.\n"
+        assert _extract_stability_class(text) == "unknown"
+
+
+class TestExtractStabilityClassLive:
+    """Validate stability_class extraction against all 8 real theory packages."""
+
+    EXPECTED = {
+        "capital_flows": "cyclical",
+        "debt_cycle_long": "persistent",
+        "debt_cycle_short": "cyclical",
+        "fiscal_dominance_arithmetic": "persistent",
+        "fiscal_dominance_liquidity": "cyclical",
+        "monetary_architecture": "persistent",
+        "structural_fragility": "cyclical",
+        "valuation_mean_reversion": "persistent",
+    }
+
+    def test_all_eight_stability_classes(self):
+        packages = load_all_theory_packages()
+        for pkg in packages:
+            result = _extract_stability_class(pkg.core)
+            assert result == self.EXPECTED[pkg.theory_id], (
+                f"{pkg.theory_id}: expected {self.EXPECTED[pkg.theory_id]!r}, "
+                f"got {result!r}"
+            )
+
+    def test_no_unknowns(self):
+        packages = load_all_theory_packages()
+        for pkg in packages:
+            assert _extract_stability_class(pkg.core) != "unknown", (
+                f"{pkg.theory_id}: stability_class parsed as 'unknown'"
+            )
+
+
+# ---------------------------------------------------------------------------
+# _extract_phase_summary (synthetic + live)
+# ---------------------------------------------------------------------------
+
+class TestExtractPhaseSummarySynthetic:
+    """Unit tests for phase detection from ACTIVATION.md text."""
+
+    SINGLE_PHASE = (
+        "## activation_table\n\n"
+        "| Indicator | Metric Source | Data Ownership | Threshold "
+        "| Direction | Weight | Rationale |\n"
+        "| --- | --- | --- | --- | --- | --- | --- |\n"
+        "| Test Ind | test_field | mechanical | > 5.0 | above | 0.50 | Test |\n"
+    )
+
+    TWO_PHASE = (
+        "## activation_table\n\n"
+        "### Phase A: Expansion\n\n"
+        "| Indicator | Metric Source | Data Ownership | Threshold "
+        "| Direction | Weight | Rationale |\n"
+        "| --- | --- | --- | --- | --- | --- | --- |\n"
+        "| Ind A | field_a | mechanical | > 5.0 | above | 0.50 | Test |\n\n"
+        "### Phase B: Contraction\n\n"
+        "| Indicator | Metric Source | Data Ownership | Threshold "
+        "| Direction | Weight | Rationale |\n"
+        "| --- | --- | --- | --- | --- | --- | --- |\n"
+        "| Ind B | field_b | mechanical | < 3.0 | below | 0.50 | Test |\n"
+    )
+
+    def test_single_phase_returns_one(self):
+        count, labels = _extract_phase_summary(self.SINGLE_PHASE)
+        assert count == 1
+        assert labels == []
+
+    def test_two_phase_returns_two(self):
+        count, labels = _extract_phase_summary(self.TWO_PHASE)
+        assert count == 2
+
+    def test_two_phase_labels(self):
+        _, labels = _extract_phase_summary(self.TWO_PHASE)
+        assert labels == ["Expansion", "Contraction"]
+
+
+class TestExtractPhaseSummaryLive:
+    """Validate phase extraction against all 8 real theory packages."""
+
+    TWO_PHASE_IDS = {"capital_flows", "debt_cycle_short", "structural_fragility"}
+
+    def test_two_phase_theories_detected(self):
+        packages = load_all_theory_packages()
+        for pkg in packages:
+            count, _ = _extract_phase_summary(pkg.activation)
+            if pkg.theory_id in self.TWO_PHASE_IDS:
+                assert count == 2, f"{pkg.theory_id}: expected 2 phases, got {count}"
+            else:
+                assert count == 1, f"{pkg.theory_id}: expected 1 phase, got {count}"
+
+    def test_two_phase_labels_nonempty(self):
+        packages = load_all_theory_packages()
+        for pkg in packages:
+            _, labels = _extract_phase_summary(pkg.activation)
+            if pkg.theory_id in self.TWO_PHASE_IDS:
+                assert len(labels) == 2, f"{pkg.theory_id}: expected 2 labels"
+                for lbl in labels:
+                    assert len(lbl) > 0, f"{pkg.theory_id}: empty phase label"
+
+
+# ---------------------------------------------------------------------------
+# generate_registry_index (synthetic)
+# ---------------------------------------------------------------------------
+
+def _make_test_package(
+    theory_id,
+    stability="persistent",
+    two_phase=False,
+    hard=0,
+    soft=0,
+    indicators=0,
+    flags=0,
+):
+    """Build a minimal TheoryPackage for registry index tests."""
+    core = f"# {theory_id}\n\n## stability_class\n\n**{stability}** — test.\n"
+
+    if two_phase:
+        activation = (
+            "## activation_table\n\n"
+            "### Phase A: Alpha\n\n"
+            "| Indicator | Metric Source | Data Ownership | Threshold "
+            "| Direction | Weight | Rationale |\n"
+            "| --- | --- | --- | --- | --- | --- | --- |\n"
+            "| Ind A | field_a | mechanical | > 5.0 | above | 0.50 | Test |\n\n"
+            "### Phase B: Beta\n\n"
+            "| Indicator | Metric Source | Data Ownership | Threshold "
+            "| Direction | Weight | Rationale |\n"
+            "| --- | --- | --- | --- | --- | --- | --- |\n"
+            "| Ind B | field_b | mechanical | < 3.0 | below | 0.50 | Test |\n"
+        )
+    else:
+        activation = (
+            "## activation_table\n\n"
+            "| Indicator | Metric Source | Data Ownership | Threshold "
+            "| Direction | Weight | Rationale |\n"
+            "| --- | --- | --- | --- | --- | --- | --- |\n"
+            "| Ind 1 | field_1 | mechanical | > 5.0 | above | 0.50 | Test |\n"
+        )
+
+    registry = [
+        FalsifierEntry(
+            falsifier_id=f"H{i+1}", condition=f"Hard {i+1}",
+            logic="kills", classification="hard",
+        )
+        for i in range(hard)
+    ] + [
+        FalsifierEntry(
+            falsifier_id=f"S{i+1}", condition=f"Soft {i+1}",
+            logic="wounds", classification="soft",
+            severity=Severity.MINOR, discount=0.10,
+        )
+        for i in range(soft)
+    ]
+
+    ownership = [
+        IndicatorOwnership(
+            indicator_name=f"ind_{j}", metric_source=f"field_{j}",
+            data_ownership="mechanical",
+        )
+        for j in range(indicators)
+    ]
+
+    ctx_flags = [
+        ContextFlag(
+            flag_name=f"flag_{j}", source="test",
+            data_ownership="qualitative",
+            description="Test flag", usage="context only",
+        )
+        for j in range(flags)
+    ]
+
+    return TheoryPackage(
+        theory_id=theory_id,
+        core=core,
+        activation=activation,
+        tactical="",
+        playbook="",
+        falsifier_registry=registry,
+        data_ownership=ownership,
+        context_flags=ctx_flags,
+    )
+
+
+class TestGenerateRegistryIndexSynthetic:
+    """Synthetic tests for REGISTRY_INDEX.md generation."""
+
+    def test_single_package_row(self, tmp_path):
+        pkg = _make_test_package(
+            "test_theory", "persistent", hard=2, soft=3, indicators=5, flags=1,
+        )
+        out = tmp_path / "REGISTRY_INDEX.md"
+        content = generate_registry_index([pkg], output_path=out)
+        assert "| test_theory | persistent | 1 | - | 2 | 3 | 5 | 1 |" in content
+
+    def test_two_phase_row(self, tmp_path):
+        pkg = _make_test_package(
+            "two_phase", "cyclical", two_phase=True, hard=1, soft=2,
+            indicators=4, flags=3,
+        )
+        out = tmp_path / "REGISTRY_INDEX.md"
+        content = generate_registry_index([pkg], output_path=out)
+        assert "| two_phase | cyclical | 2 | Alpha / Beta | 1 | 2 | 4 | 3 |" in content
+
+    def test_sorted_by_theory_id(self, tmp_path):
+        pkgs = [
+            _make_test_package("z_theory", "cyclical"),
+            _make_test_package("a_theory", "persistent"),
+            _make_test_package("m_theory", "cyclical"),
+        ]
+        out = tmp_path / "REGISTRY_INDEX.md"
+        content = generate_registry_index(pkgs, output_path=out)
+        data_lines = [
+            l for l in content.split("\n")
+            if l.startswith("| ") and "theory_id" not in l and "---" not in l
+        ]
+        ids = [l.split("|")[1].strip() for l in data_lines]
+        assert ids == ["a_theory", "m_theory", "z_theory"]
+
+    def test_file_written(self, tmp_path):
+        pkg = _make_test_package("writer_test", "persistent")
+        out = tmp_path / "REGISTRY_INDEX.md"
+        generate_registry_index([pkg], output_path=out)
+        assert out.exists()
+        assert out.read_text(encoding="utf-8").startswith("<!--")
+
+    def test_auto_generated_comment(self, tmp_path):
+        pkg = _make_test_package("header_test", "cyclical")
+        out = tmp_path / "REGISTRY_INDEX.md"
+        content = generate_registry_index([pkg], output_path=out)
+        assert "Auto-generated" in content.split("\n")[0]
+        assert "Do not edit manually" in content.split("\n")[0]
+
+    def test_unenriched_counts_zero(self, tmp_path):
+        pkg = _make_test_package("unenriched", "persistent")
+        out = tmp_path / "REGISTRY_INDEX.md"
+        content = generate_registry_index([pkg], output_path=out)
+        assert "| unenriched | persistent | 1 | - | 0 | 0 | 0 | 0 |" in content
+
+    def test_empty_package_list(self, tmp_path):
+        """No packages → header only, no data rows."""
+        out = tmp_path / "REGISTRY_INDEX.md"
+        content = generate_registry_index([], output_path=out)
+        data_lines = [
+            l for l in content.split("\n")
+            if l.startswith("| ") and "theory_id" not in l and "---" not in l
+        ]
+        assert data_lines == []
+
+    def test_table_has_eight_columns(self, tmp_path):
+        pkg = _make_test_package("col_test", "persistent")
+        out = tmp_path / "REGISTRY_INDEX.md"
+        content = generate_registry_index([pkg], output_path=out)
+        header_line = [l for l in content.split("\n") if "theory_id" in l][0]
+        cols = [c.strip() for c in header_line.split("|") if c.strip()]
+        assert len(cols) == 8
+
+
+# ---------------------------------------------------------------------------
+# generate_registry_index (live — real theory packages)
+# ---------------------------------------------------------------------------
+
+class TestGenerateRegistryIndexLive:
+    """End-to-end: generate REGISTRY_INDEX.md from all 8 enriched theory packages."""
+
+    @pytest.fixture()
+    def enriched_packages(self):
+        return [enrich_theory_package(load_theory_package(d))
+                for d in discover_theory_dirs()]
+
+    def test_all_eight_rows(self, enriched_packages, tmp_path):
+        out = tmp_path / "REGISTRY_INDEX.md"
+        content = generate_registry_index(enriched_packages, output_path=out)
+        data_lines = [
+            l for l in content.split("\n")
+            if l.startswith("| ") and "theory_id" not in l and "---" not in l
+        ]
+        assert len(data_lines) == 8
+
+    def test_all_theory_ids_present(self, enriched_packages, tmp_path):
+        out = tmp_path / "REGISTRY_INDEX.md"
+        content = generate_registry_index(enriched_packages, output_path=out)
+        for tid in EXPECTED_THEORY_IDS:
+            assert tid in content, f"{tid} missing from REGISTRY_INDEX.md"
+
+    def test_no_unknown_stability_classes(self, enriched_packages, tmp_path):
+        out = tmp_path / "REGISTRY_INDEX.md"
+        content = generate_registry_index(enriched_packages, output_path=out)
+        assert "unknown" not in content
+
+    def test_three_two_phase_theories(self, enriched_packages, tmp_path):
+        out = tmp_path / "REGISTRY_INDEX.md"
+        content = generate_registry_index(enriched_packages, output_path=out)
+        data_lines = [
+            l for l in content.split("\n")
+            if l.startswith("| ") and "theory_id" not in l and "---" not in l
+        ]
+        two_phase_rows = [l for l in data_lines if "| 2 |" in l]
+        assert len(two_phase_rows) == 3
+
+    def test_enriched_counts_all_positive(self, enriched_packages, tmp_path):
+        out = tmp_path / "REGISTRY_INDEX.md"
+        content = generate_registry_index(enriched_packages, output_path=out)
+        data_lines = [
+            l for l in content.split("\n")
+            if l.startswith("| ") and "theory_id" not in l and "---" not in l
+        ]
+        for line in data_lines:
+            cells = [c.strip() for c in line.split("|") if c.strip()]
+            theory_id = cells[0]
+            hard_count = int(cells[4])
+            soft_count = int(cells[5])
+            indicator_count = int(cells[6])
+            ctx_flag_count = int(cells[7])
+            assert hard_count > 0, f"{theory_id}: hard falsifier count is 0"
+            assert soft_count > 0, f"{theory_id}: soft falsifier count is 0"
+            assert indicator_count > 0, f"{theory_id}: indicator count is 0"
+            assert ctx_flag_count > 0, f"{theory_id}: context flag count is 0"
+
+    def test_returns_content_and_writes_file(self, enriched_packages, tmp_path):
+        out = tmp_path / "REGISTRY_INDEX.md"
+        content = generate_registry_index(enriched_packages, output_path=out)
+        assert out.exists()
+        assert out.read_text(encoding="utf-8") == content

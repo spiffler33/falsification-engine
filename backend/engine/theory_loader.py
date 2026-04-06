@@ -1370,3 +1370,99 @@ def enrich_theory_package(pkg: TheoryPackage) -> TheoryPackage:
         "data_ownership": ownership,
         "context_flags": flags,
     })
+
+
+# ---------------------------------------------------------------------------
+# Unit 15: REGISTRY_INDEX.md generation
+# ---------------------------------------------------------------------------
+
+_STABILITY_MARKER_RE = re.compile(r"stability[_ ]class", re.IGNORECASE)
+
+
+def _extract_stability_class(core_text: str) -> str:
+    """Extract stability_class ('persistent' or 'cyclical') from CORE.md.
+
+    Handles all formatting variations across the 8 theory modules:
+    frontmatter (``*stability_class: cyclical*``), section headers
+    (``## stability_class``), bold markers, backtick wrapping, etc.
+
+    Strategy: find the first "stability class" marker, then search for the
+    keyword within the next 300 characters. This avoids fragile markdown
+    structure parsing.
+    """
+    m = _STABILITY_MARKER_RE.search(core_text)
+    if m is None:
+        return "unknown"
+    window = core_text[m.end():m.end() + 300].lower()
+    if "persistent" in window:
+        return "persistent"
+    if "cyclical" in window:
+        return "cyclical"
+    return "unknown"
+
+
+def _extract_phase_summary(activation_text: str) -> tuple[int, list[str]]:
+    """Extract phase count and human-readable labels from ACTIVATION.md.
+
+    Reuses ``parse_activation_table`` — the same parser the activation engine
+    relies on — to detect phases from scored indicators, then extracts labels
+    from the phase strings (e.g. ``"Phase A: Expansion"`` → ``"Expansion"``).
+
+    Returns ``(phase_count, [labels])``.  Single-phase: ``(1, [])``.
+    """
+    entries = parse_activation_table(activation_text)
+    phases_present = sorted({e["phase"] for e in entries if e["phase"]})
+    if len(phases_present) < 2:
+        return (1, [])
+    labels: list[str] = []
+    for phase_str in phases_present:
+        lm = re.search(r"Phase\s+[AB]:\s*(.+)", phase_str)
+        labels.append(lm.group(1).strip() if lm else phase_str)
+    return (len(labels), labels)
+
+
+def generate_registry_index(
+    packages: list[TheoryPackage],
+    output_path: Path | None = None,
+) -> str:
+    """Generate theories/REGISTRY_INDEX.md — mechanical summary of the theory registry.
+
+    Writes a markdown table with one row per theory: theory_id, stability_class,
+    phases, phase_names, falsifier counts, indicator count, context flag count.
+
+    This is a convenience file for LLM orientation — the LLM reads
+    REGISTRY_INDEX.md first to understand what theories exist before touching
+    individual packages. Regenerated on every loader run; should not be
+    manually edited.
+
+    Returns the generated markdown content.
+    """
+    lines: list[str] = [
+        "<!-- REGISTRY_INDEX.md -- Auto-generated. Do not edit manually. -->",
+        "# Theory Registry Index",
+        "",
+        (
+            "| theory_id | stability_class | phases | phase_names "
+            "| falsifier_count (hard) | falsifier_count (soft) "
+            "| indicator_count | context_flag_count |"
+        ),
+        "| --- | --- | --- | --- | --- | --- | --- | --- |",
+    ]
+
+    for pkg in sorted(packages, key=lambda p: p.theory_id):
+        stability = _extract_stability_class(pkg.core)
+        phase_count, phase_labels = _extract_phase_summary(pkg.activation)
+        phase_names = " / ".join(phase_labels) if phase_labels else "-"
+        hard = sum(1 for f in pkg.falsifier_registry if f.classification == "hard")
+        soft = sum(1 for f in pkg.falsifier_registry if f.classification == "soft")
+        indicators = len(pkg.data_ownership)
+        ctx_flags = len(pkg.context_flags)
+        lines.append(
+            f"| {pkg.theory_id} | {stability} | {phase_count} | {phase_names} "
+            f"| {hard} | {soft} | {indicators} | {ctx_flags} |"
+        )
+
+    content = "\n".join(lines) + "\n"
+    target = output_path or (THEORIES_DIR / "REGISTRY_INDEX.md")
+    target.write_text(content, encoding="utf-8")
+    return content

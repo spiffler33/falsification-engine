@@ -404,7 +404,7 @@ The updated contract replaces the current one. The old contract is archived alon
 | 12 | Validation: Layer 3 (prompt assembly snapshots) | Snapshot tests verifying correct file inclusion/exclusion per pass. | Phase 3 |
 | 13 | Validation: Layer 4 (run-level comparison) | Full pipeline runs with human comparison. 2-3 runs minimum. | Phase 3 |
 | ~~14~~ | ~~Interface contract update~~ | ~~Update ECONOMIC_THEORIES_INTERFACE_CONTRACT.md to reflect new structure.~~ Done (v2.0). | Phase 4 |
-| 15 | REGISTRY_INDEX.md generation | Loader byproduct. Mechanical summary of all 8 theories. | Phase 4 |
+| ~~15~~ | ~~REGISTRY_INDEX.md generation~~ | ~~Loader byproduct. Mechanical summary of all 8 theories.~~ Done. `generate_registry_index()` + 29 tests. | Phase 4 |
 | 16 | Old format removal | After cutover: remove adapter layer, remove old loader code path, archive old monolithic modules. | Phase 4 |
 
 ### Phase Boundaries (context-clearable)
@@ -487,7 +487,7 @@ These are implementation-facing questions. The plan specifies WHAT changes; Clau
 ### End-to-End
 - [x] Full pipeline run with new loader produces output (scripts/compare_loaders.py builds prompts end-to-end)
 - [ ] 2-3 comparison runs vs. old loader show substantive equivalence (harness built; human review pending)
-- [ ] REGISTRY_INDEX.md generated correctly after loader completes
+- [x] REGISTRY_INDEX.md generated correctly after loader completes
 
 ---
 
