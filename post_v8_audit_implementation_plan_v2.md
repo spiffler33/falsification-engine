@@ -71,14 +71,14 @@ The following are **not** part of this plan and belong in `v9.md`:
 - confirm the artifact is internally consistent with live computed fields
 
 **Update status:**
-- [ ] Task 0 complete
+- [x] Task 0 complete
 
-#### Completion note — YYYY-MM-DD
-- Summary:
-- Files changed:
-- Validation run:
-- Result:
-- Residual risk:
+#### Completion note — 2026-04-06
+- Summary: Regenerated briefing packet with live data agent (adds 10 post-v8 computed fields). Created frozen semantic baseline capturing all 8 theory scores, per-indicator triggered state, audited field values/provenance, mock/live discrepancies, and correct-by-coincidence inventory.
+- Files changed: `docs/POST_V8_SEMANTIC_BASELINE.md` (new), `mock_data/briefing_packet.json` (regenerated), `docs/POST_V8_AUDIT.md` (committed), `post_v8_audit_implementation_plan_v2.md` (committed)
+- Validation run: 983 tests passing; activation scoring all 8 theories verified against baseline artifact; all computed field checks passed; DXY resolution gap confirmed
+- Result: Frozen baseline committed at 86a45f5. All scores and tiers match. 10 mock/live discrepancies resolved by regeneration. Audit F-03 resolved.
+- Residual risk: Briefing data is a point-in-time snapshot (2026-04-06). FRED WILL5000INDFC remains unavailable (ERP fallback active). Yahoo Finance rate-limited one request (EEM PE) but fallback succeeded.
 
 ---
 
@@ -355,7 +355,7 @@ This plan is complete when all of the following are true:
 
 ## Master status board
 
-- [ ] Task 0 — Freeze semantic baseline
+- [x] Task 0 — Freeze semantic baseline (2026-04-06, commit 86a45f5)
 - [ ] Task 1 — Fix all field wiring and unit-alignment bugs
 - [ ] Task 2 — Make data-gap policy explicit and fair
 - [ ] Task 3 — Add unit-suffix scaling to `_extract_number()`
