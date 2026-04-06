@@ -493,9 +493,18 @@ Each task below is intended to be executed in a separate Claude Code session aft
 - compare final state to the Task 0 baseline artifact
 
 **Update status:**
-- [ ] Task 8 not started
-- [ ] Task 8 in progress
-- [ ] Task 8 complete
+- [x] Task 8 complete (2026-04-06)
+  - Equivalence script updated: `KNOWN_DIVERGED` renamed to `V8_CORRECTED` with honest causal classification
+  - Closure document produced: `docs/V8_REMEDIATION_CLOSURE.md`
+  - Novice explanation included in closure document Section 5
+  - All 8 theories classified honestly: 4 EXACT, 2 TIER, 2 V8_CORRECTED (intentional improvement)
+
+#### Completion note -- 2026-04-06
+- Summary: Closed the v8 remediation loop. Re-ran equivalence across 3 scenarios (real, stress, recovery) -- ALL PASS. Renamed `KNOWN_DIVERGED` classification to `V8_CORRECTED` with traced causal explanations (v1 bugs, not v8 regressions). Produced closure document (`docs/V8_REMEDIATION_CLOSURE.md`) with before/after comparison table, honest divergence classification, 5 documented design limitations, 3-sentence novice explanation, and philosophical alignment statement. No code changes to parsers or scorers -- this task is documentation and verification only.
+- Files changed: `scripts/v8_equivalence_check.py` (classification rename + updated docstring), `docs/V8_REMEDIATION_CLOSURE.md` (new), `v8_fix.md` (this file)
+- Validation run: `python -m pytest backend/tests/ -x -q` (843 passed), `python -m scripts.v8_equivalence_check` (ALL PASS, 3 runs, updated classifications)
+- Result: Every previously flagged issue is either fixed (6 bugs, 11 fragilities) or explicitly documented as a deliberate design limitation (5 items in closure document Section 4). No silent parser-scoring contract issues remain. The equivalence script now uses honest classification labels (V8_FIX/V8_CORRECTED instead of DIVERGED/KNOWN_DIVERGED).
+- Residual risk: None. All remediation work is complete. The 5 design limitations are bounded, documented, and non-blocking.
 
 ---
 
@@ -588,6 +597,6 @@ The remediation is done only when all of the following are true:
 - [x] Task 5 complete
 - [x] Task 6 complete
 - [x] Task 7 complete
-- [ ] Task 8 complete
+- [x] Task 8 complete
 
-**Project status:** NOT COMPLETE
+**Project status:** COMPLETE

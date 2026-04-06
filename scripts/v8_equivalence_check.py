@@ -1,13 +1,15 @@
 #!/usr/bin/env python
-"""v8_equivalence_check.py -- Final validation for v8 migration.
+"""v8_equivalence_check.py -- Post-remediation equivalence validation.
 
 Restores old theory_parser.py and old_format/ theory files from git history,
 runs activation scoring through both old and new loaders on multiple briefing
 packets, and prints comparison tables for human review.
 
-Addresses two plan_v8.md checklist items:
-  1. "Run activation equivalence on at least 2 different briefing packets"
-  2. "2-3 comparison runs vs. old loader show substantive equivalence"
+Classification system (post-remediation):
+  EXACT    -- scores match within 0.001
+  TIER     -- scores differ but tier (Active/Adjacent/Inactive) matches
+  V8_FIX   -- v8 intentionally diverges because it fixed a v1 bug
+  UNKNOWN  -- unexpected; would indicate a regression
 
 Usage:
     python -m scripts.v8_equivalence_check
@@ -39,17 +41,24 @@ EXACT_MATCH = {
     "capital_flows",  # Fixed: v8 remediation Task 1
 }
 TIER_MATCH = {"debt_cycle_long", "monetary_architecture"}
-KNOWN_DIVERGED = {
-    # valuation_mean_reversion: v8 scores 0.706 vs v1 0.882.  v1 was inflated
-    # by accidental threshold extraction ("1" from "(1/PE)").  v8 now has a
-    # proper computed comparison field; the indicator correctly does not trigger.
-    # Recovery scenario diverges (v8 Inactive, v1 Adjacent).
+V8_CORRECTED = {
+    # These theories intentionally diverge from v1 because v8 fixed bugs that
+    # made v1 scores wrong.  Each is traced to a specific remediation task.
+    #
+    # valuation_mean_reversion: v8 0.706 vs v1 0.882.  v1 was inflated by
+    # accidental threshold extraction ("1" from "(1/PE)" prose).  v8 has a
+    # proper computed comparison field (cash_exceeds_equity_yield); the
+    # indicator correctly does not trigger.  Recovery scenario diverges in
+    # tier (v8 Inactive vs v1 Adjacent) for the same reason.
+    # Traced to: BUG-05 fix (Task 2), BUG-01 fix (Task 1).
     "valuation_mean_reversion",
-    # fiscal_dominance_arithmetic: v8 scores 0.722 Active vs v1 0.556 Adjacent.
+    # fiscal_dominance_arithmetic: v8 0.722 Active vs v1 0.556 Adjacent.
     # v8 is MORE CORRECT: interest_exceeds_defense threshold fixed to "Above 0"
-    # (BUG-05 Task 2 fix).  v1 had prose threshold with no extractable number,
-    # so the indicator never triggered in either version.  Now it correctly
-    # triggers (surplus 287 > 0 = interest exceeds defense by $287B).
+    # because the field stores the surplus amount (BUG-05 Task 2 fix).  v1 had
+    # prose threshold "federal interest payments exceed largest discretionary
+    # budget category" with no extractable number, so the indicator never
+    # triggered in either version.  Now it correctly triggers (surplus=287 > 0).
+    # Traced to: BUG-05 fix (Task 2).
     "fiscal_dominance_arithmetic",
 }
 
@@ -307,8 +316,10 @@ def run_comparison(
             expected = "EXACT"
         elif tid in TIER_MATCH:
             expected = "TIER"
+        elif tid in V8_CORRECTED:
+            expected = "V8_FIX"
         else:
-            expected = "DIVERGED"
+            expected = "UNKNOWN"
 
         score_match = (
             old_score is not None
@@ -327,7 +338,7 @@ def run_comparison(
         ok = (
             (expected == "EXACT" and actual == "EXACT")
             or (expected == "TIER" and actual in ("EXACT", "TIER"))
-            or (expected == "DIVERGED")
+            or (expected == "V8_FIX")  # intentional improvement over v1
         )
 
         rows.append({
