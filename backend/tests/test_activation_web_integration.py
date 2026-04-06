@@ -966,3 +966,150 @@ class TestRisingFallingBUG03:
         )
         assert _check_threshold(6.5, ind) is True
         assert _check_threshold(7.5, ind) is False
+
+
+class TestUnitSuffixScalingTask3:
+    """Post-v8 Task 3: _extract_number() unit-suffix scaling.
+
+    K suffix is the only suffix that changes the extracted magnitude.
+    bp, %, $, T, B, M, x are stripped without scaling.
+    Temporal phrases are NOT resolved by suffix scaling.
+    """
+
+    # -- K suffix: multiply by 1000 --
+
+    def test_k_suffix_scales_by_1000(self):
+        from backend.engine.activation import _extract_number
+        assert _extract_number("Below 250K (4-week average)") == 250000.0
+
+    def test_k_suffix_uppercase(self):
+        from backend.engine.activation import _extract_number
+        assert _extract_number("4-week average above 280K AND rising for 8+ weeks") == 280000.0
+
+    def test_k_suffix_lowercase(self):
+        from backend.engine.activation import _extract_number
+        assert _extract_number("Below 250k") == 250000.0
+
+    def test_k_suffix_with_decimal(self):
+        from backend.engine.activation import _extract_number
+        assert _extract_number("Above 1.5K") == 1500.0
+
+    # -- bp suffix: no scaling (hy_spread field is in bp) --
+
+    def test_bp_suffix_no_scaling(self):
+        from backend.engine.activation import _extract_number
+        assert _extract_number("Above 300bp") == 300.0
+        assert _extract_number("Below 450bp AND not widening") == 450.0
+        assert _extract_number("Above 600bp") == 600.0
+        assert _extract_number("Above 500bp AND widening for 2+ months") == 500.0
+
+    # -- % suffix: no scaling (percentage fields store percentages) --
+
+    def test_percentage_suffix_no_scaling(self):
+        from backend.engine.activation import _extract_number
+        assert _extract_number("Below 5.0%") == 5.0
+        assert _extract_number("Above 20%") == 20.0
+        assert _extract_number("Above -0.50%") == -0.50
+        assert _extract_number("Below -20%") == -20.0
+        assert _extract_number("Above +10%") == 10.0
+        assert _extract_number("Below 1.0%") == 1.0
+
+    # -- $ prefix strip --
+
+    def test_dollar_prefix_stripped(self):
+        from backend.engine.activation import _extract_number
+        assert _extract_number("Below $250B and declining") == 250.0
+        assert _extract_number("Above 1500 annualized (in $B)") == 1500.0
+
+    # -- T/B/M suffix: strip only, no scaling --
+
+    def test_t_suffix_stripped_no_scaling(self):
+        from backend.engine.activation import _extract_number
+        assert _extract_number("$1.5T") == 1.5
+
+    def test_b_suffix_stripped_no_scaling(self):
+        from backend.engine.activation import _extract_number
+        assert _extract_number("TGA below $500B OR declining") == 500.0
+
+    def test_x_suffix_stripped(self):
+        from backend.engine.activation import _extract_number
+        assert _extract_number("Above 1.5x") == 1.5
+
+    # -- Plain numeric: no suffix --
+
+    def test_plain_numeric_unchanged(self):
+        from backend.engine.activation import _extract_number
+        assert _extract_number("Above 25") == 25.0
+        assert _extract_number("Below 14") == 14.0
+        assert _extract_number("Above 0") == 0.0
+        assert _extract_number("Above 50") == 50.0
+
+    # -- Temporal phrases: NOT resolved by Task 3 --
+
+    def test_temporal_phrase_not_resolved(self):
+        """Task 3 must NOT pretend temporal phrases are fixed."""
+        from backend.engine.activation import _extract_number
+        # These extract the WRONG number (temporal, not threshold)
+        # but Task 3 does not change this behavior.
+        assert _extract_number("declining for 3+ months") == 3.0
+        assert _extract_number("Positive for 2+ of last 3 months") == 2.0
+        assert _extract_number(
+            "3-month moving average rising 0.50%+ above its 12-month low"
+        ) == 3.0
+
+    def test_pure_prose_returns_none(self):
+        from backend.engine.activation import _extract_number
+        assert _extract_number(
+            "Banks reporting steady or loosening lending standards"
+        ) is None
+        assert _extract_number(
+            "Weighted average rate rising AND below current market rates"
+        ) is None
+
+    # -- Activation-level: K scaling changes trigger state --
+
+    def test_initial_claims_below_250k_triggers(self):
+        """202000 raw claims IS below 250K — should trigger after K fix."""
+        ind = Indicator(
+            name="Initial claims low",
+            metric_source="`growth.initial_claims`",
+            weight=0.10,
+            threshold="Below 250K (4-week average)",
+            direction=Direction.BELOW,
+        )
+        # 202,000 < 250,000 → triggers
+        assert _check_threshold(202000.0, ind) is True
+
+    def test_initial_claims_above_280k_does_not_trigger(self):
+        """202000 raw claims is NOT above 280K — should not trigger."""
+        ind = Indicator(
+            name="Initial claims rising",
+            metric_source="`growth.initial_claims`",
+            weight=0.10,
+            threshold="4-week average above 280K AND rising for 8+ weeks",
+            direction=Direction.ABOVE,
+        )
+        # 202,000 < 280,000 → does not trigger
+        assert _check_threshold(202000.0, ind) is False
+
+    def test_initial_claims_high_above_280k_triggers(self):
+        """300000 raw claims IS above 280K — should trigger."""
+        ind = Indicator(
+            name="Initial claims rising",
+            metric_source="`growth.initial_claims`",
+            weight=0.10,
+            threshold="4-week average above 280K AND rising for 8+ weeks",
+            direction=Direction.ABOVE,
+        )
+        # 300,000 > 280,000 → triggers
+        assert _check_threshold(300000.0, ind) is True
+
+    # -- Non-destructive stripping: words preserved --
+
+    def test_stripping_does_not_mangle_words(self):
+        """Suffix stripping must not destroy letters in words like Below."""
+        from backend.engine.activation import _extract_number
+        # "Below" should not have its B stripped
+        assert _extract_number("Below 450bp AND not widening") == 450.0
+        # "Monthly" should not have its M stripped
+        assert _extract_number("Monthly average above 100") == 100.0

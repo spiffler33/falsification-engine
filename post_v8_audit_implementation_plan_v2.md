@@ -215,14 +215,14 @@ This task must run **after Task 1**. If unit-suffix scaling lands before the fie
 - diff against Task 0 baseline artifact
 
 **Update status:**
-- [ ] Task 3 complete
+- [x] Task 3 complete
 
-#### Completion note — YYYY-MM-DD
-- Summary:
-- Files changed:
-- Validation run:
-- Result:
-- Residual risk:
+#### Completion note — 2026-04-06
+- Summary: Rewrote `_extract_number()` with targeted regex and K suffix scaling (x1000). Fixed 2 initial_claims indicators in debt_cycle_short that compared raw counts against unscaled K thresholds. Preserved all other suffix behavior. 17 new tests.
+- Files changed: `backend/engine/activation.py`, `backend/tests/test_activation_web_integration.py`, `docs/POST_V8_TASK3_UNIT_SCALING_RESULTS.md`
+- Validation run: 867 tests passing (850 + 17 new)
+- Result: No tier changes. 2 score deltas: debt_cycle_short/Expansion 0.867->1.000 (+0.133), Contraction 0.400->0.300 (-0.100). Both causally traceable to K-suffix fix only.
+- Residual risk: TGA $B/$M latent mismatch; BUG-03 temporal phrases; T/B/M scaling blocked by inconsistent field units
 
 ---
 

@@ -399,13 +399,38 @@ def _extract_number(s: str) -> float | None:
     """Extract the first meaningful number from a threshold string.
 
     Handles: 'Below 14', 'Above 300bp', '-20%', '$1.5T', '0.5x', etc.
-    """
-    # Remove common suffixes
-    cleaned = s.replace("bp", "").replace("%", "").replace("$", "")
-    cleaned = cleaned.replace("T", "").replace("B", "").replace("M", "")
-    cleaned = cleaned.replace("x", "")
 
-    # Find numbers
+    Suffix scaling:
+    - K/k (thousands): "250K" → 250000.  The only suffix that changes
+      the extracted magnitude, because fields using K thresholds (e.g.
+      initial_claims) store raw counts.
+    - bp: stripped, no scaling.  The primary bp-compared field
+      (credit.hy_spread) stores values in basis points.
+    - %: stripped, no scaling.  Percentage fields store percentages.
+    - $, T, B, M, x: stripped, no scaling.  Monetary field units vary
+      (some $M, some $B) so context-free scaling would break aligned
+      thresholds.  Task 1 already aligned critical $-denominated
+      thresholds to their field units.  v9 structured thresholds will
+      resolve this limitation.
+
+    Does NOT interpret temporal phrases ("3+ months", "2-year high").
+    Those remain deferred to v9.
+    """
+    # K/k suffix: multiply by 1000 (e.g., "250K" → 250000)
+    k_match = re.search(r"([-+]?\d*\.?\d+)\s*[Kk]\b", s)
+    if k_match:
+        return float(k_match.group(1)) * 1000
+
+    # Strip suffixes attached to numbers without scaling.
+    # Uses targeted patterns instead of global character replacement
+    # to avoid destroying letters in words like "Below", "Monthly".
+    cleaned = re.sub(r"(\d)\s*bp\b", r"\1", s)         # 300bp → 300
+    cleaned = re.sub(r"(\d)\s*%", r"\1", cleaned)       # 5.0% → 5.0
+    cleaned = cleaned.replace("$", "")                   # $500 → 500
+    cleaned = re.sub(r"(\d)\s*[TBM]\b", r"\1", cleaned) # 1.5T → 1.5
+    cleaned = re.sub(r"(\d)\s*x\b", r"\1", cleaned)     # 1.5x → 1.5
+
+    # Extract the first number from the cleaned string
     numbers = re.findall(r"[-+]?\d*\.?\d+", cleaned)
     if numbers:
         return float(numbers[0])
