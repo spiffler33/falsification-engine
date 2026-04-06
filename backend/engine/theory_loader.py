@@ -580,6 +580,11 @@ _ACTIVATION_TABLE_RE = re.compile(
 
 _WEIGHT_NUM_RE = re.compile(r"[\d.]+")
 
+# Canonical data_ownership values for activation_table indicators.
+# "qualitative" is NOT valid here — qualitative indicators must live in
+# context_flags (validated separately by parse_activation_table).
+_VALID_ACTIVATION_OWNERSHIP = {"mechanical", "computed-mechanical", "web-search"}
+
 
 def _parse_activation_rows(
     lines: list[str], start: int, end: int, header_phase: str | None,
@@ -613,11 +618,20 @@ def _parse_activation_rows(
         cells = [c.strip() for c in stripped.split("|")]
         cells = [c for c in cells if c]
 
-        if len(cells) < 6:
+        # Skip separator rows (must check before short-row validation)
+        if all(_SEPARATOR_CELL_RE.match(c) for c in cells):
             continue
 
-        # Skip separator rows
-        if all(_SEPARATOR_CELL_RE.match(c) for c in cells):
+        # FRAGILITY-09: short rows.  Before the header is consumed, skip
+        # short rows silently (they may be sub-heading fragments).  After
+        # the header is consumed, any table row with < 6 cells is a
+        # malformed data row — fail loudly.
+        if len(cells) < 6:
+            if in_table:
+                raise ValueError(
+                    f"Short activation table row ({len(cells)} cells, "
+                    f"need 6+): {stripped!r}"
+                )
             continue
 
         # First non-separator table row is the header — skip it
@@ -644,10 +658,25 @@ def _parse_activation_rows(
             stripped_own = ownership_raw.strip("`").strip()
             data_ownership = stripped_own.split()[0].lower() if stripped_own else ""
 
-        # Parse weight (may have annotations like `[CALIBRATION]`)
+        # BUG-06: validate data_ownership against canonical set.
+        # Invalid values must fail loudly rather than silently propagating
+        # into scoring where they cause undefined behavior.
+        if data_ownership not in _VALID_ACTIVATION_OWNERSHIP:
+            raise ValueError(
+                f"Indicator {indicator_name!r} has invalid data_ownership "
+                f"{data_ownership!r} — must be one of: "
+                f"{', '.join(sorted(_VALID_ACTIVATION_OWNERSHIP))}"
+            )
+
+        # FRAGILITY-08: reject non-numeric weights loudly.
+        # A data row past the header MUST have a parseable numeric weight.
+        # Silent skip here would invisibly remove an indicator from scoring.
         wm = _WEIGHT_NUM_RE.search(weight_str)
         if not wm:
-            continue  # Not a data row
+            raise ValueError(
+                f"Indicator {indicator_name!r} has non-numeric weight: "
+                f"{weight_str!r}"
+            )
         weight = float(wm.group())
 
         entries.append({
@@ -864,8 +893,13 @@ def parse_context_flags(activation_text: str) -> list[dict]:
         description = _cell("description")
         usage = _cell("usage")
 
-        # Data ownership: extract from column, or default to qualitative
-        if "data_ownership" in col_map:
+        # FRAGILITY-04: Data ownership — extract from column, or default to
+        # "qualitative" when the column is absent.  Missing ownership column
+        # is allowed ONLY when every flag in the table is qualitative (e.g.
+        # debt_cycle_short).  The constraint is validated below after all
+        # entries are collected.
+        has_ownership_col = "data_ownership" in col_map
+        if has_ownership_col:
             data_ownership = _extract_ctx_ownership(_cell("data_ownership"))
         else:
             data_ownership = "qualitative"
@@ -887,6 +921,22 @@ def parse_context_flags(activation_text: str) -> list[dict]:
             raise ValueError(
                 f"Context flag {entry['flag_name']!r} has invalid data_ownership "
                 f"{entry['data_ownership']!r} — must be 'qualitative' or 'web-search'"
+            )
+
+    # FRAGILITY-04 constraint: if ownership column was absent, every entry
+    # must be qualitative.  If any entry needs web-search ownership, the
+    # column must be present so the classification is explicit.
+    if not has_ownership_col:
+        non_qual = [
+            e for e in entries if e["data_ownership"] != "qualitative"
+        ]
+        if non_qual:
+            names = [e["flag_name"] for e in non_qual]
+            raise ValueError(
+                f"context_flags table has no Data Ownership column but "
+                f"{len(non_qual)} flag(s) resolved to non-qualitative "
+                f"ownership: {names}. Add the ownership column to make "
+                f"classifications explicit."
             )
 
     return entries

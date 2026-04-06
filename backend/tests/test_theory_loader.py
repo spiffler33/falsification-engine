@@ -1145,7 +1145,9 @@ class TestParseActivationTableSynthetic:
         assert entries[1]["phase"] == "Phase B: Contraction"
 
     def test_qualitative_raises_error(self):
-        """Qualitative indicator in activation_table is a hard error."""
+        """Qualitative indicator in activation_table is a hard error.
+        BUG-06 validation now catches this as invalid ownership before the
+        downstream qualitative-in-activation-table check."""
         text = (
             "## activation_table\n\n"
             "| Indicator | Metric Source | Data Ownership | Threshold "
@@ -1157,7 +1159,7 @@ class TestParseActivationTableSynthetic:
             "| Bad indicator | expert judgment | qualitative | Subjective "
             "| above | 0.20 | Should fail |\n"
         )
-        with pytest.raises(ValueError, match="[Qq]ualitative.*activation_table"):
+        with pytest.raises(ValueError, match="invalid data_ownership"):
             parse_activation_table(text)
 
     def test_no_section_raises(self):
@@ -2407,3 +2409,211 @@ class TestGenerateRegistryIndexLive:
         content = generate_registry_index(enriched_packages, output_path=out)
         assert out.exists()
         assert out.read_text(encoding="utf-8") == content
+
+
+# ---------------------------------------------------------------------------
+# Task 3: Parser hardening tests (BUG-06, FRAGILITY-04/08/09)
+# ---------------------------------------------------------------------------
+
+def _make_activation_table(*rows: str) -> str:
+    """Build a minimal activation_table section from data row strings.
+
+    Each row string should be pipe-separated cells (no leading/trailing pipe).
+    A standard header and separator are prepended automatically.
+    """
+    header = (
+        "| Indicator | Metric Source | Data Ownership | Threshold "
+        "| Direction | Weight | Rationale |"
+    )
+    sep = (
+        "|-----------|--------------|----------------|-----------|"
+        "-----------|--------|-----------|"
+    )
+    lines = ["## activation_table\n", header, sep]
+    for r in rows:
+        lines.append(f"| {r} |")
+    return "\n".join(lines) + "\n"
+
+
+class TestBUG06_InvalidOwnership:
+    """BUG-06: Invalid data_ownership values must raise ValueError at parse time."""
+
+    def test_garbage_ownership_raises(self):
+        text = _make_activation_table(
+            "Ind A | source | dependencies: FRED | Above 50 | above | 0.30 | Note"
+        )
+        with pytest.raises(ValueError, match="invalid data_ownership"):
+            parse_activation_table(text)
+
+    def test_empty_ownership_raises(self):
+        text = _make_activation_table(
+            "Ind A | source |  | Above 50 | above | 0.30 | Note"
+        )
+        with pytest.raises(ValueError, match="invalid data_ownership"):
+            parse_activation_table(text)
+
+    def test_typo_ownership_raises(self):
+        text = _make_activation_table(
+            "Ind A | source | mechancial | Above 50 | above | 0.30 | Note"
+        )
+        with pytest.raises(ValueError, match="invalid data_ownership"):
+            parse_activation_table(text)
+
+    def test_valid_ownerships_accepted(self):
+        text = _make_activation_table(
+            "Ind A | source | mechanical | Above 50 | above | 0.30 | Note",
+            "Ind B | source | computed-mechanical | Above 20 | above | 0.25 | Note",
+            "Ind C | source | web-search | Above 10 | above | 0.20 | Note",
+        )
+        entries = parse_activation_table(text)
+        assert len(entries) == 3
+        assert entries[0]["data_ownership"] == "mechanical"
+        assert entries[1]["data_ownership"] == "computed-mechanical"
+        assert entries[2]["data_ownership"] == "web-search"
+
+
+class TestFRAGILITY08_NonNumericWeight:
+    """FRAGILITY-08: Non-numeric weight must raise ValueError at parse time."""
+
+    def test_text_weight_raises(self):
+        text = _make_activation_table(
+            "Ind A | source | mechanical | Above 50 | above | HIGH | Note"
+        )
+        with pytest.raises(ValueError, match="non-numeric weight"):
+            parse_activation_table(text)
+
+    def test_empty_weight_raises(self):
+        text = _make_activation_table(
+            "Ind A | source | mechanical | Above 50 | above |  | Note"
+        )
+        with pytest.raises(ValueError, match="non-numeric weight"):
+            parse_activation_table(text)
+
+    def test_weight_with_calibration_annotation_accepted(self):
+        """Weights with [CALIBRATION] annotation should still parse."""
+        text = _make_activation_table(
+            "Ind A | source | mechanical | Above 50 | above | 0.33 `[CALIBRATION]` | Note"
+        )
+        entries = parse_activation_table(text)
+        assert len(entries) == 1
+        assert entries[0]["weight"] == 0.33
+
+
+class TestFRAGILITY09_ShortRows:
+    """FRAGILITY-09: Short activation table rows must raise ValueError at parse time."""
+
+    def test_short_data_row_raises(self):
+        """A row with < 6 cells after the header should fail loudly."""
+        text = (
+            "## activation_table\n\n"
+            "| Indicator | Metric Source | Data Ownership | Threshold "
+            "| Direction | Weight | Rationale |\n"
+            "|-----------|--------------|----------------|-----------|"
+            "-----------|--------|-----------|\n"
+            "| Good indicator | source | mechanical | Above 50 "
+            "| above | 0.30 | Fine |\n"
+            "| Truncated row | source | mechanical |\n"
+        )
+        with pytest.raises(ValueError, match="Short activation table row"):
+            parse_activation_table(text)
+
+    def test_short_row_before_header_ignored(self):
+        """Short rows before the header (e.g., notes) are silently skipped."""
+        text = (
+            "## activation_table\n\n"
+            "| Note: see calibration notes below |\n"
+            "| Indicator | Metric Source | Data Ownership | Threshold "
+            "| Direction | Weight | Rationale |\n"
+            "|-----------|--------------|----------------|-----------|"
+            "-----------|--------|-----------|\n"
+            "| Good indicator | source | mechanical | Above 50 "
+            "| above | 0.30 | Fine |\n"
+        )
+        entries = parse_activation_table(text)
+        assert len(entries) == 1
+
+
+class TestFRAGILITY04_ContextFlagsOwnership:
+    """FRAGILITY-04: Missing ownership column defaults to qualitative,
+    validated as explicit rule."""
+
+    def test_missing_ownership_column_defaults_qualitative(self):
+        """When Data Ownership column is absent, all flags default to qualitative."""
+        text = (
+            "## context_flags\n\n"
+            "| Flag | Description | Why Context, Not Scored |\n"
+            "|------|-------------|------------------------|\n"
+            "| Policy trends | Fiscal policy direction | Inherently qualitative |\n"
+            "| Narratives | Media sentiment | No mechanical proxy |\n"
+        )
+        entries = parse_context_flags(text)
+        assert len(entries) == 2
+        assert all(e["data_ownership"] == "qualitative" for e in entries)
+
+    def test_present_ownership_column_parsed(self):
+        """When Data Ownership column is present, values are extracted."""
+        text = (
+            "## context_flags\n\n"
+            "| Flag | Source | Data Ownership | What to Look For |\n"
+            "|------|--------|----------------|------------------|\n"
+            "| Retail surge | Brokerage data | web-search | Account openings |\n"
+            "| Narrative | Media | qualitative | New paradigm talk |\n"
+        )
+        entries = parse_context_flags(text)
+        assert entries[0]["data_ownership"] == "web-search"
+        assert entries[1]["data_ownership"] == "qualitative"
+
+    def test_invalid_ownership_in_context_flags_raises(self):
+        text = (
+            "## context_flags\n\n"
+            "| Flag | Source | Data Ownership | What to Look For |\n"
+            "|------|--------|----------------|------------------|\n"
+            "| Bad flag | source | mechanical | Something |\n"
+        )
+        with pytest.raises(ValueError, match="invalid data_ownership"):
+            parse_context_flags(text)
+
+
+class TestAllPackagesParseClean:
+    """Regression: all 8 current theory packages must parse without errors
+    under the new hardened validation."""
+
+    @pytest.fixture()
+    def all_packages(self):
+        dirs = discover_theory_dirs()
+        return [load_theory_package(d) for d in dirs]
+
+    def test_all_activation_tables_parse(self, all_packages):
+        for pkg in all_packages:
+            entries = parse_activation_table(pkg.activation)
+            assert len(entries) >= 4, (
+                f"{pkg.theory_id}: expected at least 4 indicators"
+            )
+
+    def test_all_ownerships_valid(self, all_packages):
+        valid = {"mechanical", "computed-mechanical", "web-search"}
+        for pkg in all_packages:
+            for entry in parse_activation_table(pkg.activation):
+                assert entry["data_ownership"] in valid, (
+                    f"{pkg.theory_id} indicator {entry['indicator_name']!r}: "
+                    f"invalid ownership {entry['data_ownership']!r}"
+                )
+
+    def test_all_weights_numeric(self, all_packages):
+        for pkg in all_packages:
+            for entry in parse_activation_table(pkg.activation):
+                assert isinstance(entry["weight"], float), (
+                    f"{pkg.theory_id} indicator {entry['indicator_name']!r}: "
+                    f"weight is not float"
+                )
+                assert 0 < entry["weight"] <= 1.0, (
+                    f"{pkg.theory_id} indicator {entry['indicator_name']!r}: "
+                    f"weight {entry['weight']} out of range (0, 1.0]"
+                )
+
+    def test_all_context_flags_parse(self, all_packages):
+        for pkg in all_packages:
+            entries = parse_context_flags(pkg.activation)
+            assert len(entries) >= 2, (
+                f"{pkg.theory_id}: expected at least 2 context flags"
+            )

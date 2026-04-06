@@ -288,9 +288,14 @@ Each task below is intended to be executed in a separate Claude Code session aft
 - synthetic failure cases must raise predictable errors
 
 **Update status:**
-- [ ] Task 3 not started
-- [ ] Task 3 in progress
-- [ ] Task 3 complete
+- [x] Task 3 complete
+
+#### Completion note — 2026-04-06
+- Summary: Hardened activation table parser with 3 parse-time validations + 1 documented default. BUG-06: added `_VALID_ACTIVATION_OWNERSHIP` canonical set, validated after ownership extraction. FRAGILITY-08: non-numeric weight on data row raises ValueError (was silent skip). FRAGILITY-09: short rows (< 6 cells) after header raise ValueError (was silent drop). FRAGILITY-04: missing ownership column in context_flags allowed only when all flags are qualitative; explicit validation constraint added. Updated existing test for qualitative-in-activation-table error message.
+- Files changed: `backend/engine/theory_loader.py`, `backend/tests/test_theory_loader.py`, `backend/tests/test_activation_web_integration.py` (1 existing test message updated)
+- Validation run: `python -m pytest backend/tests/ -x -q` (750 passed, +16 new tests), `python -m scripts.v8_equivalence_check` (ALL PASS, 3 runs)
+- Result: No score changes (these are validation additions, not behavioral changes). All 8 current theory packages parse clean under new validation. Synthetic malformed inputs raise predictable errors in 4 test classes.
+- Residual risk: (1) data_ownership first-token fallback still exists for cosmetic variation, but its output is now validated against the canonical set — cannot silently produce garbage. (2) Short rows before the activation table header are still silently skipped (intentional: may be formatting notes). (3) valuation_mean_reversion 0.706 vs v1 0.882 gap is CLOSED — v1 was inflated by accidental threshold extraction; v8 is correct.
 
 ---
 
@@ -546,7 +551,7 @@ The remediation is done only when all of the following are true:
 - [x] Task 0 complete
 - [x] Task 1 complete
 - [x] Task 2 complete
-- [ ] Task 3 complete
+- [x] Task 3 complete
 - [ ] Task 4 complete
 - [ ] Task 5 complete
 - [ ] Task 6 complete
