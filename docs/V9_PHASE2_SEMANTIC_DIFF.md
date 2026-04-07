@@ -10,10 +10,11 @@
 | Metric | Value |
 |--------|-------|
 | Total indicators | 68 |
-| Matched indicators | 31 |
+| Matched indicators | 27 genuine + 4 coincidental |
 | Indicator-level mismatches | 3 (all justified) |
+| Coincidental parity | 4 (right answer, wrong reason) |
 | Not evaluable (time-series) | 30 |
-| Justified improvements | 8 |
+| Justified improvements | 6 |
 | Items needing human review | 0 |
 | Phase/tier matches | 6/11 |
 
@@ -25,8 +26,9 @@ Every difference between compiled and legacy is classified as one of:
 
 | Classification | Meaning |
 |----------------|---------|
-| `expected_parity` | Both agree, as expected |
-| `justified_improvement` | Compiled is correct where legacy was wrong |
+| `expected_parity` | Both agree, for the same reason |
+| `coincidental_parity` | Same boolean, but legacy is right for wrong reason |
+| `justified_improvement` | Different boolean; compiled is correct, legacy is wrong |
 | `compiler_issue` | The compiler made an error |
 | `field_metadata_issue` | Field registration or unit metadata problem |
 | `data_infra_limitation` | Briefing packet lacks required data |

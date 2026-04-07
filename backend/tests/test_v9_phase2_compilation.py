@@ -333,11 +333,12 @@ class TestSemanticDiff:
         }
         assert expected_keys.issubset(set(KNOWN_CLASSIFICATIONS.keys()))
 
-    def test_known_classifications_are_justified_or_data_limitation(self):
-        """All known mismatch classifications should be justified_improvement or data_infra."""
+    def test_known_classifications_are_expected_types(self):
+        """All known classifications should be justified, data_infra, or coincidental."""
         valid_types = {
             MismatchClass.JUSTIFIED_IMPROVEMENT,
             MismatchClass.DATA_INFRA_LIMITATION,
+            MismatchClass.COINCIDENTAL_PARITY,
         }
         for key, (cls, _expl, _ref) in KNOWN_CLASSIFICATIONS.items():
             assert cls in valid_types, f"{key}: unexpected classification {cls}"

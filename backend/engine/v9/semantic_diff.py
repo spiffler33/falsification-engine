@@ -41,6 +41,7 @@ from backend.engine.v9.parallel_compare import (
 class MismatchClass(str, Enum):
     """Classification of a compiled-vs-legacy difference."""
     EXPECTED_PARITY = "expected_parity"
+    COINCIDENTAL_PARITY = "coincidental_parity"  # same boolean, but legacy is right for wrong reason
     JUSTIFIED_IMPROVEMENT = "justified_improvement"
     COMPILER_ISSUE = "compiler_issue"
     FIELD_METADATA_ISSUE = "field_metadata_issue"
@@ -107,6 +108,13 @@ class FullSemanticDiff:
     @property
     def total_mismatches(self) -> int:
         return sum(r.mismatch_count for r in self.theories.values())
+
+    @property
+    def total_coincidental(self) -> int:
+        return sum(
+            sum(1 for e in r.entries if e.classification == MismatchClass.COINCIDENTAL_PARITY)
+            for r in self.theories.values()
+        )
 
     @property
     def total_justified(self) -> int:
@@ -225,9 +233,39 @@ KNOWN_CLASSIFICATIONS: dict[tuple[str, str], tuple[MismatchClass, str, str]] = {
 
     # Resolving VIX — same fix as building
     ("structural_fragility", "res_vix_elevated"): (
-        MismatchClass.JUSTIFIED_IMPROVEMENT,
-        "Phase 2 correctly maps to ^VIX; spike had field resolution gap.",
+        MismatchClass.COINCIDENTAL_PARITY,
+        "Both False, but legacy uses BUILDING threshold (Below 14) for RESOLVING indicator. "
+        "Compiled correctly uses resolving threshold (Above 30). "
+        "Coincidence: 23.87 fails both checks.",
         "V9_SPIKE_FULL_COMPILATION_RESULTS.md Finding 1",
+    ),
+
+    # structural_fragility resolving HY spread — wrong-phase threshold
+    ("structural_fragility", "res_hy_spread_wide"): (
+        MismatchClass.COINCIDENTAL_PARITY,
+        "Both False, but legacy uses BUILDING threshold (Below 300bp) for RESOLVING indicator. "
+        "Compiled correctly uses resolving threshold (Above 600bp). "
+        "Coincidence: 317bp fails both checks.",
+        "",
+    ),
+
+    # debt_cycle_long: fiscal deficit resolves to wrong field
+    ("debt_cycle_long", "fiscal_deficit_primary_driver"): (
+        MismatchClass.COINCIDENTAL_PARITY,
+        "Both True, but legacy resolves to interest_exceeds_defense (287.0) instead of "
+        "deficit_pct_gdp (11.74). Legacy checks 287 > extracted '5' = True. "
+        "Compiled checks deficit_pct_gdp(11.74) > 5.0 AND unemployment(4.3) < 7.0 = True. "
+        "Right answer for wrong field.",
+        "",
+    ),
+
+    # debt_cycle_short: fed funds below GDP — legacy can't evaluate, defaults to False
+    ("debt_cycle_short", "exp_fed_funds_below_gdp"): (
+        MismatchClass.COINCIDENTAL_PARITY,
+        "Both False, but legacy cannot mechanically evaluate field comparison "
+        "(value=31442 = GDP level, not growth rate). Legacy defaults to False. "
+        "Compiled correctly computes: fed_funds(3.64) lt nominal_gdp_growth(3.31) = False.",
+        "V9_HAIKU_COMPILER_SPIKE_RESULTS.md Section 5",
     ),
 }
 
@@ -297,7 +335,7 @@ def _classify_indicator(
     # Auto-classify based on status
     if ic.status == "MATCH":
         entry.classification = MismatchClass.EXPECTED_PARITY
-        entry.explanation = "Both legacy and compiled agree"
+        entry.explanation = "Both agree on trigger state"
     elif ic.status == "NOT_EVALUABLE":
         # Check if it's time-series related
         if "series" in (ic.compiled_detail or "").lower() or \
@@ -437,6 +475,24 @@ def render_diff_report(diff: FullSemanticDiff) -> str:
         lines.append("## Items Requiring Human Review")
         lines.append("")
         for item in review_items:
+            lines.append(f"- **{item.theory_id}/{item.indicator_id}**: "
+                          f"{item.explanation}")
+        lines.append("")
+
+    # Summary: coincidental parity (right answer, wrong reason)
+    coincidental = []
+    for report in diff.theories.values():
+        for entry in report.entries:
+            if entry.classification == MismatchClass.COINCIDENTAL_PARITY:
+                coincidental.append(entry)
+
+    if coincidental:
+        lines.append("## Coincidental Parity (Right Answer, Wrong Reason)")
+        lines.append("")
+        lines.append("These indicators show the same boolean result but the legacy path")
+        lines.append("arrives at it by accident (wrong field, wrong threshold, or default).")
+        lines.append("")
+        for item in coincidental:
             lines.append(f"- **{item.theory_id}/{item.indicator_id}**: "
                           f"{item.explanation}")
         lines.append("")

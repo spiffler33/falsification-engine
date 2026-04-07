@@ -109,8 +109,11 @@ The 3 mismatches are:
 | Metric | Count |
 |--------|-------|
 | Total indicators | 68 |
+| Matched indicators | 31 |
 | Indicator-level mismatches | 3 (all justified) |
-| Justified improvements | 8 |
+| Coincidental parity (right answer, wrong reason) | 4 |
+| Not evaluable (time-series) | 30 |
+| Justified improvements | 6 |
 | Items needing human review | 0 |
 | Phase/tier matches | 6/11 |
 
@@ -118,16 +121,26 @@ See `docs/V9_PHASE2_SEMANTIC_DIFF.md` for the full per-indicator diff.
 
 ---
 
-## 7. Justified Improvements Over Legacy (8 total)
+## 7. Compiled Path Improvements Over Legacy
 
-1. **valuation_mean_reversion/profit_margins**: OR condition (margin > 12% OR profits/GDP > 10%) now evaluable
-2. **debt_cycle_short/initial_claims**: Unit normalization (COUNT vs THOUSANDS) handled correctly
-3. **debt_cycle_short/fed_funds_below_gdp**: Field comparison (not scalar extraction from GDP level)
-4. **debt_cycle_short/fed_funds_above_gdp**: Same field comparison fix for contraction phase
-5. **debt_cycle_long/wealth_inequality**: Correct threshold 70% (not extracted "10")
-6. **structural_fragility/VIX building**: Correct ^VIX field (not vix_vs_realized)
-7. **structural_fragility/VIX resolving**: Same VIX fix for resolving phase
-8. **capital_flows/eem_spy_3y_relative**: Correct sign (lt -30, not lt 30)
+### Justified Improvements (trigger-state disagrees, compiled is correct) — 3
+
+1. **valuation_mean_reversion/profit_margins**: comp=True, leg=False. OR condition (margin > 12% OR profits/GDP > 10%) now evaluable
+2. **debt_cycle_long/wealth_inequality**: comp=False, leg=True. Correct threshold 70% (not extracted "10")
+3. **capital_flows/eem_spy_3y_relative**: comp=False, leg=True. Correct sign (lt -30, not lt 30)
+
+### Coincidental Parity (trigger-state agrees, but legacy is right for wrong reason) — 4
+
+4. **debt_cycle_short/fed_funds_below_gdp**: Both False. Legacy can't evaluate (defaults to False). Compiled correctly computes field comparison: 3.64% vs 3.31% nominal GDP growth.
+5. **debt_cycle_long/fiscal_deficit_primary_driver**: Both True. Legacy resolves to wrong field (interest_exceeds_defense=287 > extracted "5"). Compiled checks deficit_pct_gdp=11.74 > 5.0.
+6. **structural_fragility/res_vix_elevated**: Both False. Legacy uses building threshold (Below 14) for resolving indicator. Compiled uses correct resolving threshold (Above 30).
+7. **structural_fragility/res_hy_spread_wide**: Both False. Legacy uses building threshold (Below 300bp) for resolving indicator. Compiled uses correct resolving threshold (Above 600bp).
+
+### Additional Semantic Improvements (no trigger disagreement, but semantically better) — 3
+
+8. **debt_cycle_short/initial_claims**: Both True. Compiled uses unit-normalized comparison (250K THOUSANDS → 250000 COUNT). Legacy now also correct after post-v8 K-suffix fix.
+9. **structural_fragility/bld_vix_low**: Compiled uses correct ^VIX field. Spike had field resolution gap (vix_vs_realized).
+10. **debt_cycle_short/con_fed_funds_above_gdp**: NOT_EVALUABLE in compiled (field comparison + persistence needs time-series). Legacy trivially triggers via GDP level extraction.
 
 ---
 
