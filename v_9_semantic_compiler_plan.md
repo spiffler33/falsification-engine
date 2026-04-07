@@ -722,14 +722,38 @@ Sub-phases:
 
 Results: All 8 theories APPROVED on compiled path. Legacy path dormant. 1204 tests. See docs/V9_PHASE4_APPROVAL_RESULTS.md, V9_PHASE4B_REMAINING_APPROVALS.md.
 
-### Phase 5 — SeriesStore (NEXT)
-Deliverables:
-- implement SeriesStore with time-series data loading
-- make 30+ temporal indicators evaluable (currently NOT_EVALUABLE)
-- re-run scoring with full temporal coverage
-- update harness with temporal indicator results
+### Phase 5 — SeriesStore: COMPLETE (2026-04-07)
 
-### Phase 6 — legacy path removal
+**5A: SeriesStore scaffold**
+- InMemorySeriesStore: concrete SeriesStore protocol impl (backend/engine/v9/series_store.py)
+- 33 temporal indicators inventoried: 16 compound, 7 persistence, 3 trend, 3 historical_extreme, 2 named_pattern, 2 scalar
+- 26 unique field IDs need series data; all 5 temporal primitive types already in series_engine.py
+- monetary_architecture validated end-to-end with synthetic fixtures
+- 42 new tests. Design doc: docs/V9_SERIESSTORE_DESIGN.md
+
+**5B: Live data wiring (FRED + Yahoo Finance)**
+- Field-to-source mapping: 26 fields -> FRED series IDs, Yahoo tickers, computed derivations (backend/engine/field_source_mapping.py)
+- FRED fetcher: historical series with per-observation transforms + CSV caching (backend/engine/fred_series_fetcher.py)
+- Yahoo fetcher: daily close via curl + ratio/rolling return computations + CSV caching (backend/engine/yahoo_series_fetcher.py)
+- Loader script: scripts/load_series_data.py (--cached, --report, --max-age flags)
+- Computed series: curve_2s10s, net_liquidity_30d_change, foreign_treasury_holdings_pct, sloos passthrough
+- 22/26 fields loaded (85%). 4 web-sourced fields skipped (no historical API: finra_margin_debt, insider_sell_buy_ratio, rmb_swift_share, weighted_avg_interest_rate)
+- 20 temporal indicators newly evaluable across 7 theories
+- 8-theory live snapshot scores with temporal evidence included:
+  - debt_cycle_short: 0.8333 -> 0.7647 (Active, 7 newly evaluable)
+  - fiscal_dominance_liquidity: 1.0000 -> 0.6500 (Active, 5 newly evaluable)
+  - debt_cycle_long: 0.7143 -> 0.5000 (Active -> Adjacent, rates_near_elb FALSE)
+  - capital_flows: 0.4255 -> 0.3125 (Adjacent, 4 newly evaluable)
+  - fiscal_dominance_arithmetic: 1.0000 -> 1.0000 (Active, unchanged)
+  - valuation_mean_reversion: 0.7000 -> 0.7000 (Active, unchanged)
+  - monetary_architecture: 0.0000 -> 0.0000 (Inactive, 2 temporal now FALSE)
+  - structural_fragility: 0.0000 -> 0.0000 (Inactive, 1 temporal now FALSE)
+- Known limitations: (1) annual-data persistence frequency mismatch (cb_gold_purchases), (2) field_comparison inner rules not extractable for persistence, (3) briefing field gaps (shiller_cape, buffett_indicator, etc.)
+- 27 new tests, 1273 total. Regression gate PASS.
+
+Results: 22/26 series fields live. 20 indicators unblocked. See docs/V9_SERIESSTORE_DESIGN.md.
+
+### Phase 6 — legacy path removal (NEXT)
 Deliverables:
 - remove prose extraction from runtime path
 - simplify dual_path.py to compiled-only
