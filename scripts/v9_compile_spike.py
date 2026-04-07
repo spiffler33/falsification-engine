@@ -5,7 +5,8 @@ frozen briefing, compares to legacy results, and reports findings.
 
 Usage:
     python -m scripts.v9_compile_spike
-    python -m scripts.v9_compile_spike --repeatability  # run 3x for stability test
+    python -m scripts.v9_compile_spike --all             # compile all 8 theories
+    python -m scripts.v9_compile_spike --repeatability   # run 3x for stability test
 """
 from __future__ import annotations
 
@@ -39,9 +40,11 @@ def load_briefing() -> BriefingPacket:
         return BriefingPacket(**json.load(f))
 
 
-def get_pilot_packages():
-    """Load and filter to pilot theory packages."""
+def get_packages(all_theories=False):
+    """Load theory packages. If all_theories, return all 8; else only pilots."""
     all_pkgs = load_all_theory_packages()
+    if all_theories:
+        return all_pkgs
     return [p for p in all_pkgs if p.theory_id in PILOT_THEORIES]
 
 
@@ -111,17 +114,19 @@ def print_section(title: str):
 
 def main():
     repeatability = "--repeatability" in sys.argv
+    all_theories = "--all" in sys.argv
     n_runs = 3 if repeatability else 1
 
     print_section("v9 HAIKU COMPILER SPIKE")
-    print(f"Pilot theories: {PILOT_THEORIES}")
+    mode = "ALL 8 theories" if all_theories else f"Pilots: {PILOT_THEORIES}"
+    print(f"Mode: {mode}")
     print(f"Briefing: {BRIEFING_PATH}")
     print(f"Repeatability runs: {n_runs}")
 
     # Load briefing and packages
     briefing = load_briefing()
-    packages = get_pilot_packages()
-    print(f"Loaded {len(packages)} pilot packages")
+    packages = get_packages(all_theories=all_theories)
+    print(f"Loaded {len(packages)} packages")
 
     # Run legacy scoring for baseline
     print_section("LEGACY BASELINE")
