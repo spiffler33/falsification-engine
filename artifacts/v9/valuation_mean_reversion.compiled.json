@@ -1,19 +1,21 @@
 {
   "schema_version": 1,
   "artifact_type": "compiled_activation",
-  "artifact_status": "draft",
+  "artifact_status": "approved",
+  "approval_timestamp": "2026-04-07T07:46:18.630012+00:00",
+  "approval_justification": "Haiku-compiled from ACTIVATION.md. Weights corrected from compile_all.py transcription errors. See V9_PHASE3_6_WEIGHT_CORRECTION_RESULTS.md",
   "source": {
     "theory_id": "valuation_mean_reversion",
     "package_version": 2,
     "source_hash": "",
-    "activation_file": "theories/THEORY_MODULE_VALUATION_MEAN_REVERSION_v2/ACTIVATION.md"
+    "activation_file": "/Users/coddiwomplers/Desktop/Python/FinAgents/falsification-engine/theories/THEORY_MODULE_valuation_mean_reversion_v2/ACTIVATION.md"
   },
   "compiler": {
-    "compiler_engine": "haiku_phase2",
+    "compiler_engine": "haiku_phase3_6",
     "model_id": "claude-haiku-4-5-20251001",
     "schema_version": 1,
-    "prompt_version": "phase2_v1",
-    "compiled_at": "2026-04-07T03:14:30.488148+00:00",
+    "prompt_version": "phase3_5_v1",
+    "compiled_at": "2026-04-07T07:46:18.629995+00:00",
     "compilation_duration_seconds": 0.0
   },
   "phase_model": "single_phase",
@@ -23,15 +25,15 @@
       "phase_label": "Active",
       "indicators": [
         {
-          "indicator_id": "erp_compressed",
+          "indicator_id": "equity_risk_premium_compressed",
           "display_name": "Equity risk premium compressed",
-          "source_text": "Equity risk premium below 1.0%",
+          "source_text": "Below 1.0%",
           "source": {
             "file": "",
             "section": "",
             "line_range": ""
           },
-          "normalized_paraphrase": "Equity risk premium below 1.0%",
+          "normalized_paraphrase": "Below 1.0%",
           "rule": {
             "rule_type": "scalar_comparison",
             "field": {
@@ -49,9 +51,9 @@
           },
           "primary_field": "equity_risk_premium",
           "field_dependencies": [],
-          "field_unit": "percent",
-          "field_semantic_type": "spread",
-          "weight": 0.2,
+          "field_unit": "unknown",
+          "field_semantic_type": "level",
+          "weight": 0.25,
           "exclusion_policy": "score_if_evaluable",
           "compilation_status": "clean",
           "ambiguities": [],
@@ -59,15 +61,15 @@
           "requires_time_series": false
         },
         {
-          "indicator_id": "cape_elevated",
+          "indicator_id": "shiller_cape_elevated",
           "display_name": "Shiller CAPE elevated",
-          "source_text": "CAPE above 30",
+          "source_text": "Above 30",
           "source": {
             "file": "",
             "section": "",
             "line_range": ""
           },
-          "normalized_paraphrase": "CAPE above 30",
+          "normalized_paraphrase": "Above 30",
           "rule": {
             "rule_type": "scalar_comparison",
             "field": {
@@ -85,8 +87,8 @@
           },
           "primary_field": "shiller_cape",
           "field_dependencies": [],
-          "field_unit": "ratio",
-          "field_semantic_type": "ratio",
+          "field_unit": "unknown",
+          "field_semantic_type": "level",
           "weight": 0.2,
           "exclusion_policy": "score_if_evaluable",
           "compilation_status": "clean",
@@ -95,15 +97,15 @@
           "requires_time_series": false
         },
         {
-          "indicator_id": "buffett_extreme",
+          "indicator_id": "buffett_indicator_extreme",
           "display_name": "Buffett Indicator extreme",
-          "source_text": "Total market cap / GDP above 1.5x",
+          "source_text": "Above 1.5x",
           "source": {
             "file": "",
             "section": "",
             "line_range": ""
           },
-          "normalized_paraphrase": "Total market cap / GDP above 1.5x",
+          "normalized_paraphrase": "Above 1.5x",
           "rule": {
             "rule_type": "scalar_comparison",
             "field": {
@@ -121,31 +123,25 @@
           },
           "primary_field": "buffett_indicator",
           "field_dependencies": [],
-          "field_unit": "ratio",
-          "field_semantic_type": "ratio",
+          "field_unit": "unknown",
+          "field_semantic_type": "level",
           "weight": 0.15,
           "exclusion_policy": "score_if_evaluable",
-          "compilation_status": "warning",
-          "ambiguities": [
-            {
-              "level": "low",
-              "description": "Web-sourced field, may not be in briefing",
-              "suggestion": ""
-            }
-          ],
+          "compilation_status": "clean",
+          "ambiguities": [],
           "compiler_warnings": [],
           "requires_time_series": false
         },
         {
-          "indicator_id": "cash_yield_exceeds_equity",
-          "display_name": "Cash yield exceeds equity yield",
-          "source_text": "Cash yield exceeds equity yield (spread > 0)",
+          "indicator_id": "cash_exceeds_equity_yield",
+          "display_name": "Short-term cash yield exceeds equity earnings yield",
+          "source_text": "Above 0 (positive = cash yield exceeds equity earnings yield)",
           "source": {
             "file": "",
             "section": "",
             "line_range": ""
           },
-          "normalized_paraphrase": "Cash yield exceeds equity yield (spread > 0)",
+          "normalized_paraphrase": "Above 0 (positive = cash yield exceeds equity earnings yield)",
           "rule": {
             "rule_type": "scalar_comparison",
             "field": {
@@ -163,9 +159,9 @@
           },
           "primary_field": "cash_exceeds_equity_yield",
           "field_dependencies": [],
-          "field_unit": "percent",
-          "field_semantic_type": "spread",
-          "weight": 0.1,
+          "field_unit": "unknown",
+          "field_semantic_type": "level",
+          "weight": 0.15,
           "exclusion_policy": "score_if_evaluable",
           "compilation_status": "clean",
           "ambiguities": [],
@@ -174,14 +170,14 @@
         },
         {
           "indicator_id": "profit_margins_elevated",
-          "display_name": "Corporate profit margins elevated",
-          "source_text": "Net margins above 12% OR corporate profits/GDP above 10%",
+          "display_name": "Corporate profit margins at cycle highs",
+          "source_text": "Net margins above 12% OR corporate profits / GDP above 10%",
           "source": {
             "file": "",
             "section": "",
             "line_range": ""
           },
-          "normalized_paraphrase": "Net margins > 12% OR profits/GDP > 10%",
+          "normalized_paraphrase": "Net margins above 12% OR corporate profits / GDP above 10%",
           "rule": {
             "rule_type": "compound",
             "operator": "any",
@@ -192,7 +188,7 @@
                   "operand_type": "field",
                   "field_id": "sp500_net_margin",
                   "unit": "percent",
-                  "semantic_type": "rate"
+                  "semantic_type": "ratio"
                 },
                 "comparator": "gt",
                 "threshold": {
@@ -219,79 +215,89 @@
             ]
           },
           "primary_field": "sp500_net_margin",
-          "field_dependencies": [
-            "corporate_profits_gdp_ratio"
-          ],
-          "field_unit": "percent",
-          "field_semantic_type": "rate",
+          "field_dependencies": [],
+          "field_unit": "unknown",
+          "field_semantic_type": "level",
           "weight": 0.1,
           "exclusion_policy": "score_if_evaluable",
           "compilation_status": "warning",
-          "ambiguities": [
-            {
-              "level": "low",
-              "description": "OR condition: legacy only checks first sub-condition",
-              "suggestion": ""
-            }
-          ],
+          "ambiguities": [],
           "compiler_warnings": [],
           "requires_time_series": false
         },
         {
-          "indicator_id": "breadth_narrow",
+          "indicator_id": "market_breadth_narrow",
           "display_name": "Market breadth narrow",
-          "source_text": "QQQ/IWM ratio at 2-year high, broad market divergence",
+          "source_text": "QQQ/IWM ratio above 2-year high AND RSP underperforming SPY by 5%+ over 12 months",
           "source": {
             "file": "",
             "section": "",
             "line_range": ""
           },
-          "normalized_paraphrase": "QQQ/IWM ratio at 2-year high, broad market divergence",
+          "normalized_paraphrase": "QQQ/IWM ratio above 2-year high AND RSP underperforming SPY by 5%+ over 12 months",
           "rule": {
-            "rule_type": "historical_extreme",
-            "field": {
-              "operand_type": "field",
-              "field_id": "qqq_iwm_ratio",
-              "unit": "unknown",
-              "semantic_type": "level"
-            },
-            "extreme": "high",
-            "lookback": {
-              "value": 24,
-              "unit": "months"
-            },
-            "comparator": "gt",
-            "margin": null
+            "rule_type": "compound",
+            "operator": "all",
+            "clauses": [
+              {
+                "rule_type": "historical_extreme",
+                "field": {
+                  "operand_type": "field",
+                  "field_id": "qqq_iwm_ratio",
+                  "unit": "unknown",
+                  "semantic_type": "level"
+                },
+                "extreme": "high",
+                "lookback": {
+                  "value": 2,
+                  "unit": "years"
+                },
+                "comparator": "gt",
+                "margin": null
+              },
+              {
+                "rule_type": "delta_change",
+                "field": {
+                  "operand_type": "field",
+                  "field_id": "eem_spy_3y_relative",
+                  "unit": "unknown",
+                  "semantic_type": "level"
+                },
+                "direction": "falling",
+                "magnitude": {
+                  "operand_type": "literal",
+                  "value": 5.0,
+                  "unit": "percent"
+                },
+                "mode": "percent",
+                "window": {
+                  "value": 12,
+                  "unit": "months"
+                }
+              }
+            ]
           },
           "primary_field": "qqq_iwm_ratio",
           "field_dependencies": [],
-          "field_unit": "ratio",
-          "field_semantic_type": "ratio",
+          "field_unit": "unknown",
+          "field_semantic_type": "level",
           "weight": 0.1,
           "exclusion_policy": "score_if_evaluable",
           "compilation_status": "warning",
-          "ambiguities": [
-            {
-              "level": "medium",
-              "description": "RSP/SPY relative component has no data source",
-              "suggestion": ""
-            }
-          ],
-          "compiler_warnings": [
-            "RSP/SPY relative performance field not available"
-          ],
+          "ambiguities": [],
+          "compiler_warnings": [],
           "requires_time_series": true
         },
         {
-          "indicator_id": "insider_selling",
+          "indicator_id": "insider_selling_elevated",
           "display_name": "Insider selling elevated",
-          "source_text": "Insider sell/buy ratio elevated for 3+ months",
+          "source_text": "Insider sell/buy ratio above 5:1 sustained for 3+ months",
           "source": {
             "file": "",
             "section": "",
             "line_range": ""
           },
-          "normalized_paraphrase": "Insider sell/buy ratio elevated for 3+ months",
+          "normalized_paraphrase": "Insider sell/buy ratio above 5:1 sustained for 3+ months",
           "rule": {
             "rule_type": "persistence",
             "condition": {
@@ -309,7 +315,7 @@
                 "unit": "ratio"
               }
             },
-            "mode": "n_of_last_k",
+            "mode": "consecutive",
             "n": 3,
             "k": 3,
             "window": {
@@ -319,18 +325,12 @@
           },
           "primary_field": "insider_sell_buy_ratio",
           "field_dependencies": [],
-          "field_unit": "ratio",
-          "field_semantic_type": "ratio",
-          "weight": 0.15,
+          "field_unit": "unknown",
+          "field_semantic_type": "level",
+          "weight": 0.05,
           "exclusion_policy": "score_if_evaluable",
-          "compilation_status": "warning",
-          "ambiguities": [
-            {
-              "level": "medium",
-              "description": "Monthly granularity assumption for persistence window",
-              "suggestion": ""
-            }
-          ],
+          "compilation_status": "clean",
+          "ambiguities": [],
           "compiler_warnings": [],
           "requires_time_series": true
         }
@@ -348,8 +348,8 @@
     "warnings": []
   },
   "total_indicators": 7,
-  "clean_count": 3,
-  "warning_count": 4,
+  "clean_count": 5,
+  "warning_count": 2,
   "blocked_count": 0,
   "artifact_notes": []
 }

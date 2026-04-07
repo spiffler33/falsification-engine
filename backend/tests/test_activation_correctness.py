@@ -155,207 +155,294 @@ def _assert_indicator(actual: dict, expected: dict, indicator_name: str, theory_
 
 
 # -----------------------------------------------------------------------
-# 1. valuation_mean_reversion -- Score: 0.705882 (Active)
+# 1. valuation_mean_reversion -- Score: 0.833333 (Active)
+#    v9 Phase 3: COMPILED PATH. OR condition for profit_margins now evaluable.
+#    3 indicators excluded (time-series / missing data), denominator shrinks.
+#    Score: 0.50 / 0.60 = 0.833333.
 # -----------------------------------------------------------------------
 
 VALUATION_MR_INDICATORS = {
     "Equity risk premium compressed": {
         "triggered": True, "value": 0.19, "metric_field": "equity_risk_premium",
         "weight": 0.25, "direction": "below",
+        # weight_correction: ACTIVATION.md is source of truth (0.25),
+        # compile_all.py had transcription error (0.20). See V9_PHASE3_5
     },
     "Shiller CAPE elevated": {
         "triggered": True, "value": 37.94, "metric_field": "shiller_cape",
         "weight": 0.20, "direction": "above",
     },
+    "Buffett Indicator extreme": {
+        # Was skipped by legacy; compiled includes in results as excluded
+        "triggered": False, "value": None, "metric_field": "buffett_indicator",
+        "weight": 0.15, "reason": "data_unavailable",
+    },
     "Short-term cash yield exceeds equity earnings yield": {
         "triggered": False, "value": -0.86, "metric_field": "cash_exceeds_equity_yield",
         "weight": 0.15, "direction": "above",
+        # weight_correction: ACTIVATION.md is source of truth (0.15),
+        # compile_all.py had transcription error (0.10). See V9_PHASE3_5
+        # display_name: Haiku uses full ACTIVATION.md name
     },
     "Corporate profit margins at cycle highs": {
-        "triggered": False, "value": 8.8621, "metric_field": "sp500_net_margin",
+        # justified_improvement: OR condition (margin > 12% OR profits/GDP > 10%)
+        # now evaluable via compiled path, see V9_PHASE2_SEMANTIC_DIFF.md
+        # display_name: Haiku uses full ACTIVATION.md name
+        "triggered": True, "value": None, "metric_field": "sp500_net_margin",
         "weight": 0.10, "direction": "above",
     },
     "Market breadth narrow": {
-        "triggered": True, "value": 2.3279, "metric_field": "qqq_iwm_ratio",
-        "weight": 0.10, "direction": "above",
+        # Excluded: historical_extreme requires series store
+        "triggered": False, "value": None, "metric_field": "qqq_iwm_ratio",
+        "weight": 0.10, "reason": "data_unavailable",
     },
     "Insider selling elevated": {
-        "triggered": True, "value": 19.0, "metric_field": "insider_sell_buy_ratio",
-        "weight": 0.05, "direction": "above",
+        # Excluded: persistence requires series store
+        "triggered": False, "value": None, "metric_field": None,
+        "weight": 0.05, "reason": "data_unavailable",
+        # weight_correction: ACTIVATION.md is source of truth (0.05),
+        # compile_all.py had transcription error (0.15). See V9_PHASE3_5
     },
 }
 
 VALUATION_MR_COVERAGE = {
-    "total_in_results": 6, "skipped_web_qualitative": 1,
-    "evaluated": 6, "excluded": 0, "triggered": 4,
-    "evaluated_weight": 0.8500, "triggered_weight": 0.6000, "excluded_weight": 0.0,
+    # 7 indicators in results, 3 skipped (Buffett + breadth + insider)
+    # 4 evaluated, 3 excluded, 3 triggered
+    # weight_correction: evaluated/triggered/excluded weights updated for
+    # ACTIVATION.md weights. See V9_PHASE3_6
+    "total_in_results": 7, "skipped_web_qualitative": 3,
+    "evaluated": 4, "excluded": 3, "triggered": 3,
+    "evaluated_weight": 0.7000, "triggered_weight": 0.5500, "excluded_weight": 0.3000,
 }
 
 
 # -----------------------------------------------------------------------
-# 2. debt_cycle_short -- Contraction: 0.300 (Adjacent), Expansion: 1.000 (Active)
-#    CEILING HIT: Expansion scores 1.000 with shrunken denominator.
-#    2 indicators excluded (threshold_not_evaluable), all 6 remaining trigger.
+# 2. debt_cycle_short -- Contraction: 0.000 (Inactive), Expansion: 0.833333 (Active)
+#    v9 Phase 4: COMPILED PATH.
+#    Contraction: all indicators temporal except SLOOS (not triggered). Score 0.000.
+#    Legacy Contraction was 0.300 from BUG-03 (Sahm) + field wiring (Fed funds).
+#    Expansion: 5 evaluable, 4 triggered, 3 excluded (temporal).
+#    Fed funds below GDP now evaluable as field_comparison (justified_improvement).
+#    Effective: Active (Expansion) -- was Adjacent (Contraction) in legacy.
 # -----------------------------------------------------------------------
 
 DEBT_SHORT_INDICATORS = {
-    # -- Contraction phase --
+    # -- Contraction phase (6 of 7 temporal, only SLOOS evaluable) --
     "ISM proxy below contraction": {
-        "triggered": False, "value": 52.7, "metric_field": "growth.ism_proxy",
-        "weight": 0.15, "direction": "below",
+        # temporal_exclusion: compound ALL has trend_state sub-clause.
+        "triggered": False, "value": None, "metric_field": "growth.ism_proxy",
+        "weight": 0.15, "reason": "data_unavailable",
     },
     "Unemployment rising (Sahm Rule)": {
-        # BUG-03: extracts "3" from "3-month moving average"; 4.3 > 3 triggers.
-        "triggered": True, "value": 4.3, "metric_field": "growth.unemployment",
-        "weight": 0.20, "direction": "rising",
+        # temporal_exclusion: named_pattern requires SeriesStore.
+        # Legacy BUG-03 fixed: no longer extracts "3" from "3-month".
+        "triggered": False, "value": None, "metric_field": None,
+        "weight": 0.20, "reason": "data_unavailable",
     },
     "Credit spreads widening sharply": {
-        "triggered": False, "value": 317.0, "metric_field": "credit.hy_spread",
-        "weight": 0.15, "direction": "above",
+        # temporal_exclusion: compound ANY, nested ALL has trend, scalar False.
+        "triggered": False, "value": None, "metric_field": "credit.hy_spread",
+        "weight": 0.15, "reason": "data_unavailable",
     },
     "Yield curve re-steepening from deep inversion": {
-        "triggered": False, "value": 0.52, "metric_field": "rates.curve_2s10s",
-        "weight": 0.15, "direction": "rising",
+        # temporal_exclusion: named_pattern requires SeriesStore.
+        "triggered": False, "value": None, "metric_field": None,
+        "weight": 0.15, "reason": "data_unavailable",
     },
     "Initial claims rising": {
-        # Task 3 K-suffix fix: 202000 < 280000, correctly NOT triggered.
-        "triggered": False, "value": 202000.0, "metric_field": "growth.initial_claims",
-        "weight": 0.10, "direction": "above",
+        # temporal_exclusion: compound ALL has trend_state sub-clause.
+        "triggered": False, "value": None, "metric_field": "growth.initial_claims",
+        "weight": 0.10, "reason": "data_unavailable",
     },
     "Fed funds above nominal GDP growth": {
-        # Known field wiring issue: value is GDP level ($B), not rate comparison.
-        # 31442.483 > 1 triggers trivially. Current frozen behavior.
-        "triggered": True, "value": 31442.483, "metric_field": "growth.gdp_latest",
-        "weight": 0.10, "direction": "above",
+        # temporal_exclusion: persistence wrapping field_comparison.
+        # Legacy wiring bug fixed: no longer compares GDP level ($B) trivially.
+        "triggered": False, "value": None, "metric_field": None,
+        "weight": 0.10, "reason": "data_unavailable",
     },
     "SLOOS showing broad tightening": {
+        # Only evaluable Contraction indicator. sloos_net_tightening = 0.0 > 0 = False.
         "triggered": False, "value": 0.0, "metric_field": "sloos_net_tightening",
         "weight": 0.15, "direction": "above",
     },
-    # -- Expansion phase --
+    # -- Expansion phase (5 evaluable, 3 temporal) --
     "ISM proxy above contraction": {
         "triggered": True, "value": 52.7, "metric_field": "growth.ism_proxy",
         "weight": 0.15, "direction": "above",
     },
     "Unemployment low or falling": {
-        "triggered": True, "value": 4.3, "metric_field": "growth.unemployment",
+        # justified_improvement: compound OR, first scalar clause (unemployment < 5%)
+        # evaluates to True. Value is None because compound doesn't propagate sub-values.
+        "triggered": True, "value": None, "metric_field": "growth.unemployment",
         "weight": 0.15, "direction": "below",
     },
     "Credit spreads tight or tightening": {
-        "triggered": True, "value": 317.0, "metric_field": "credit.hy_spread",
-        "weight": 0.15, "direction": "below",
+        # temporal_exclusion: compound ALL has trend_state sub-clause.
+        "triggered": False, "value": None, "metric_field": "credit.hy_spread",
+        "weight": 0.15, "reason": "data_unavailable",
     },
     "Yield curve not deeply inverted": {
         "triggered": True, "value": 0.52, "metric_field": "rates.curve_2s10s",
         "weight": 0.10, "direction": "above",
     },
     "Initial claims low": {
-        # Task 3 K-suffix fix: 202000 < 250000, correctly triggered.
+        # K-suffix scaling preserved: 202000 < 250000 = True.
         "triggered": True, "value": 202000.0, "metric_field": "growth.initial_claims",
         "weight": 0.10, "direction": "below",
     },
-    "Consumer/business confidence": {
-        "triggered": True, "value": 98.913, "metric_field": "consumer_confidence",
-        "weight": 0.10, "direction": "above",
-    },
-    # -- Expansion phase: excluded indicators --
     "Fed funds below nominal GDP growth": {
-        "triggered": False, "value": 31442.483, "metric_field": "growth.gdp_latest",
-        "weight": 0.10, "reason": "threshold_not_evaluable",
+        # justified_improvement: field_comparison now evaluable via derived function.
+        # fed_funds (3.64) < nominal_gdp_growth (3.31) = False.
+        # Legacy couldn't evaluate this (threshold_not_evaluable).
+        "triggered": False, "value": 3.64, "metric_field": "rates.fed_funds",
+        "weight": 0.10, "direction": "below",
     },
     "Net credit growth positive": {
-        "triggered": False, "value": 0.0, "metric_field": "sloos_net_tightening",
-        "weight": 0.15, "reason": "threshold_not_evaluable",
+        # temporal_exclusion: compound ALL has delta_change sub-clause.
+        "triggered": False, "value": None, "metric_field": "credit.sloos_tightening_ci",
+        "weight": 0.15, "reason": "data_unavailable",
+    },
+    "Consumer/business confidence": {
+        # temporal_exclusion: compound ALL has trend_state sub-clause.
+        "triggered": False, "value": None, "metric_field": "sentiment.consumer_sentiment",
+        "weight": 0.10, "reason": "data_unavailable",
     },
 }
 
 DEBT_SHORT_COVERAGE = {
-    "total_in_results": 15, "skipped_web_qualitative": 2,
-    "evaluated": 13, "excluded": 2, "triggered": 8,
-    "evaluated_weight": 1.7500, "triggered_weight": 1.0500, "excluded_weight": 0.2500,
+    # v9 Phase 4: 6 evaluated (5 Expansion + 1 Contraction SLOOS), 9 excluded (temporal)
+    "total_in_results": 15, "skipped_web_qualitative": 9,
+    "evaluated": 6, "excluded": 9, "triggered": 4,
+    "evaluated_weight": 0.7500, "triggered_weight": 0.5000, "excluded_weight": 1.2500,
 }
 
 
 # -----------------------------------------------------------------------
-# 3. debt_cycle_long -- Score: 0.900 (Active)
+# 3. debt_cycle_long -- Score: 0.647059 (Active)
+#    v9 Phase 3: COMPILED PATH. Key fixes:
+#    - wealth_inequality: correct 70% threshold (False, not True)
+#      justified_improvement, see V9_PHASE2_SEMANTIC_DIFF.md
+#    - fiscal_deficit_primary_driver: uses correct field deficit_pct_gdp
+#      coincidental_parity: was True for wrong field, still True for right field
+#    - rates_near_elb: excluded (historical_extreme needs series store)
+#    Score: 0.55 / 0.85 = 0.647059
 # -----------------------------------------------------------------------
 
 DEBT_LONG_INDICATORS = {
     "Total debt / GDP above historical warning level": {
         "triggered": True, "value": 256.7205, "metric_field": "total_debt_to_gdp",
         "weight": 0.25, "direction": "above",
+        # weight_correction: ACTIVATION.md is source of truth (0.25),
+        # compile_all.py had transcription error (0.20). See V9_PHASE3_5
+        # display_name: Haiku uses full ACTIVATION.md name
     },
     "Fed balance sheet / GDP elevated": {
-        # Task 1 fix: uses fed_bs_gdp_ratio (21.2%) not raw fed_balance_sheet.
         "triggered": True, "value": 21.2, "metric_field": "fed_bs_gdp_ratio",
         "weight": 0.25, "direction": "above",
+        # weight_correction: ACTIVATION.md is source of truth (0.25),
+        # compile_all.py had transcription error (0.15). See V9_PHASE3_5
+        # display_name: Haiku uses full ACTIVATION.md name
     },
     "Rates at or near effective lower bound within recent memory": {
-        # C-02: threshold extracts "0" from "0-0.25%"; 3.64 > 0 trivially true.
-        "triggered": True, "value": 3.64, "metric_field": "rates.fed_funds",
-        "weight": 0.15, "direction": "above",
+        # Excluded: historical_extreme requires series store
+        "triggered": False, "value": None, "metric_field": "rates.fed_funds",
+        "weight": 0.15, "reason": "data_unavailable",
+        # display_name: Haiku uses full ACTIVATION.md name
     },
     "Fiscal deficit as primary growth driver": {
-        # Uses interest_exceeds_defense (287.0) against threshold extracting "5".
-        "triggered": True, "value": 287.0, "metric_field": "interest_exceeds_defense",
+        # coincidental_parity: compiled uses correct field deficit_pct_gdp (11.74 > 5.0).
+        # Haiku simplified compound (removed UNRESOLVED private_credit_growth clause).
+        "triggered": True, "value": 11.7358, "metric_field": "deficit_pct_gdp",
         "weight": 0.15, "direction": "above",
+        # weight_correction: ACTIVATION.md is source of truth (0.15),
+        # compile_all.py had transcription error (0.20). See V9_PHASE3_5
     },
     "Wealth inequality at cycle-characteristic extremes": {
-        # Threshold "Top 10% wealth share above 70%" extracts "10" not "70".
-        # 68.1 > 10 triggers. Known extraction limitation.
-        "triggered": True, "value": 68.1, "metric_field": "top10_wealth_share",
+        # justified_improvement: compiled uses correct 70% threshold.
+        # 68.1 < 70 = False (correct). Haiku simplified compound
+        # (removed UNRESOLVED top_1_income_share clause).
+        "triggered": False, "value": 68.1, "metric_field": "top10_wealth_share",
         "weight": 0.10, "direction": "above",
+        # weight_correction: ACTIVATION.md is source of truth (0.10),
+        # compile_all.py had transcription error (0.15). See V9_PHASE3_5
+        # display_name: Haiku uses full ACTIVATION.md name
     },
     "Negative real rates during expansion": {
         "triggered": False, "value": 0.98, "metric_field": "real_fed_funds_rate",
         "weight": 0.10, "direction": "below",
+        # weight_correction: ACTIVATION.md is source of truth (0.10),
+        # compile_all.py had transcription error (0.15). See V9_PHASE3_5
     },
 }
 
 DEBT_LONG_COVERAGE = {
-    "total_in_results": 6, "skipped_web_qualitative": 0,
-    "evaluated": 6, "excluded": 0, "triggered": 5,
-    "evaluated_weight": 1.0000, "triggered_weight": 0.9000, "excluded_weight": 0.0,
+    # 6 indicators in results, 1 excluded (rates_near_elb), 5 evaluated, 3 triggered
+    # weight_correction: triggered_weight updated for ACTIVATION.md weights. See V9_PHASE3_6
+    "total_in_results": 6, "skipped_web_qualitative": 1,
+    "evaluated": 5, "excluded": 1, "triggered": 3,
+    "evaluated_weight": 0.8500, "triggered_weight": 0.6500, "excluded_weight": 0.1500,
 }
 
 
 # -----------------------------------------------------------------------
-# 4. structural_fragility -- Resolving: 0.000 (Inactive), Building: 0.461538 (Adjacent)
+# 4. structural_fragility -- Resolving: 0.000 (Inactive), Building: 0.222222 (Inactive)
+#    v9 Phase 4B: COMPILED PATH. Building: 4 evaluable + 4 excluded (2 temporal,
+#    1 UNRESOLVED capex, 1 data_unavailable top_10). Only passive_fund triggers.
+#    Resolving: 4 evaluable, none trigger. Effective: Inactive.
+#    NOTE: display_name collisions ("Implied vol level", "High-yield spread")
+#    between phases — Resolving entry overwrites Building in merged dict.
+#    This doesn't affect per-phase scoring.
 # -----------------------------------------------------------------------
 
 STRUCTURAL_FRAG_INDICATORS = {
-    # -- Building phase --
+    # -- Merged indicators (Resolving overwrites Building for shared names) --
     "Implied vol level": {
+        # display_name collision: Building (^VIX < 14, w=0.10) overwritten by
+        # Resolving (^VIX > 35, w=0.20). Both evaluate to False for value 23.87.
         "triggered": False, "value": 23.87, "metric_field": "^VIX",
-        "weight": 0.10, "direction": "below",
+        "weight": 0.20, "direction": "above",
     },
     "High-yield spread": {
+        # display_name collision: Building (< 300bp, w=0.15) overwritten by
+        # Resolving (> 600bp, w=0.20). Both evaluate to False for value 317.
         "triggered": False, "value": 317.0, "metric_field": "credit.hy_spread",
-        "weight": 0.15, "direction": "below",
+        "weight": 0.20, "direction": "above",
     },
+    # -- Building phase (non-colliding) --
     "Implied-realized vol gap": {
+        # Injected by repair (Haiku systematically drops this computed indicator).
+        # vix_vs_realized (4.86) > 5 = False. Matches legacy exactly.
         "triggered": False, "value": 4.86, "metric_field": "vix_vs_realized",
         "weight": 0.10, "direction": "above",
     },
     "Top-10 index concentration": {
-        # Data unavailable: no data source implemented. Excluded from denominator.
+        # Data unavailable: no data source implemented. Same as legacy.
         "triggered": False, "value": None, "metric_field": "top_10_sp500_weight",
         "weight": 0.20, "reason": "data_unavailable",
     },
+    "Capex/revenue mismatch": {
+        # new_indicator: UNRESOLVED field, excluded from scoring.
+        # Legacy didn't include this (web-search, no field mapping).
+        "triggered": False, "value": None, "metric_field": "UNRESOLVED:dominant_theme_capex_to_revenue_ratio",
+        "weight": 0.15, "reason": "data_unavailable",
+    },
     "Margin debt": {
-        "triggered": True, "value": 1253.192, "metric_field": "finra_margin_debt",
-        "weight": 0.10, "direction": "above",
+        # temporal_exclusion: historical_extreme requires SeriesStore.
+        # Legacy triggered via BUG-03 (extracted "10" from "10% of record").
+        "triggered": False, "value": None, "metric_field": "finra_margin_debt",
+        "weight": 0.10, "reason": "data_unavailable",
     },
     "Large-cap/small-cap divergence": {
-        # B-03: threshold extracts "2" from "2-year high". 2.3279 > 2 triggers.
-        "triggered": True, "value": 2.3279, "metric_field": "qqq_iwm_ratio",
-        "weight": 0.10, "direction": "above",
+        # temporal_exclusion: historical_extreme requires SeriesStore.
+        # Legacy triggered via BUG-03 (extracted "2" from "2-year high").
+        "triggered": False, "value": None, "metric_field": "qqq_iwm_ratio",
+        "weight": 0.10, "reason": "data_unavailable",
     },
     "Passive fund share": {
         "triggered": True, "value": 59.0, "metric_field": "passive_fund_share",
         "weight": 0.10, "direction": "above",
     },
-    # -- Resolving phase --
+    # -- Resolving phase (non-colliding) --
     "Drawdown depth": {
         "triggered": False, "value": -5.7, "metric_field": "spy_drawdown_from_52w_high",
         "weight": 0.20, "direction": "below",
@@ -367,151 +454,185 @@ STRUCTURAL_FRAG_INDICATORS = {
 }
 
 STRUCTURAL_FRAG_COVERAGE = {
-    "total_in_results": 9, "skipped_web_qualitative": 2,
-    "evaluated": 8, "excluded": 1, "triggered": 3,
-    "evaluated_weight": 1.0000, "triggered_weight": 0.3000, "excluded_weight": 0.2000,
+    # v9 Phase 4B: 10 indicators total (8 Building + 4 Resolving - 2 collisions)
+    # 6 evaluable, 4 excluded (top_10, capex, margin_debt, large_cap)
+    "total_in_results": 10, "skipped_web_qualitative": 4,
+    "evaluated": 6, "excluded": 4, "triggered": 1,
+    "evaluated_weight": 0.9500, "triggered_weight": 0.1000, "excluded_weight": 0.5500,
 }
 
 
 # -----------------------------------------------------------------------
-# 5. fiscal_dominance_liquidity -- Score: 0.777778 (Active)
+# 5. fiscal_dominance_liquidity -- Score: 1.000000 (Active)
+#    v9 Phase 4: COMPILED PATH. 5 temporal indicators excluded (persistence,
+#    trend_state, delta_change without SeriesStore). 2 evaluable, both trigger.
+#    Score: 0.35 / 0.35 = 1.000. Tier MATCH with legacy (Active).
 # -----------------------------------------------------------------------
 
 FISCAL_LIQ_INDICATORS = {
     "Net liquidity expanding": {
-        # BUG-03: threshold extracts "2" from "2+ of last 3 months".
-        # 101440 > 2 triggers. Current frozen behavior.
-        "triggered": True, "value": 101440.0, "metric_field": "net_liquidity_30d_change",
-        "weight": 0.20, "direction": "above",
+        # temporal_exclusion: persistence rule requires SeriesStore.
+        # Legacy had BUG-03 (extracted "2" from "2+ of last 3 months").
+        "triggered": False, "value": None, "metric_field": None,
+        "weight": 0.20, "reason": "data_unavailable",
     },
     "Deficit pace": {
-        # Task 1: threshold aligned to "Above 1500 annualized (in $B)".
+        # Scalar comparison: 3690 > 1500 = True. Matches legacy.
         "triggered": True, "value": 3690.0, "metric_field": "deficit_pace_annualized",
         "weight": 0.20, "direction": "above",
     },
     "Rate hikes not producing recession": {
-        # Threshold extracts "5" from "5%". Uses ISM proxy (52.7 via override).
-        "triggered": True, "value": 52.7, "metric_field": "growth.ism_proxy",
-        "weight": 0.15, "direction": "above",
+        # temporal_exclusion: compound ALL has persistence sub-clause
+        # (fed_funds > 4% for 12+ months). Whole indicator NOT_EVALUABLE.
+        "triggered": False, "value": None, "metric_field": "growth.unemployment",
+        "weight": 0.15, "reason": "data_unavailable",
     },
     "Hard assets outperforming nominal bonds": {
+        # Scalar comparison: 73.09 > 10 = True. Matches legacy.
         "triggered": True, "value": 73.09, "metric_field": "hard_vs_nominal_12m",
         "weight": 0.15, "direction": "above",
     },
     "RRP draining toward zero": {
-        "triggered": False, "value": 327.0, "metric_field": "liquidity.reverse_repo",
-        "weight": 0.10, "direction": "below",
+        # temporal_exclusion: compound ALL has trend_state sub-clause.
+        "triggered": False, "value": None, "metric_field": "liquidity.reverse_repo",
+        "weight": 0.10, "reason": "data_unavailable",
     },
     "Fed balance sheet direction inconsistent with stated policy": {
-        # Threshold not evaluable: compound prose threshold.
-        "triggered": False, "value": 6675344.0, "metric_field": "liquidity.fed_balance_sheet",
-        "weight": 0.10, "reason": "threshold_not_evaluable",
+        # temporal_exclusion: compound ANY, all 3 clauses are temporal
+        # (delta_change, trend_state). Previously threshold_not_evaluable.
+        "triggered": False, "value": None, "metric_field": "liquidity.fed_balance_sheet",
+        "weight": 0.10, "reason": "data_unavailable",
     },
     "TGA behavior consistent with spending": {
-        # Latent unit mismatch: TGA in $M (847718), threshold says "$500B" extracts 500.
-        # 847718 < 500 = False. Correct result by coincidence.
-        "triggered": False, "value": 847718.0, "metric_field": "liquidity.tga",
-        "weight": 0.10, "direction": "below",
+        # temporal_exclusion: compound ANY, scalar clause False (847718 > 500000),
+        # delta_change clause NOT_EVALUABLE. OR: all evaluable false, 1 not evaluable.
+        "triggered": False, "value": None, "metric_field": "liquidity.tga",
+        "weight": 0.10, "reason": "data_unavailable",
     },
 }
 
 FISCAL_LIQ_COVERAGE = {
-    "total_in_results": 7, "skipped_web_qualitative": 1,
-    "evaluated": 6, "excluded": 1, "triggered": 4,
-    "evaluated_weight": 0.9000, "triggered_weight": 0.7000, "excluded_weight": 0.1000,
+    # v9 Phase 4: 2 evaluable (deficit_pace + hard_assets), 5 excluded (all temporal)
+    "total_in_results": 7, "skipped_web_qualitative": 5,
+    "evaluated": 2, "excluded": 5, "triggered": 2,
+    "evaluated_weight": 0.3500, "triggered_weight": 0.3500, "excluded_weight": 0.6500,
 }
 
 
 # -----------------------------------------------------------------------
 # 6. fiscal_dominance_arithmetic -- Score: 1.000 (Active)
-#    CEILING HIT: 1 indicator excluded, all 5 remaining trigger.
-#    Score = 0.75 / 0.75 = 1.000 (shrunken denominator).
+#    v9 Phase 3: COMPILED PATH. Score parity at 1.000.
+#    CEILING HIT: 2 indicators excluded (time-series), all 4 remaining trigger.
+#    Score = 0.70 / 0.70 = 1.000 (shrunken denominator).
 # -----------------------------------------------------------------------
 
 FISCAL_ARITH_INDICATORS = {
     "Interest expense / tax receipts ratio": {
         "triggered": True, "value": 34.0, "metric_field": "interest_receipts_ratio",
         "weight": 0.25, "direction": "above",
+        # weight_correction: ACTIVATION.md is source of truth (0.25),
+        # compile_all.py had transcription error (0.20). See V9_PHASE3_5
+        # display_name: Haiku uses full ACTIVATION.md name
     },
     "Interest expense exceeds major discretionary category": {
         "triggered": True, "value": 287.0, "metric_field": "interest_exceeds_defense",
         "weight": 0.15, "direction": "above",
+        # display_name: Haiku uses full ACTIVATION.md name
     },
     "Deficit pace outside recession": {
-        # Task 1: threshold "Deficit above 1500 annualized (in $B)".
-        "triggered": True, "value": 3690.0, "metric_field": "deficit_pace_annualized",
+        # Compound rule: deficit > 1500 AND unemployment < 5% (not in recession)
+        "triggered": True, "value": None, "metric_field": "deficit_pace_annualized",
         "weight": 0.20, "direction": "above",
+        # display_name: Haiku uses full ACTIVATION.md name
     },
     "Debt rollover at higher rates": {
-        # Threshold not evaluable: "Weighted average rate rising AND below current..."
-        "triggered": False, "value": 3.355, "metric_field": "weighted_avg_interest_rate",
-        "weight": 0.15, "reason": "threshold_not_evaluable",
+        # Excluded: trend requires series store
+        "triggered": False, "value": None, "metric_field": "weighted_avg_interest_rate",
+        "weight": 0.15, "reason": "data_unavailable",
     },
     "Gold/oil ratio elevated": {
-        # Task 1: commodity-based ratio (42.3), not ETF proxy.
         "triggered": True, "value": 42.3, "metric_field": "gold_oil_ratio",
         "weight": 0.10, "direction": "above",
+        # weight_correction: ACTIVATION.md is source of truth (0.10),
+        # compile_all.py had transcription error (0.15). See V9_PHASE3_5
     },
     "Central bank gold purchases sustained": {
-        "triggered": True, "value": 1037.0, "metric_field": "cb_gold_purchases",
-        "weight": 0.05, "direction": "above",
+        # Excluded: persistence requires series store
+        "triggered": False, "value": None, "metric_field": None,
+        "weight": 0.05, "reason": "data_unavailable",
+        # weight_correction: ACTIVATION.md is source of truth (0.05),
+        # compile_all.py had transcription error (0.15). See V9_PHASE3_5
     },
 }
 
 FISCAL_ARITH_COVERAGE = {
-    "total_in_results": 6, "skipped_web_qualitative": 1,
-    "evaluated": 5, "excluded": 1, "triggered": 5,
-    "evaluated_weight": 0.7500, "triggered_weight": 0.7500, "excluded_weight": 0.1500,
+    # 6 indicators in results, 2 excluded (debt_rollover + cb_gold),
+    # 4 evaluated, all 4 triggered
+    # weight_correction: weights updated for ACTIVATION.md. See V9_PHASE3_6
+    "total_in_results": 6, "skipped_web_qualitative": 2,
+    "evaluated": 4, "excluded": 2, "triggered": 4,
+    "evaluated_weight": 0.7000, "triggered_weight": 0.7000, "excluded_weight": 0.2000,
 }
 
 
 # -----------------------------------------------------------------------
-# 7. capital_flows -- Rotation: 0.450 (Adjacent), Accumulation: 0.470 (Adjacent)
+# 7. capital_flows -- Rotation: 0.000 (Inactive), Accumulation: 0.200 (Inactive)
+#    v9 Phase 4B: COMPILED PATH.
+#    Accumulation: 4 evaluable, 1 triggered (Dollar strong). EM 3y sign fix:
+#    compiled correctly uses lt -30 (9.5 < -30 = False). Weights corrected
+#    from parser [CALIBRATION] tag fix (0.33/0.27/0.20/0.20 = 1.00).
+#    Rotation: 5/6 temporal, Chinese equities now scalar (evaluable, False).
+#    Effective: Inactive.
 # -----------------------------------------------------------------------
 
 CAPITAL_FLOWS_INDICATORS = {
-    # -- Rotation phase (Phase B, checked first) --
+    # -- Rotation phase (5 temporal, 1 evaluable) --
     "Dollar weakening": {
-        # BUG-03: threshold extracts "3" from "3+ months"; 100.08 < 3 = False.
-        "triggered": False, "value": 100.08, "metric_field": "dxy_index",
-        "weight": 0.25, "direction": "below",
+        # temporal_exclusion: compound ALL with trend_state + historical_extreme.
+        "triggered": False, "value": None, "metric_field": "dxy_index",
+        "weight": 0.25, "reason": "data_unavailable",
     },
     "China credit impulse positive and accelerating": {
-        "triggered": True, "value": 3.5, "metric_field": "china_credit_impulse",
-        "weight": 0.20, "direction": "above",
+        # temporal_exclusion: compound ALL, all sub-rules temporal.
+        "triggered": False, "value": None, "metric_field": None,
+        "weight": 0.20, "reason": "data_unavailable",
     },
     "RMB strengthening": {
-        # BUG-03: threshold extracts "3" from "3+ months"; 6.89 < 3 = False.
-        "triggered": False, "value": 6.8922, "metric_field": "usdcny",
-        "weight": 0.20, "direction": "falling",
+        # temporal_exclusion: trend_state requires SeriesStore.
+        "triggered": False, "value": None, "metric_field": "usdcny",
+        "weight": 0.20, "reason": "data_unavailable",
     },
     "EM outperforming DM on relative basis": {
-        "triggered": True, "value": 7.27, "metric_field": "eem_spy_3m_relative",
-        "weight": 0.15, "direction": "above",
+        # temporal_exclusion: persistence requires SeriesStore.
+        "triggered": False, "value": None, "metric_field": None,
+        "weight": 0.15, "reason": "data_unavailable",
     },
     "Commodity prices rising": {
-        # BUG-03: threshold extracts "3" from "3+ months"; 31.17 > 3 triggers.
-        "triggered": True, "value": 31.17, "metric_field": "commodity_index_3m_change",
-        "weight": 0.10, "direction": "above",
+        # temporal_exclusion: persistence requires SeriesStore.
+        "triggered": False, "value": None, "metric_field": None,
+        "weight": 0.10, "reason": "data_unavailable",
     },
     "Chinese equities leading": {
+        # Simplified to scalar (fxi_3m_return > 15). -7.13 > 15 = False.
+        # Previous compilation had compound with historical_extreme (needed series).
         "triggered": False, "value": -7.13, "metric_field": "fxi_3m_return",
         "weight": 0.10, "direction": "above",
     },
-    # -- Accumulation phase (Phase A) --
+    # -- Accumulation phase (4 evaluable, correct weights) --
     "EM vs. DM PE gap at extremes": {
         "triggered": False, "value": 11.284, "metric_field": "em_dm_pe_gap",
         "weight": 0.33, "direction": "above",
     },
     "EM rolling 3-year underperformance": {
-        # A-04: 12-month proxy for 3-year. Threshold "30%+" extracts 30.
-        # 9.5 < 30 = True (direction=below). Known proxy limitation.
-        "triggered": True, "value": 9.5, "metric_field": "eem_spy_3y_relative",
+        # justified_improvement: compiled correctly uses lt -30.0.
+        # 9.5 < -30 = False. Legacy stripped sign (9.5 < 30 = True, wrong).
+        "triggered": False, "value": 9.5, "metric_field": "eem_spy_3y_relative",
         "weight": 0.27, "direction": "below",
     },
     "Dollar strong or sideways": {
-        # Task 1: dxy_index now resolves. 100.08 > 100 triggers.
-        "triggered": True, "value": 100.08, "metric_field": "dxy_index",
+        # compound OR: first clause dxy_index > 100 evaluable and True (100.08 > 100).
+        # Value is None because compound doesn't propagate sub-values.
+        "triggered": True, "value": None, "metric_field": "dxy_index",
         "weight": 0.20, "direction": "above",
     },
     "China credit impulse flat or negative": {
@@ -521,37 +642,60 @@ CAPITAL_FLOWS_INDICATORS = {
 }
 
 CAPITAL_FLOWS_COVERAGE = {
-    "total_in_results": 10, "skipped_web_qualitative": 0,
-    "evaluated": 10, "excluded": 0, "triggered": 5,
-    "evaluated_weight": 2.0000, "triggered_weight": 0.9200, "excluded_weight": 0.0,
+    # v9 Phase 4B: 5 evaluable (4 Accumulation + 1 Rotation Chinese equities)
+    # 5 excluded (all Rotation temporal)
+    "total_in_results": 10, "skipped_web_qualitative": 5,
+    "evaluated": 5, "excluded": 5, "triggered": 1,
+    "evaluated_weight": 1.1000, "triggered_weight": 0.2000, "excluded_weight": 0.9000,
 }
 
 
 # -----------------------------------------------------------------------
-# 8. monetary_architecture -- Score: 0.661972 (Active)
+# 8. monetary_architecture -- Score: 0.000000 (Inactive)
+#    v9 Phase 4: COMPILED PATH. All 3 legacy-shared indicators are temporal
+#    (persistence, trend_state). Compiled adds 2 new: CCBS (BLOCKED/excluded),
+#    non-dollar settlement (evaluable scalar, False at 3.89 < 4.0).
+#    Score: 0.00 / 0.17 = 0.000. Tier downgrade Active->Inactive is honest.
 # -----------------------------------------------------------------------
 
 MONETARY_ARCH_INDICATORS = {
     "Central bank gold purchases sustained at elevated levels": {
-        "triggered": True, "value": 1037.0, "metric_field": "cb_gold_purchases",
-        "weight": 0.29, "direction": "above",
+        # temporal_exclusion: persistence rule requires SeriesStore.
+        # Legacy triggered at 1037 > 800 (correct value, wrong evaluation method).
+        "triggered": False, "value": None, "metric_field": None,
+        "weight": 0.29, "reason": "data_unavailable",
     },
     "Foreign official Treasury holdings declining as share of outstanding": {
-        # BUG-03: threshold extracts "3" from "3+ years"; 24.0 < 3 = False.
-        "triggered": False, "value": 24.0, "metric_field": "foreign_treasury_holdings_pct",
-        "weight": 0.24, "direction": "below",
+        # temporal_exclusion: trend_state requires SeriesStore.
+        # Legacy had BUG-03 (extracted "3" from "3+ years").
+        "triggered": False, "value": None, "metric_field": "foreign_treasury_holdings_pct",
+        "weight": 0.24, "reason": "data_unavailable",
     },
     "Gold/oil ratio elevated and rising": {
-        # Task 1: commodity ratio (42.3) resolves. 42.3 > 25 triggers.
-        "triggered": True, "value": 42.3, "metric_field": "gold_oil_ratio",
-        "weight": 0.18, "direction": "above",
+        # temporal_exclusion: compound ALL has trend_state sub-clause.
+        # Scalar clause (42.3 > 25) is True but trend is NOT_EVALUABLE.
+        "triggered": False, "value": None, "metric_field": "gold_oil_ratio",
+        "weight": 0.18, "reason": "data_unavailable",
+    },
+    "Cross-currency basis swap stress episodic": {
+        # new_indicator: BLOCKED, empty compound after repair pass
+        # (all UNRESOLVED clauses pruned). Excluded from scoring.
+        "triggered": False, "value": None, "metric_field": None,
+        "weight": 0.12, "reason": "data_unavailable",
+    },
+    "Non-dollar trade settlement growing": {
+        # new_indicator: scalar comparison, rmb_swift_share (3.89) > 4.0 = False.
+        # Only evaluable indicator. Legacy skipped this (no field mapping).
+        "triggered": False, "value": 3.89, "metric_field": "rmb_swift_share",
+        "weight": 0.17, "direction": "above",
     },
 }
 
 MONETARY_ARCH_COVERAGE = {
-    "total_in_results": 3, "skipped_web_qualitative": 2,
-    "evaluated": 3, "excluded": 0, "triggered": 2,
-    "evaluated_weight": 0.7100, "triggered_weight": 0.4700, "excluded_weight": 0.0,
+    # v9 Phase 4: 1 evaluable (non-dollar settlement), 4 excluded (3 temporal + 1 blocked)
+    "total_in_results": 5, "skipped_web_qualitative": 4,
+    "evaluated": 1, "excluded": 4, "triggered": 0,
+    "evaluated_weight": 0.1700, "triggered_weight": 0.0000, "excluded_weight": 0.8300,
 }
 
 
@@ -561,17 +705,22 @@ MONETARY_ARCH_COVERAGE = {
 
 
 class TestValuationMeanReversion:
-    """valuation_mean_reversion: single-phase, Active, 0.705882"""
+    """valuation_mean_reversion: single-phase, Active, 0.785714
+    v9 Phase 3.6: Haiku-compiled with corrected ACTIVATION.md weights."""
 
     def test_score_and_tier(self, all_results):
         r = all_results["valuation_mean_reversion"]
         assert r.is_two_phase is False
-        assert r.score == pytest.approx(0.705882, abs=1e-4)
+        # weight_correction: 0.833333 -> 0.785714. ACTIVATION.md weights differ
+        # from compile_all.py (ERP 0.25 not 0.20, cash_yield 0.15 not 0.10,
+        # insider 0.05 not 0.15). See V9_PHASE3_6
+        assert r.score == pytest.approx(0.785714, abs=1e-4)
         assert r.tier.value == "Active"
 
     def test_indicator_count(self, all_results):
         r = all_results["valuation_mean_reversion"]
-        assert len(r.indicator_results) == 6
+        # Compiled includes Buffett in results (was skipped by legacy)
+        assert len(r.indicator_results) == 7
         assert set(r.indicator_results.keys()) == set(VALUATION_MR_INDICATORS.keys())
 
     def test_each_indicator(self, all_results):
@@ -588,29 +737,38 @@ class TestValuationMeanReversion:
                 f"actual={actual[key]}, expected={expected_val}"
             )
 
-    def test_skipped_buffett(self, all_results):
-        """Buffett Indicator skipped because WILL5000INDFC unavailable."""
+    def test_excluded_time_series(self, all_results):
+        """3 indicators excluded: Buffett (no data), breadth + insider (time-series)."""
         r = all_results["valuation_mean_reversion"]
-        assert len(r.skipped_indicators) == 1
-        assert "Buffett Indicator" in r.skipped_indicators[0]
+        assert len(r.skipped_indicators) == 3
+        skip_text = " ".join(r.skipped_indicators)
+        assert "Buffett" in skip_text
+        assert "breadth" in skip_text.lower() or "Market breadth" in skip_text
+        assert "Insider" in skip_text
 
 
 class TestDebtCycleShort:
-    """debt_cycle_short: two-phase, Contraction 0.300 / Expansion 1.000
-    CEILING HIT on Expansion: shrunken denominator, all remaining trigger."""
+    """debt_cycle_short: two-phase, Contraction 0.000 / Expansion 0.833333
+    v9 Phase 4: COMPILED PATH. Contraction all-temporal except SLOOS.
+    Expansion: 5 evaluable (4 triggered), Fed funds now evaluable.
+    Effective: Active (Expansion)."""
 
     def test_phase_scores_and_tiers(self, all_results):
         r = all_results["debt_cycle_short"]
         assert r.is_two_phase is True
-        assert r.phase_scores["Contraction"] == pytest.approx(0.300, abs=1e-4)
-        assert r.phase_scores["Expansion"] == pytest.approx(1.000, abs=1e-4)
-        assert r.phase_tiers["Contraction"].value == "Adjacent"
+        # v9 Phase 4: Contraction 0.300->0.000 (Sahm BUG-03 + Fed wiring fixed)
+        assert r.phase_scores["Contraction"] == pytest.approx(0.000, abs=1e-4)
+        # v9 Phase 4: Expansion 1.000->0.833 (3 temporal excluded, Fed funds now evaluable False)
+        assert r.phase_scores["Expansion"] == pytest.approx(0.833333, abs=1e-4)
+        assert r.phase_tiers["Contraction"].value == "Inactive"
         assert r.phase_tiers["Expansion"].value == "Active"
 
     def test_effective_phase(self, all_results):
         r = all_results["debt_cycle_short"]
-        assert r.effective_tier.value == "Adjacent"
-        assert r.effective_phase == "Contraction"
+        # v9 Phase 4: effective flips from Adjacent(Contraction) to Active(Expansion)
+        # because Contraction is now honestly Inactive (was inflated by bugs).
+        assert r.effective_tier.value == "Active"
+        assert r.effective_phase == "expansion"
 
     def test_indicator_count(self, all_results):
         r = all_results["debt_cycle_short"]
@@ -631,43 +789,52 @@ class TestDebtCycleShort:
                 f"actual={actual[key]}, expected={expected_val}"
             )
 
-    def test_expansion_ceiling_hit_visibility(self, all_results):
-        """Expansion scores 1.000 via shrunken denominator.
-        Make visible: 6 evaluated indicators all trigger, 2 excluded."""
+    def test_contraction_temporal_exclusion(self, all_results):
+        """v9 Phase 4: Contraction has 6 temporal indicators excluded.
+        Only SLOOS is evaluable (scalar, not triggered). Score = 0.0/0.15 = 0.000."""
         r = all_results["debt_cycle_short"]
+        contraction_excluded = [
+            "ISM proxy below contraction",
+            "Unemployment rising (Sahm Rule)",
+            "Credit spreads widening sharply",
+            "Yield curve re-steepening from deep inversion",
+            "Initial claims rising",
+            "Fed funds above nominal GDP growth",
+        ]
+        for name in contraction_excluded:
+            assert r.indicator_results[name].get("reason") == "data_unavailable", (
+                f"{name} should be excluded (temporal)"
+            )
 
-        # Identify excluded Expansion indicators
-        excluded = {
-            name: info for name, info in r.indicator_results.items()
-            if info.get("reason") in ("data_unavailable", "threshold_not_evaluable")
-        }
-        assert len(excluded) == 2, (
-            f"Expected 2 excluded indicators in Expansion, got {len(excluded)}: "
-            f"{list(excluded.keys())}"
-        )
-        assert "Fed funds below nominal GDP growth" in excluded
-        assert "Net credit growth positive" in excluded
-
-        # Denominator shrinkage: 0.25 of total possible weight excluded
-        excluded_weight = sum(info["weight"] for info in excluded.values())
-        assert excluded_weight == pytest.approx(0.25, abs=1e-4)
+    def test_fed_funds_field_comparison(self, all_results):
+        """v9 Phase 4 justified_improvement: Expansion 'Fed funds below GDP'
+        is now evaluable as field_comparison. Legacy couldn't parse this.
+        fed_funds (3.64) < nominal_gdp_growth (3.31) = False."""
+        r = all_results["debt_cycle_short"]
+        ff = r.indicator_results["Fed funds below nominal GDP growth"]
+        assert ff["triggered"] is False
+        assert ff["metric_field"] == "rates.fed_funds"
+        assert ff["value"] == pytest.approx(3.64, abs=0.1)
+        assert "reason" not in ff  # now evaluable, no reason code
 
     def test_k_suffix_initial_claims(self, all_results):
         """Task 3 regression: K-suffix scaling must hold for initial_claims."""
         r = all_results["debt_cycle_short"]
         # Expansion: claims low (202K < 250K -> triggered)
         assert r.indicator_results["Initial claims low"]["triggered"] is True
-        # Contraction: claims rising (202K < 280K -> NOT triggered)
-        assert r.indicator_results["Initial claims rising"]["triggered"] is False
 
 
 class TestDebtCycleLong:
-    """debt_cycle_long: single-phase, Active, 0.900"""
+    """debt_cycle_long: single-phase, Active, 0.764706
+    v9 Phase 3.6: Haiku-compiled with corrected ACTIVATION.md weights."""
 
     def test_score_and_tier(self, all_results):
         r = all_results["debt_cycle_long"]
         assert r.is_two_phase is False
-        assert r.score == pytest.approx(0.900, abs=1e-4)
+        # weight_correction: 0.647059 -> 0.764706. ACTIVATION.md weights differ
+        # from compile_all.py (total_debt 0.25 not 0.20, fed_bs 0.25 not 0.15,
+        # fiscal_deficit 0.15 not 0.20, wealth/real_rates 0.10 not 0.15). See V9_PHASE3_6
+        assert r.score == pytest.approx(0.764706, abs=1e-4)
         assert r.tier.value == "Active"
 
     def test_indicator_count(self, all_results):
@@ -689,35 +856,45 @@ class TestDebtCycleLong:
                 f"actual={actual[key]}, expected={expected_val}"
             )
 
-    def test_no_exclusions(self, all_results):
-        """debt_cycle_long has zero excluded indicators."""
+    def test_wealth_inequality_fixed(self, all_results):
+        """v9 compiled path: wealth inequality correctly False (68.1 < 70%).
+        Legacy extracted '10' from threshold, getting True (wrong).
+        v9 Phase 3.6: display name now uses full ACTIVATION.md name."""
         r = all_results["debt_cycle_long"]
-        assert len(r.skipped_indicators) == 0
-        for name, info in r.indicator_results.items():
-            assert "reason" not in info, (
-                f"Unexpected exclusion: {name} ({info.get('reason')})"
-            )
+        wi = r.indicator_results["Wealth inequality at cycle-characteristic extremes"]
+        assert wi["triggered"] is False
+        assert wi["value"] == pytest.approx(68.1, abs=0.1)
+
+    def test_rates_excluded(self, all_results):
+        """rates_near_elb requires historical_extreme (series store), excluded."""
+        r = all_results["debt_cycle_long"]
+        assert len(r.skipped_indicators) == 1
+        assert "Rates" in r.skipped_indicators[0]
 
 
 class TestStructuralFragility:
-    """structural_fragility: two-phase, Resolving 0.000 / Building 0.461538"""
+    """structural_fragility: two-phase, Resolving 0.000 / Building 0.222222
+    v9 Phase 4B: COMPILED PATH. Building: only passive_fund triggers.
+    2 temporal (margin_debt, large_cap), 1 UNRESOLVED (capex), 1 data (top_10)."""
 
     def test_phase_scores_and_tiers(self, all_results):
         r = all_results["structural_fragility"]
         assert r.is_two_phase is True
-        assert r.phase_scores["Fragility Resolving"] == pytest.approx(0.000, abs=1e-4)
-        assert r.phase_scores["Fragility Building"] == pytest.approx(0.461538, abs=1e-4)
-        assert r.phase_tiers["Fragility Resolving"].value == "Inactive"
-        assert r.phase_tiers["Fragility Building"].value == "Adjacent"
+        assert r.phase_scores["Resolving"] == pytest.approx(0.000, abs=1e-4)
+        # v9 Phase 4B: Building 0.4615->0.2222 (temporal exclusion + BUG fixes)
+        assert r.phase_scores["Building"] == pytest.approx(0.222222, abs=1e-4)
+        assert r.phase_tiers["Resolving"].value == "Inactive"
+        assert r.phase_tiers["Building"].value == "Inactive"
 
     def test_effective_phase(self, all_results):
         r = all_results["structural_fragility"]
-        assert r.effective_tier.value == "Adjacent"
-        assert r.effective_phase == "Fragility Building"
+        # v9 Phase 4B: effective Adjacent->Inactive (both phases Inactive)
+        assert r.effective_tier.value == "Inactive"
 
     def test_indicator_count(self, all_results):
         r = all_results["structural_fragility"]
-        assert len(r.indicator_results) == 9
+        # v9 Phase 4B: 9->10 (adds capex_revenue_mismatch from compiled)
+        assert len(r.indicator_results) == 10
         assert set(r.indicator_results.keys()) == set(STRUCTURAL_FRAG_INDICATORS.keys())
 
     def test_each_indicator(self, all_results):
@@ -734,21 +911,27 @@ class TestStructuralFragility:
                 f"actual={actual[key]}, expected={expected_val}"
             )
 
-    def test_top10_excluded(self, all_results):
-        """Top-10 concentration excluded because no data source exists."""
+    def test_vol_gap_injected(self, all_results):
+        """v9 Phase 4B: implied-realized vol gap injected by repair pass.
+        Matches legacy exactly: vix_vs_realized (4.86) > 5 = False."""
         r = all_results["structural_fragility"]
-        info = r.indicator_results["Top-10 index concentration"]
-        assert info["reason"] == "data_unavailable"
-        assert info["value"] is None
+        vg = r.indicator_results["Implied-realized vol gap"]
+        assert vg["triggered"] is False
+        assert vg["value"] == pytest.approx(4.86, abs=0.1)
+        assert vg["metric_field"] == "vix_vs_realized"
 
 
 class TestFiscalDominanceLiquidity:
-    """fiscal_dominance_liquidity: single-phase, Active, 0.777778"""
+    """fiscal_dominance_liquidity: single-phase, Active, 1.000000
+    v9 Phase 4: COMPILED PATH. 5 temporal indicators excluded,
+    2 evaluable both trigger. Score = 0.35/0.35 = 1.000."""
 
     def test_score_and_tier(self, all_results):
         r = all_results["fiscal_dominance_liquidity"]
         assert r.is_two_phase is False
-        assert r.score == pytest.approx(0.777778, abs=1e-4)
+        # v9 Phase 4: compiled score 1.000 (was legacy 0.778).
+        # Denominator shrinkage from temporal exclusion, tier unchanged.
+        assert r.score == pytest.approx(1.000000, abs=1e-4)
         assert r.tier.value == "Active"
 
     def test_indicator_count(self, all_results):
@@ -770,18 +953,26 @@ class TestFiscalDominanceLiquidity:
                 f"actual={actual[key]}, expected={expected_val}"
             )
 
-    def test_tga_latent_mismatch_frozen(self, all_results):
-        """TGA comparison is correct by coincidence (field $M, threshold $B).
-        Freeze the current state: 847718 < 500 = False."""
+    def test_temporal_exclusion(self, all_results):
+        """v9 Phase 4: 5 indicators excluded due to temporal rules (persistence,
+        trend_state, delta_change) without SeriesStore. All correctly data_unavailable."""
         r = all_results["fiscal_dominance_liquidity"]
-        tga = r.indicator_results["TGA behavior consistent with spending"]
-        assert tga["triggered"] is False
-        assert tga["value"] == pytest.approx(847718.0, abs=1)
+        excluded = {
+            name: info for name, info in r.indicator_results.items()
+            if info.get("reason") == "data_unavailable"
+        }
+        assert len(excluded) == 5
+        assert "Net liquidity expanding" in excluded
+        assert "Rate hikes not producing recession" in excluded
+        assert "RRP draining toward zero" in excluded
+        assert "Fed balance sheet direction inconsistent with stated policy" in excluded
+        assert "TGA behavior consistent with spending" in excluded
 
 
 class TestFiscalDominanceArithmetic:
     """fiscal_dominance_arithmetic: single-phase, Active, 1.000
-    CEILING HIT: 1 indicator excluded, all 5 remaining trigger."""
+    v9 Phase 3.6: Haiku-compiled with corrected ACTIVATION.md weights.
+    CEILING HIT: 2 indicators excluded (time-series), all 4 remaining trigger."""
 
     def test_score_and_tier(self, all_results):
         r = all_results["fiscal_dominance_arithmetic"]
@@ -811,47 +1002,56 @@ class TestFiscalDominanceArithmetic:
     def test_ceiling_hit_visibility(self, all_results):
         """Score is 1.000 because denominator shrank, not because all indicators fire.
 
-        5 evaluated, all triggered (w=0.75).
-        1 excluded: Debt rollover (w=0.15, threshold_not_evaluable).
+        v9 Phase 3.6 compiled: 4 evaluated, all triggered (w=0.70).
+        2 excluded: Debt rollover + CB gold (w=0.20, time-series).
+        # weight_correction: excluded_weight 0.30 -> 0.20 because
+        # gold_oil dropped from 0.15 to 0.10, cb_gold from 0.15 to 0.05
         Total possible weight if nothing excluded: 0.90.
-        Denominator: 0.75 (0.90 - 0.15 excluded).
-        Score: 0.75 / 0.75 = 1.000.
+        Denominator: 0.70 (0.90 - 0.20 excluded).
+        Score: 0.70 / 0.70 = 1.000.
         """
         r = all_results["fiscal_dominance_arithmetic"]
         cov = _compute_coverage(r)
 
         # All evaluated indicators trigger
-        assert cov["evaluated"] == 5
-        assert cov["triggered"] == 5
+        assert cov["evaluated"] == 4
+        assert cov["triggered"] == 4
         assert cov["triggered_weight"] == cov["evaluated_weight"]
 
         # Shrunken denominator is visible
-        assert cov["excluded"] == 1
-        assert cov["excluded_weight"] == pytest.approx(0.15, abs=1e-4)
+        assert cov["excluded"] == 2
+        # weight_correction: ACTIVATION.md weights (0.15 + 0.05 = 0.20),
+        # compile_all.py had 0.15 + 0.15 = 0.30. See V9_PHASE3_6
+        assert cov["excluded_weight"] == pytest.approx(0.20, abs=1e-4)
 
-        # The excluded indicator is specifically "Debt rollover"
+        # The excluded indicators
         excluded = {
             name: info for name, info in r.indicator_results.items()
             if info.get("reason") in ("data_unavailable", "threshold_not_evaluable")
         }
         assert "Debt rollover at higher rates" in excluded
+        assert "Central bank gold purchases sustained" in excluded
 
 
 class TestCapitalFlows:
-    """capital_flows: two-phase, Rotation 0.450 / Accumulation 0.470"""
+    """capital_flows: two-phase, Rotation 0.000 / Accumulation 0.200
+    v9 Phase 4B: COMPILED PATH. EM 3y sign fixed. Weights corrected.
+    Rotation all temporal except Chinese equities (scalar, False)."""
 
     def test_phase_scores_and_tiers(self, all_results):
         r = all_results["capital_flows"]
         assert r.is_two_phase is True
-        assert r.phase_scores["Rotation"] == pytest.approx(0.450, abs=1e-4)
-        assert r.phase_scores["Accumulation"] == pytest.approx(0.470, abs=1e-4)
-        assert r.phase_tiers["Rotation"].value == "Adjacent"
-        assert r.phase_tiers["Accumulation"].value == "Adjacent"
+        # v9 Phase 4B: Rotation 0.450->0.000 (5/6 temporal, 1 evaluable False)
+        assert r.phase_scores["Rotation"] == pytest.approx(0.000, abs=1e-4)
+        # v9 Phase 4B: Accumulation 0.470->0.200 (EM 3y sign fix: False not True)
+        assert r.phase_scores["Accumulation"] == pytest.approx(0.200, abs=1e-4)
+        assert r.phase_tiers["Rotation"].value == "Inactive"
+        assert r.phase_tiers["Accumulation"].value == "Inactive"
 
     def test_effective_phase(self, all_results):
         r = all_results["capital_flows"]
-        assert r.effective_tier.value == "Adjacent"
-        assert r.effective_phase == "Rotation"
+        # v9 Phase 4B: effective Adjacent->Inactive (both phases Inactive)
+        assert r.effective_tier.value == "Inactive"
 
     def test_indicator_count(self, all_results):
         r = all_results["capital_flows"]
@@ -872,25 +1072,34 @@ class TestCapitalFlows:
                 f"actual={actual[key]}, expected={expected_val}"
             )
 
-    def test_dxy_resolution(self, all_results):
-        """Task 1 regression: DXY must resolve via dxy_index computed field."""
+    def test_em_underperformance_sign_fix(self, all_results):
+        """v9 Phase 4B justified_improvement: EM 3y underperformance now correctly
+        checks < -30% (value 9.5 < -30 = False). Legacy stripped sign (9.5 < 30 = True)."""
         r = all_results["capital_flows"]
-        assert r.indicator_results["Dollar strong or sideways"]["metric_field"] == "dxy_index"
-        assert r.indicator_results["Dollar weakening"]["metric_field"] == "dxy_index"
+        em = r.indicator_results["EM rolling 3-year underperformance"]
+        assert em["triggered"] is False
+        assert em["value"] == pytest.approx(9.5, abs=0.1)
+        assert em["weight"] == pytest.approx(0.27, abs=1e-4)
 
 
 class TestMonetaryArchitecture:
-    """monetary_architecture: single-phase, Active, 0.661972"""
+    """monetary_architecture: single-phase, Inactive, 0.000000
+    v9 Phase 4: COMPILED PATH. All 3 legacy indicators are temporal.
+    2 new indicators from compiled (CCBS blocked, non-dollar evaluable).
+    Tier downgrade Active->Inactive is honest temporal exclusion."""
 
     def test_score_and_tier(self, all_results):
         r = all_results["monetary_architecture"]
         assert r.is_two_phase is False
-        assert r.score == pytest.approx(0.661972, abs=1e-4)
-        assert r.tier.value == "Active"
+        # v9 Phase 4: 0.662->0.000. All shared indicators temporal.
+        # Only evaluable indicator (non-dollar settlement) is False.
+        assert r.score == pytest.approx(0.000000, abs=1e-4)
+        assert r.tier.value == "Inactive"
 
     def test_indicator_count(self, all_results):
         r = all_results["monetary_architecture"]
-        assert len(r.indicator_results) == 3
+        # v9 Phase 4: 3->5 indicators (compiled adds CCBS + non-dollar settlement)
+        assert len(r.indicator_results) == 5
         assert set(r.indicator_results.keys()) == set(MONETARY_ARCH_INDICATORS.keys())
 
     def test_each_indicator(self, all_results):
@@ -907,20 +1116,24 @@ class TestMonetaryArchitecture:
                 f"actual={actual[key]}, expected={expected_val}"
             )
 
-    def test_web_search_skips(self, all_results):
-        """Two web-search indicators skipped: no field mapping."""
+    def test_temporal_exclusion(self, all_results):
+        """v9 Phase 4: 3 temporal indicators + 1 blocked = 4 excluded."""
         r = all_results["monetary_architecture"]
-        assert len(r.skipped_indicators) == 2
+        assert len(r.skipped_indicators) == 4
         skip_text = " ".join(r.skipped_indicators)
+        assert "gold purchases" in skip_text.lower()
+        assert "Treasury" in skip_text
+        assert "Gold/oil" in skip_text
         assert "Cross-currency" in skip_text
-        assert "Non-dollar" in skip_text
 
-    def test_gold_oil_commodity_fix(self, all_results):
-        """Task 1 regression: gold_oil_ratio must use commodity data (42.3), not ETF."""
+    def test_non_dollar_settlement_evaluable(self, all_results):
+        """v9 Phase 4: non-dollar settlement is the only evaluable indicator.
+        rmb_swift_share (3.89) > 4.0 = False. Legacy skipped this entirely."""
         r = all_results["monetary_architecture"]
-        gold_oil = r.indicator_results["Gold/oil ratio elevated and rising"]
-        assert gold_oil["value"] == pytest.approx(42.3, abs=0.1)
-        assert gold_oil["triggered"] is True
+        nd = r.indicator_results["Non-dollar trade settlement growing"]
+        assert nd["triggered"] is False
+        assert nd["value"] == pytest.approx(3.89, abs=0.1)
+        assert nd["metric_field"] == "rmb_swift_share"
 
 
 # =======================================================================

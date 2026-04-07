@@ -622,6 +622,10 @@ def score_all_packages(
 ) -> list[ActivationResult]:
     """Score activation for all v8 TheoryPackages against a briefing packet.
 
+    Dual-path routing (v9 Phase 3):
+      - Theories with APPROVED compiled artifacts use the compiled evaluator.
+      - All other theories use the legacy prose-parsing path.
+
     Validates all packages in a single pass first.  If any package has
     error-severity findings, raises ``TheoryValidationError`` with the
     full report before scoring any package.
@@ -630,7 +634,17 @@ def score_all_packages(
         TheoryValidationError,
         validate_all_packages,
     )
+    from backend.engine.v9.dual_path import get_approved_theory_ids, score_compiled
+
     report = validate_all_packages(packages)
     if not report.passed:
         raise TheoryValidationError(report)
-    return [score_package(pkg, briefing, skip_validation=True) for pkg in packages]
+
+    compiled_ids = get_approved_theory_ids()
+    results = []
+    for pkg in packages:
+        if pkg.theory_id in compiled_ids:
+            results.append(score_compiled(pkg.theory_id, briefing))
+        else:
+            results.append(score_package(pkg, briefing, skip_validation=True))
+    return results

@@ -240,6 +240,8 @@ class CompiledActivationArtifact(BaseModel):
 
     # Status
     artifact_status: ArtifactStatus = ArtifactStatus.DRAFT
+    approval_timestamp: Optional[str] = None
+    approval_justification: Optional[str] = None
 
     # Source
     source: SourcePackageRef

@@ -693,47 +693,46 @@ Results: 65 Phase 1 tests + 91 Phase 0 tests, regression gate PASS. See docs/V9_
 Files: backend/engine/v9/{registry_builder,series_engine,rule_evaluator,compiled_evaluator,validator,derived_functions}.py
 Investigation: eem_spy_3y_relative mismatch = legacy threshold extraction bug (regex strips sign). Compiled rule correct.
 
-### Phase 2 — Haiku compiler scaffold
+### Phase 2 — Haiku compiler scaffold + parallel comparison [COMPLETE 2026-04-07]
 Deliverables:
 - Haiku compiler adapter
 - compiler prompt / output contract
 - normalization layer
 - validator integration
 
-Success condition:
-- English activation text can be compiled into draft artifact and either pass cleanly or fail loudly
+Results: All 8 theories compiled (68 indicators: 19 clean, 46 warn, 3 blocked). Parallel comparison with semantic diff. 46 tests. See docs/V9_PHASE2_COMPILATION_RESULTS.md, V9_PHASE2_SEMANTIC_DIFF.md.
+Files: backend/engine/v9/{compiler,compile_all,parallel_compare,semantic_diff}.py, artifacts/v9/*.compiled.json
 
-### Phase 3 — pilot theory 1
-Target: `valuation_mean_reversion`
+### Phase 3 — dual-path engine + first 3 approvals [COMPLETE 2026-04-07]
+Actual scope expanded: combined pilot theories + dual-path engine + Haiku API pipeline + weight corrections + generic repairs.
 
+Sub-phases:
+- Phase 3.0: Dual-path engine (score_all_packages auto-routes per artifact_status)
+- Phase 3.5: Haiku API pipeline (activation_parser + compiler_prompt + CLI)
+- Phase 3.6: Weight correction (ACTIVATION.md is source of truth, compile_all.py had transcription errors)
+- Phase 3.7: Generic post-compilation repairs (prune UNRESOLVED + remove illegal field_comparisons)
+
+Results: 3 theories APPROVED (valuation_mean_reversion, debt_cycle_long, fiscal_dominance_arithmetic). 1203 tests. See docs/V9_PHASE3_DUAL_PATH_RESULTS.md, V9_PHASE3_5/3_6/3_7 results docs.
+Files: backend/engine/v9/{dual_path,activation_parser,compiler_prompt,compiler_repairs}.py
+
+### Phase 4 — full theory approval + legacy deprecation [COMPLETE 2026-04-07]
+Sub-phases:
+- Phase 4: Approved 3 more (fiscal_dominance_liquidity, debt_cycle_short, monetary_architecture). 6/8 compiled.
+- Phase 4B: Fixed capital_flows weight parsing (CALIBRATION tag stripping), fixed structural_fragility missing indicator (repair_missing_indicators). Approved both. 8/8 compiled.
+
+Results: All 8 theories APPROVED on compiled path. Legacy path dormant. 1204 tests. See docs/V9_PHASE4_APPROVAL_RESULTS.md, V9_PHASE4B_REMAINING_APPROVALS.md.
+
+### Phase 5 — SeriesStore (NEXT)
 Deliverables:
-- first approved compiled artifact
-- correctness tests for compiled mode
-- semantic diff report against legacy parser
+- implement SeriesStore with time-series data loading
+- make 30+ temporal indicators evaluable (currently NOT_EVALUABLE)
+- re-run scoring with full temporal coverage
+- update harness with temporal indicator results
 
-### Phase 4 — pilot theory 2
-Target: `debt_cycle_short`
-
-Deliverables:
-- support for temporal and compound conditions
-- first use of series semantics in production artifact
-- bridge tests proving deterministic evaluation of compiled series rules
-
-### Phase 5 — dual-path activation engine
-Deliverables:
-- activation engine can load compiled mode per theory
-- legacy mode retained for unmigrated theories
-- regression command still unchanged at operator level
-
-### Phase 6 — registry migration
-Deliverables:
-- migrate remaining theories one by one
-- explicit approval of each compiled artifact
-- legacy/compiled comparison reports during rollout
-
-### Phase 7 — runtime cleanup
+### Phase 6 — legacy path removal
 Deliverables:
 - remove prose extraction from runtime path
+- simplify dual_path.py to compiled-only
 - deprecate `_extract_number()` for activation semantics
 - deprecate backtick-based field extraction in activation runtime
 - keep legacy parser only as archival/migration utility if still needed

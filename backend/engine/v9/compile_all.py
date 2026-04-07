@@ -1,17 +1,28 @@
-"""v9 Phase 2: Compile all 8 theories into Phase 0 schema artifacts.
+"""v9 Phase 2: Hand-authored indicator rule definitions.
 
-Constructs CompiledActivationArtifact objects for every theory based on
-the spike compilation results and the Phase 0/1 contract analysis.
+DEPRECATED as of Phase 3.5 (2026-04-07).
+The canonical compilation entrypoint is now:
+    python -m scripts.v9_compile_theories --all
 
-Each indicator maps to a specific Phase 0 Rule type with proper
-FieldOperand/LiteralOperand types, unit declarations, and ambiguity records.
+This file contains hand-authored indicator rules written by a human reading
+ACTIVATION.md and transcribing into Python. Phase 3.5 replaces this with
+Haiku API compilation directly from the ACTIVATION.md source text.
 
-The artifacts are deterministic — no API calls needed. When the user wants
-to re-compile via Haiku (e.g., after editing a theory module), they run
-the compiler adapter separately.
+This file is retained as reference material. The hand-authored definitions
+were used to produce the initial APPROVED artifacts for:
+  - valuation_mean_reversion
+  - debt_cycle_long
+  - fiscal_dominance_arithmetic
+
+Known issues found during Phase 3.5 Haiku compilation:
+  - Weight transcription errors: several indicators have weights that
+    differ from the ACTIVATION.md source (e.g., ERP weight 0.20 here
+    vs 0.25 in ACTIVATION.md)
+  - These weight errors cause score differences (documented in
+    docs/V9_PHASE3_5_COMPILER_PIPELINE_RESULTS.md)
 
 Depends on: compiler.py (builder helpers), Phase 0 schemas
-Depended on by: scripts/v9_phase2_compile.py, parallel_compare.py
+Depended on by: scripts/v9_phase2_compile.py, parallel_compare.py (legacy)
 """
 from __future__ import annotations
 

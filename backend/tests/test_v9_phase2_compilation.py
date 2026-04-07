@@ -269,7 +269,13 @@ class TestParallelComparison:
         assert len(comparisons) == 8
 
     def test_all_mismatches_are_known_justified(self, all_artifacts, briefing):
-        """Every indicator-level mismatch must be in the known-justified inventory."""
+        """Every indicator-level mismatch must be in the known-justified inventory.
+
+        v9 Phase 3: score_all_packages() now uses compiled path for 3 approved
+        theories (valuation_mean_reversion, debt_cycle_long, fiscal_dominance_arithmetic).
+        Comparing compiled artifacts against compiled results = no mismatches for those.
+        Only 1 mismatch remains: capital_flows/acc_em_3yr_underperformance (still legacy).
+        """
         from backend.engine.theory_loader import load_all_theory_packages
         from backend.engine.activation import score_all_packages
         from backend.engine.v9.semantic_diff import KNOWN_CLASSIFICATIONS, MismatchClass
@@ -284,17 +290,9 @@ class TestParallelComparison:
                     if ic.status == "MISMATCH":
                         mismatches.append((tid, ic.indicator_id))
 
-        # Exactly 3 known mismatches, all justified improvements
-        assert len(mismatches) == 3, f"Expected 3 mismatches, got: {mismatches}"
-        for tid, iid in mismatches:
-            key = (tid, iid)
-            assert key in KNOWN_CLASSIFICATIONS, (
-                f"Unknown mismatch: {tid}/{iid}"
-            )
-            cls, _, _ = KNOWN_CLASSIFICATIONS[key]
-            assert cls == MismatchClass.JUSTIFIED_IMPROVEMENT, (
-                f"{tid}/{iid}: mismatch classified as {cls}, expected justified_improvement"
-            )
+        # v9 Phase 4B: All 8 theories on compiled path.
+        # Compiled vs compiled comparison = identity, so 0 mismatches.
+        assert len(mismatches) == 0, f"Expected 0 mismatches (all compiled), got: {mismatches}"
 
     def test_effective_tier_matches_for_most_theories(self, all_artifacts, briefing):
         from backend.engine.theory_loader import load_all_theory_packages

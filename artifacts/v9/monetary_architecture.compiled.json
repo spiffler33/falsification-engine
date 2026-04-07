@@ -1,19 +1,21 @@
 {
   "schema_version": 1,
   "artifact_type": "compiled_activation",
-  "artifact_status": "draft",
+  "artifact_status": "approved",
+  "approval_timestamp": "2026-04-07T20:00:00+00:00",
+  "approval_justification": "Phase 4 approval: tier downgrade Active->Inactive entirely from temporal exclusion (all 3 shared indicators are persistence/trend_state without SeriesStore). Compiled adds 2 new indicators: CCBS (BLOCKED, properly excluded), non-dollar settlement (evaluable scalar, correctly False at 3.89 < 4.0). 0 unexplained mismatches.",
   "source": {
     "theory_id": "monetary_architecture",
     "package_version": 2,
     "source_hash": "",
-    "activation_file": "theories/THEORY_MODULE_MONETARY_ARCHITECTURE_v2/ACTIVATION.md"
+    "activation_file": "/Users/coddiwomplers/Desktop/Python/FinAgents/falsification-engine/theories/THEORY_MODULE_monetary_architecture_v2/ACTIVATION.md"
   },
   "compiler": {
-    "compiler_engine": "haiku_phase2",
+    "compiler_engine": "haiku_phase3_5",
     "model_id": "claude-haiku-4-5-20251001",
     "schema_version": 1,
-    "prompt_version": "phase2_v1",
-    "compiled_at": "2026-04-07T03:14:30.490285+00:00",
+    "prompt_version": "phase3_5_v1",
+    "compiled_at": "2026-04-07T08:07:57.298655+00:00",
     "compilation_duration_seconds": 0.0
   },
   "phase_model": "single_phase",
@@ -23,15 +25,15 @@
       "phase_label": "Active",
       "indicators": [
         {
-          "indicator_id": "cb_gold_sustained",
-          "display_name": "Central bank gold purchases sustained",
-          "source_text": "CB gold purchases > 800 tonnes for 2 consecutive years",
+          "indicator_id": "cb_gold_purchases_elevated",
+          "display_name": "Central bank gold purchases sustained at elevated levels",
+          "source_text": "Central bank gold buying above 800 tonnes/year for 2+ consecutive years",
           "source": {
             "file": "",
             "section": "",
             "line_range": ""
           },
-          "normalized_paraphrase": "CB gold purchases > 800 tonnes for 2 consecutive years",
+          "normalized_paraphrase": "Central bank gold buying above 800 tonnes/year for 2+ consecutive years",
           "rule": {
             "rule_type": "persistence",
             "condition": {
@@ -40,7 +42,7 @@
                 "operand_type": "field",
                 "field_id": "cb_gold_purchases",
                 "unit": "tons",
-                "semantic_type": "count"
+                "semantic_type": "flow"
               },
               "comparator": "gt",
               "threshold": {
@@ -59,72 +61,60 @@
           },
           "primary_field": "cb_gold_purchases",
           "field_dependencies": [],
-          "field_unit": "tons",
-          "field_semantic_type": "count",
-          "weight": 0.25,
+          "field_unit": "unknown",
+          "field_semantic_type": "level",
+          "weight": 0.29,
           "exclusion_policy": "score_if_evaluable",
-          "compilation_status": "warning",
-          "ambiguities": [
-            {
-              "level": "medium",
-              "description": "Annual data; same pattern as fiscal_dom_arith",
-              "suggestion": ""
-            }
-          ],
+          "compilation_status": "clean",
+          "ambiguities": [],
           "compiler_warnings": [],
           "requires_time_series": true
         },
         {
-          "indicator_id": "foreign_treasury_declining",
-          "display_name": "Foreign treasury holdings declining",
-          "source_text": "Foreign holdings as % of total declining for 3+ years",
+          "indicator_id": "foreign_treasury_holdings_declining",
+          "display_name": "Foreign official Treasury holdings declining as share of outstanding",
+          "source_text": "Foreign official holdings as % of total outstanding declining for 3+ years",
           "source": {
             "file": "",
             "section": "",
             "line_range": ""
           },
-          "normalized_paraphrase": "Foreign holdings as % of total declining for 3+ years",
+          "normalized_paraphrase": "Foreign official holdings as % of total outstanding declining for 3+ years",
           "rule": {
             "rule_type": "trend_state",
             "field": {
               "operand_type": "field",
               "field_id": "foreign_treasury_holdings_pct",
-              "unit": "percent",
+              "unit": "unknown",
               "semantic_type": "level"
             },
             "direction": "falling",
             "window": {
-              "value": 36,
-              "unit": "months"
+              "value": 3,
+              "unit": "years"
             }
           },
           "primary_field": "foreign_treasury_holdings_pct",
           "field_dependencies": [],
-          "field_unit": "percent",
-          "field_semantic_type": "share_of_total",
-          "weight": 0.2,
+          "field_unit": "unknown",
+          "field_semantic_type": "level",
+          "weight": 0.24,
           "exclusion_policy": "score_if_evaluable",
-          "compilation_status": "warning",
-          "ambiguities": [
-            {
-              "level": "low",
-              "description": "3-year trend window",
-              "suggestion": ""
-            }
-          ],
+          "compilation_status": "clean",
+          "ambiguities": [],
           "compiler_warnings": [],
           "requires_time_series": true
         },
         {
-          "indicator_id": "gold_oil_elevated_rising",
+          "indicator_id": "gold_oil_ratio_elevated_rising",
           "display_name": "Gold/oil ratio elevated and rising",
-          "source_text": "Gold/oil > 25 AND trending higher for 12+ months",
+          "source_text": "Ratio above 25 (vs. historical average ~16–20) AND rising on trailing 12-month basis",
           "source": {
             "file": "",
             "section": "",
             "line_range": ""
           },
-          "normalized_paraphrase": "Gold/oil > 25 AND trending higher for 12+ months",
+          "normalized_paraphrase": "Ratio above 25 (vs. historical average ~16–20) AND rising on trailing 12-month basis",
           "rule": {
             "rule_type": "compound",
             "operator": "all",
@@ -149,7 +139,7 @@
                 "field": {
                   "operand_type": "field",
                   "field_id": "gold_oil_ratio",
-                  "unit": "ratio",
+                  "unit": "unknown",
                   "semantic_type": "level"
                 },
                 "direction": "rising",
@@ -162,129 +152,95 @@
           },
           "primary_field": "gold_oil_ratio",
           "field_dependencies": [],
-          "field_unit": "ratio",
-          "field_semantic_type": "ratio",
-          "weight": 0.2,
+          "field_unit": "unknown",
+          "field_semantic_type": "level",
+          "weight": 0.18,
           "exclusion_policy": "score_if_evaluable",
-          "compilation_status": "warning",
-          "ambiguities": [
-            {
-              "level": "low",
-              "description": "Scalar + 12-month trend",
-              "suggestion": ""
-            }
-          ],
+          "compilation_status": "clean",
+          "ambiguities": [],
           "compiler_warnings": [],
           "requires_time_series": true
         },
         {
-          "indicator_id": "ccbs_stress",
-          "display_name": "Cross-currency basis swap stress",
-          "source_text": "EUR/USD, JPY/USD 3-month CCBS stress or spike",
+          "indicator_id": "ccbs_stress_episodic",
+          "display_name": "Cross-currency basis swap stress episodic",
+          "source_text": "3-month EUR/USD or JPY/USD basis more negative than -30bp during non-crisis periods, OR episodic spikes to -50bp+",
           "source": {
             "file": "",
             "section": "",
             "line_range": ""
           },
-          "normalized_paraphrase": "EUR/USD, JPY/USD 3-month CCBS stress or spike",
+          "normalized_paraphrase": "3-month EUR/USD or JPY/USD basis more negative than -30bp during non-crisis periods, OR episodic spikes to -50bp+",
           "rule": {
-            "rule_type": "scalar_comparison",
-            "field": {
-              "operand_type": "field",
-              "field_id": "UNRESOLVED:eur_usd_3m_ccbs",
-              "unit": "basis_points",
-              "semantic_type": "spread"
-            },
-            "comparator": "lt",
-            "threshold": {
-              "operand_type": "literal",
-              "value": -30.0,
-              "unit": "basis_points"
-            }
+            "rule_type": "compound",
+            "operator": "any",
+            "clauses": []
           },
           "primary_field": "UNRESOLVED:eur_usd_3m_ccbs",
           "field_dependencies": [],
           "field_unit": "unknown",
           "field_semantic_type": "level",
-          "weight": 0.2,
+          "weight": 0.12,
           "exclusion_policy": "score_if_evaluable",
           "compilation_status": "blocked",
           "ambiguities": [
             {
               "level": "high",
-              "description": "4 CCBS fields not in briefing packet",
+              "description": "All compound clauses removed by repair (all UNRESOLVED or illegal)",
               "suggestion": ""
             }
           ],
           "compiler_warnings": [
-            "eur_usd_3m_ccbs, jpy_usd_3m_ccbs, spike variants all UNRESOLVED"
+            "Repair: removed scalar_comparison clause (unresolved:UNRESOLVED:eur_usd_3m_ccbs)",
+            "Repair: removed scalar_comparison clause (unresolved:UNRESOLVED:jpy_usd_3m_ccbs)",
+            "Repair: removed scalar_comparison clause (unresolved:UNRESOLVED:eur_usd_3m_ccbs)",
+            "Repair: removed scalar_comparison clause (unresolved:UNRESOLVED:jpy_usd_3m_ccbs)"
           ],
           "requires_time_series": false
         },
         {
-          "indicator_id": "non_dollar_settlement",
-          "display_name": "Non-dollar trade settlement rising",
-          "source_text": "RMB SWIFT share > 4% OR non-dollar energy settlement rising",
+          "indicator_id": "non_dollar_settlement_growing",
+          "display_name": "Non-dollar trade settlement growing",
+          "source_text": "RMB share of global payments above 4% AND/OR non-dollar energy settlement visible and growing in volume",
           "source": {
             "file": "",
             "section": "",
             "line_range": ""
           },
-          "normalized_paraphrase": "RMB SWIFT share > 4% OR non-dollar energy settlement rising",
+          "normalized_paraphrase": "RMB share of global payments above 4% AND/OR non-dollar energy settlement visible and growing in volume",
           "rule": {
-            "rule_type": "compound",
-            "operator": "any",
-            "clauses": [
-              {
-                "rule_type": "scalar_comparison",
-                "field": {
-                  "operand_type": "field",
-                  "field_id": "rmb_swift_share",
-                  "unit": "percent",
-                  "semantic_type": "share_of_total"
-                },
-                "comparator": "gt",
-                "threshold": {
-                  "operand_type": "literal",
-                  "value": 4.0,
-                  "unit": "percent"
-                }
-              },
-              {
-                "rule_type": "scalar_comparison",
-                "field": {
-                  "operand_type": "field",
-                  "field_id": "UNRESOLVED:non_dollar_energy_settlement",
-                  "unit": "unknown",
-                  "semantic_type": "level"
-                },
-                "comparator": "gt",
-                "threshold": {
-                  "operand_type": "literal",
-                  "value": 0.0,
-                  "unit": "dimensionless"
-                }
-              }
-            ]
+            "rule_type": "scalar_comparison",
+            "field": {
+              "operand_type": "field",
+              "field_id": "rmb_swift_share",
+              "unit": "percent",
+              "semantic_type": "share_of_total"
+            },
+            "comparator": "gt",
+            "threshold": {
+              "operand_type": "literal",
+              "value": 4.0,
+              "unit": "percent"
+            }
           },
           "primary_field": "rmb_swift_share",
           "field_dependencies": [],
-          "field_unit": "percent",
-          "field_semantic_type": "share_of_total",
-          "weight": 0.15,
+          "field_unit": "unknown",
+          "field_semantic_type": "level",
+          "weight": 0.17,
           "exclusion_policy": "score_if_evaluable",
           "compilation_status": "warning",
           "ambiguities": [
             {
-              "level": "high",
-              "description": "Second OR branch (energy settlement) UNRESOLVED",
+              "level": "medium",
+              "description": "Compound simplified: 1 clause(s) pruned, 1 evaluable clause retained",
               "suggestion": ""
             }
           ],
           "compiler_warnings": [
-            "non_dollar_energy_settlement_volume field not in briefing"
+            "Repair: removed trend_state clause (unresolved:UNRESOLVED:non_dollar_energy_settlement_volume)"
           ],
-          "requires_time_series": false
+          "requires_time_series": true
         }
       ],
       "activation_threshold": 0.6,
@@ -300,12 +256,8 @@
     "warnings": []
   },
   "total_indicators": 5,
-  "clean_count": 0,
-  "warning_count": 4,
+  "clean_count": 3,
+  "warning_count": 1,
   "blocked_count": 1,
-  "artifact_notes": [
-    "Structurally hardest theory to compile — most external-data-dependent",
-    "Nearly all indicators require time-series or missing fields",
-    "Legacy score of 0.662 achieved via fragile number extraction from prose"
-  ]
+  "artifact_notes": []
 }
