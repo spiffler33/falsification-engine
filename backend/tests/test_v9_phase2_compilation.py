@@ -268,10 +268,11 @@ class TestParallelComparison:
         comparisons = run_parallel_comparison(all_artifacts, briefing, legacy)
         assert len(comparisons) == 8
 
-    def test_no_indicator_level_mismatches(self, all_artifacts, briefing):
-        """Key assertion: every evaluable indicator should agree on trigger state."""
+    def test_all_mismatches_are_known_justified(self, all_artifacts, briefing):
+        """Every indicator-level mismatch must be in the known-justified inventory."""
         from backend.engine.theory_loader import load_all_theory_packages
         from backend.engine.activation import score_all_packages
+        from backend.engine.v9.semantic_diff import KNOWN_CLASSIFICATIONS, MismatchClass
         packages = load_all_theory_packages()
         legacy = {r.theory_id: r for r in score_all_packages(packages, briefing)}
         comparisons = run_parallel_comparison(all_artifacts, briefing, legacy)
@@ -281,9 +282,19 @@ class TestParallelComparison:
             for phase in tc.phases:
                 for ic in phase.indicators:
                     if ic.status == "MISMATCH":
-                        mismatches.append(f"{tid}/{ic.indicator_id}")
+                        mismatches.append((tid, ic.indicator_id))
 
-        assert mismatches == [], f"Indicator-level mismatches: {mismatches}"
+        # Exactly 3 known mismatches, all justified improvements
+        assert len(mismatches) == 3, f"Expected 3 mismatches, got: {mismatches}"
+        for tid, iid in mismatches:
+            key = (tid, iid)
+            assert key in KNOWN_CLASSIFICATIONS, (
+                f"Unknown mismatch: {tid}/{iid}"
+            )
+            cls, _, _ = KNOWN_CLASSIFICATIONS[key]
+            assert cls == MismatchClass.JUSTIFIED_IMPROVEMENT, (
+                f"{tid}/{iid}: mismatch classified as {cls}, expected justified_improvement"
+            )
 
     def test_effective_tier_matches_for_most_theories(self, all_artifacts, briefing):
         from backend.engine.theory_loader import load_all_theory_packages

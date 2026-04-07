@@ -10,7 +10,9 @@
 | Metric | Value |
 |--------|-------|
 | Total indicators | 68 |
-| Indicator-level mismatches | 0 |
+| Matched indicators | 31 |
+| Indicator-level mismatches | 3 (all justified) |
+| Not evaluable (time-series) | 30 |
 | Justified improvements | 8 |
 | Items needing human review | 0 |
 | Phase/tier matches | 6/11 |
@@ -264,4 +266,4 @@ However, the following items warrant human attention during artifact review:
 
 ## Conclusion
 
-Phase 2 produces a clean, reviewable semantic diff with **zero items requiring human review** and **8 justified improvements** over legacy. The compiled artifacts are ready for human review and potential baseline freeze in Phase 3.
+Phase 2 produces a clean, reviewable semantic diff with **zero items requiring human review**, **3 real indicator-level mismatches (all justified improvements)**, and **8 total justified improvements** over legacy. The compiled artifacts are ready for human review and potential baseline freeze in Phase 3.

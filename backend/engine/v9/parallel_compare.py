@@ -211,12 +211,23 @@ class ParallelComparisonEngine:
         else:
             ic.compiled_triggered = ind_result.triggered
 
-        # Find legacy match — try display_name first, then indicator_id
-        legacy = legacy_indicators.get(ind_result.display_name)
+        # Find legacy match using explicit name mapping, then fallbacks
+        legacy = None
+
+        # 1. Try explicit mapping first (authoritative)
+        mapped_names = INDICATOR_NAME_MAP.get(ind_result.indicator_id, [])
+        for mapped_name in mapped_names:
+            legacy = legacy_indicators.get(mapped_name)
+            if legacy is not None:
+                break
+
+        # 2. Try display_name and indicator_id directly
+        if legacy is None:
+            legacy = legacy_indicators.get(ind_result.display_name)
         if legacy is None:
             legacy = legacy_indicators.get(ind_result.indicator_id)
 
-        # Also try fuzzy matching on indicator names
+        # 3. Try fuzzy matching as last resort
         if legacy is None:
             for leg_name, leg_data in legacy_indicators.items():
                 if _names_match(ind_result.display_name, leg_name):
@@ -224,7 +235,16 @@ class ParallelComparisonEngine:
                     break
 
         if legacy is None:
-            if ind_result.display_name in legacy_skipped or ind_result.indicator_id in legacy_skipped:
+            # Check if skipped — try mapped names + display_name + id
+            all_names_to_check = (
+                mapped_names
+                + [ind_result.display_name, ind_result.indicator_id]
+            )
+            is_skipped = any(
+                any(sn.startswith(n) or n in sn for sn in legacy_skipped)
+                for n in all_names_to_check
+            )
+            if is_skipped:
                 ic.legacy_skipped = True
                 ic.status = "LEGACY_SKIPPED"
             else:
@@ -252,6 +272,200 @@ def _names_match(name_a: str, name_b: str) -> bool:
     def normalize(s):
         return re.sub(r"[^a-z0-9]", "", s.lower())
     return normalize(name_a) == normalize(name_b)
+
+
+# ---------------------------------------------------------------------------
+# Explicit indicator name mapping: compiled indicator_id → legacy name(s)
+# ---------------------------------------------------------------------------
+# The compiled artifacts use clean snake_case indicator_ids.
+# The legacy engine uses display names from the theory module markdown.
+# These are often different strings, so we need an explicit mapping to
+# avoid false NOT_IN_LEGACY classifications.
+
+INDICATOR_NAME_MAP: dict[str, list[str]] = {
+    # --- valuation_mean_reversion ---
+    "erp_compressed": ["Equity risk premium compressed"],
+    "cape_elevated": ["Shiller CAPE elevated"],
+    "buffett_extreme": ["Buffett Indicator extreme"],
+    "cash_yield_exceeds_equity": [
+        "Short-term cash yield exceeds equity earnings yield",
+        "Cash yield exceeds equity yield",
+    ],
+    "profit_margins_elevated": [
+        "Corporate profit margins at cycle highs",
+        "Corporate profit margins elevated",
+    ],
+    "breadth_narrow": ["Market breadth narrow"],
+    "insider_selling": ["Insider selling elevated"],
+
+    # --- debt_cycle_short (expansion) ---
+    "exp_ism_above_contraction": ["ISM proxy above contraction"],
+    "exp_unemployment_low": ["Unemployment low or falling"],
+    "exp_credit_spreads_tight": ["Credit spreads tight or tightening"],
+    "exp_curve_not_inverted": [
+        "Yield curve not deeply inverted",
+        "Yield curve not inverted",
+    ],
+    "exp_initial_claims_low": ["Initial claims low"],
+    "exp_fed_funds_below_gdp": ["Fed funds below nominal GDP growth"],
+    "exp_net_credit_growth": ["Net credit growth positive"],
+    "exp_consumer_confidence": [
+        "Consumer/business confidence",
+        "Consumer confidence",
+    ],
+
+    # --- debt_cycle_short (contraction) ---
+    "con_ism_below_contraction": ["ISM proxy below contraction"],
+    "con_sahm_rule": ["Unemployment rising (Sahm Rule)"],
+    "con_credit_spreads_widening": ["Credit spreads widening sharply"],
+    "con_curve_resteepening": [
+        "Yield curve re-steepening from deep inversion",
+        "Yield curve re-steepening",
+    ],
+    "con_initial_claims_rising": ["Initial claims rising"],
+    "con_fed_funds_above_gdp": ["Fed funds above nominal GDP growth"],
+    "con_sloos_tightening": ["SLOOS showing broad tightening"],
+
+    # --- debt_cycle_long ---
+    "total_debt_gdp_elevated": [
+        "Total debt / GDP above historical warning level",
+        "Total debt/GDP above warning level",
+    ],
+    "fed_bs_gdp_elevated": [
+        "Fed balance sheet / GDP elevated",
+        "Fed balance sheet/GDP elevated",
+    ],
+    "rates_near_elb": [
+        "Rates at or near effective lower bound within recent memory",
+        "Rates at/near effective lower bound in recent memory",
+        "Rates at/near ELB",
+    ],
+    "fiscal_deficit_primary_driver": [
+        "Fiscal deficit as primary growth driver",
+        "Deficit as primary growth driver",
+    ],
+    "wealth_inequality_extreme": [
+        "Wealth inequality at cycle-characteristic extremes",
+        "Wealth inequality at extremes",
+    ],
+    "negative_real_rates": [
+        "Negative real rates during expansion",
+        "Negative real rates",
+    ],
+
+    # --- structural_fragility (building) ---
+    "bld_vix_low": ["Implied vol level"],
+    "bld_vol_gap": ["Implied-realized vol gap"],
+    "bld_hy_spread_tight": ["High-yield spread"],
+    "bld_top10_concentration": ["Top-10 index concentration"],
+    "bld_capex_mismatch": ["Capex/revenue mismatch"],
+    "bld_margin_debt_high": ["Margin debt"],
+    "bld_large_small_divergence": ["Large-cap/small-cap divergence"],
+    "bld_passive_share": ["Passive fund share"],
+
+    # --- structural_fragility (resolving) ---
+    "res_vix_elevated": ["Implied vol level"],
+    "res_hy_spread_wide": ["High-yield spread"],
+    "res_drawdown_deep": ["Drawdown depth"],
+    "res_cape_compressed": ["Valuation compression"],
+
+    # --- fiscal_dominance_arithmetic ---
+    "interest_receipts_ratio": ["Interest expense / tax receipts ratio"],
+    "interest_exceeds_defense": [
+        "Interest expense exceeds major discretionary category",
+    ],
+    "deficit_pace_outside_recession": ["Deficit pace outside recession"],
+    "debt_rollover_higher_rates": ["Debt rollover at higher rates"],
+    "gold_oil_ratio_elevated": ["Gold/oil ratio elevated"],
+    "cb_gold_purchases": ["Central bank gold purchases sustained"],
+
+    # --- fiscal_dominance_liquidity ---
+    "net_liquidity_expanding": ["Net liquidity expanding"],
+    "deficit_pace_elevated": ["Deficit pace"],
+    "rate_hikes_no_recession": [
+        "Rate hikes not producing recession",
+        "Rate hikes without recession",
+    ],
+    "hard_assets_outperforming": [
+        "Hard assets outperforming nominal bonds",
+        "Hard assets outperforming",
+    ],
+    "rrp_draining": [
+        "RRP draining toward zero",
+        "RRP draining",
+    ],
+    "fed_bs_inconsistent": [
+        "Fed balance sheet direction inconsistent with stated policy",
+        "Fed BS inconsistent with announced QT pace",
+    ],
+    "tga_spending": [
+        "TGA behavior consistent with spending",
+        "TGA spending behavior",
+    ],
+
+    # --- capital_flows (accumulation) ---
+    "acc_em_dm_pe_gap": [
+        "EM vs. DM PE gap at extremes",
+        "EM vs. DM valuation gap",
+    ],
+    "acc_em_3yr_underperformance": [
+        "EM rolling 3-year underperformance",
+        "EM 3-year cumulative underperformance",
+    ],
+    "acc_dollar_strong": [
+        "Dollar strong or sideways",
+        "Dollar strength/stability",
+    ],
+    "acc_china_credit_flat": [
+        "China credit impulse flat or negative",
+        "China credit impulse flat/negative",
+    ],
+
+    # --- capital_flows (rotation) ---
+    "rot_dollar_weakening": ["Dollar weakening"],
+    "rot_china_credit_positive": [
+        "China credit impulse positive and accelerating",
+        "China credit impulse positive and rising",
+    ],
+    "rot_rmb_strengthening": [
+        "RMB strengthening",
+        "RMB/CNH strengthening vs USD",
+    ],
+    "rot_em_outperforming": [
+        "EM outperforming DM on relative basis",
+        "EM outperforming DM",
+    ],
+    "rot_commodity_prices_rising": [
+        "Commodity prices rising",
+        "Broad commodity prices rising",
+    ],
+    "rot_chinese_equities_leading": [
+        "Chinese equities leading",
+        "Chinese equities leading rotation",
+    ],
+
+    # --- monetary_architecture ---
+    "cb_gold_sustained": [
+        "Central bank gold purchases sustained at elevated levels",
+        "Central bank gold purchases sustained",
+    ],
+    "foreign_treasury_declining": [
+        "Foreign official Treasury holdings declining as share of outstanding",
+        "Foreign official Treasury holdings declining",
+    ],
+    "gold_oil_elevated_rising": [
+        "Gold/oil ratio elevated and rising",
+        "Gold/oil elevated and rising",
+    ],
+    "ccbs_stress": [
+        "Cross-currency basis swap stress",
+        "Cross-border funding stress",
+    ],
+    "non_dollar_settlement": [
+        "Non-dollar trade settlement rising",
+        "Non-dollar settlement share rising",
+    ],
+}
 
 
 # ---------------------------------------------------------------------------

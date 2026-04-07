@@ -87,9 +87,20 @@ One exception: **structural_fragility building** is compiled=adjacent vs legacy=
 
 ## 5. Indicator-Level Results
 
-**0 trigger-state mismatches across all 68 indicators.**
+**3 trigger-state mismatches across 68 indicators. All 3 are justified improvements.**
 
-For every evaluable indicator where both engines produce a True/False result, they agree. The differences are all in the NOT_EVALUABLE / NOT_IN_LEGACY categories, which are correctly handled by the denominator exclusion policy.
+| Status | Count | Meaning |
+|--------|-------|---------|
+| MATCH | 31 | Both engines agree on trigger state |
+| MISMATCH | 3 | Different trigger state (all justified improvements) |
+| NOT_EVALUABLE | 30 | Compiled can't evaluate (time-series / compound with temporal sub-rules) |
+| NOT_IN_LEGACY | 1 | Indicator genuinely absent from legacy (skipped in both) |
+| LEGACY_SKIPPED | 3 | Skipped by legacy (web-data / qualitative) |
+
+The 3 mismatches are:
+1. **profit_margins**: compiled=True (OR condition handles profits/GDP > 10%), legacy=False
+2. **wealth_inequality**: compiled=False (correct 70% threshold), legacy=True (extracts "10")
+3. **EM 3yr underperformance**: compiled=False (correct lt -30), legacy=True (strips sign)
 
 ---
 
@@ -98,7 +109,7 @@ For every evaluable indicator where both engines produce a True/False result, th
 | Metric | Count |
 |--------|-------|
 | Total indicators | 68 |
-| Indicator-level mismatches | 0 |
+| Indicator-level mismatches | 3 (all justified) |
 | Justified improvements | 8 |
 | Items needing human review | 0 |
 | Phase/tier matches | 6/11 |
