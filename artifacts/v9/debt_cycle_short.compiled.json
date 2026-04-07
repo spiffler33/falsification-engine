@@ -1,0 +1,830 @@
+{
+  "schema_version": 1,
+  "artifact_type": "compiled_activation",
+  "artifact_status": "draft",
+  "source": {
+    "theory_id": "debt_cycle_short",
+    "package_version": 2,
+    "source_hash": "",
+    "activation_file": "theories/THEORY_MODULE_DEBT_CYCLE_SHORT_v2/ACTIVATION.md"
+  },
+  "compiler": {
+    "compiler_engine": "haiku_phase2",
+    "model_id": "claude-haiku-4-5-20251001",
+    "schema_version": 1,
+    "prompt_version": "phase2_v1",
+    "compiled_at": "2026-04-07T03:14:30.489026+00:00",
+    "compilation_duration_seconds": 0.0
+  },
+  "phase_model": "two_phase",
+  "phases": [
+    {
+      "phase_id": "expansion",
+      "phase_label": "Expansion",
+      "indicators": [
+        {
+          "indicator_id": "exp_ism_above_contraction",
+          "display_name": "ISM above contraction threshold",
+          "source_text": "ISM proxy above 50",
+          "source": {
+            "file": "",
+            "section": "",
+            "line_range": ""
+          },
+          "normalized_paraphrase": "ISM proxy above 50",
+          "rule": {
+            "rule_type": "scalar_comparison",
+            "field": {
+              "operand_type": "field",
+              "field_id": "growth.ism_proxy",
+              "unit": "index_points",
+              "semantic_type": "index"
+            },
+            "comparator": "gt",
+            "threshold": {
+              "operand_type": "literal",
+              "value": 50.0,
+              "unit": "index_points"
+            }
+          },
+          "primary_field": "growth.ism_proxy",
+          "field_dependencies": [],
+          "field_unit": "index_points",
+          "field_semantic_type": "index",
+          "weight": 0.15,
+          "exclusion_policy": "score_if_evaluable",
+          "compilation_status": "clean",
+          "ambiguities": [],
+          "compiler_warnings": [],
+          "requires_time_series": false
+        },
+        {
+          "indicator_id": "exp_unemployment_low",
+          "display_name": "Unemployment low or falling",
+          "source_text": "Below 5.0% OR declining",
+          "source": {
+            "file": "",
+            "section": "",
+            "line_range": ""
+          },
+          "normalized_paraphrase": "Below 5.0% OR declining",
+          "rule": {
+            "rule_type": "compound",
+            "operator": "any",
+            "clauses": [
+              {
+                "rule_type": "scalar_comparison",
+                "field": {
+                  "operand_type": "field",
+                  "field_id": "growth.unemployment",
+                  "unit": "percent",
+                  "semantic_type": "rate"
+                },
+                "comparator": "lt",
+                "threshold": {
+                  "operand_type": "literal",
+                  "value": 5.0,
+                  "unit": "percent"
+                }
+              },
+              {
+                "rule_type": "trend_state",
+                "field": {
+                  "operand_type": "field",
+                  "field_id": "growth.unemployment",
+                  "unit": "percent",
+                  "semantic_type": "level"
+                },
+                "direction": "falling",
+                "window": {
+                  "value": 3,
+                  "unit": "months"
+                }
+              }
+            ]
+          },
+          "primary_field": "growth.unemployment",
+          "field_dependencies": [],
+          "field_unit": "percent",
+          "field_semantic_type": "rate",
+          "weight": 0.1,
+          "exclusion_policy": "score_if_evaluable",
+          "compilation_status": "warning",
+          "ambiguities": [
+            {
+              "level": "low",
+              "description": "OR decomposition of 'low or falling'",
+              "suggestion": ""
+            }
+          ],
+          "compiler_warnings": [],
+          "requires_time_series": false
+        },
+        {
+          "indicator_id": "exp_credit_spreads_tight",
+          "display_name": "Credit spreads tight",
+          "source_text": "HY spread below 450bp AND not widening for 3+ months",
+          "source": {
+            "file": "",
+            "section": "",
+            "line_range": ""
+          },
+          "normalized_paraphrase": "HY spread below 450bp AND not widening for 3+ months",
+          "rule": {
+            "rule_type": "compound",
+            "operator": "all",
+            "clauses": [
+              {
+                "rule_type": "scalar_comparison",
+                "field": {
+                  "operand_type": "field",
+                  "field_id": "credit.hy_spread",
+                  "unit": "basis_points",
+                  "semantic_type": "spread"
+                },
+                "comparator": "lt",
+                "threshold": {
+                  "operand_type": "literal",
+                  "value": 450.0,
+                  "unit": "basis_points"
+                }
+              },
+              {
+                "rule_type": "trend_state",
+                "field": {
+                  "operand_type": "field",
+                  "field_id": "credit.hy_spread",
+                  "unit": "basis_points",
+                  "semantic_type": "level"
+                },
+                "direction": "stable",
+                "window": {
+                  "value": 3,
+                  "unit": "months"
+                }
+              }
+            ]
+          },
+          "primary_field": "credit.hy_spread",
+          "field_dependencies": [],
+          "field_unit": "basis_points",
+          "field_semantic_type": "spread",
+          "weight": 0.15,
+          "exclusion_policy": "score_if_evaluable",
+          "compilation_status": "warning",
+          "ambiguities": [
+            {
+              "level": "low",
+              "description": "'Not widening' approximated as trend(stable)",
+              "suggestion": ""
+            }
+          ],
+          "compiler_warnings": [],
+          "requires_time_series": false
+        },
+        {
+          "indicator_id": "exp_curve_not_inverted",
+          "display_name": "Yield curve not inverted",
+          "source_text": "2s10s curve above -0.50%",
+          "source": {
+            "file": "",
+            "section": "",
+            "line_range": ""
+          },
+          "normalized_paraphrase": "2s10s curve above -0.50%",
+          "rule": {
+            "rule_type": "scalar_comparison",
+            "field": {
+              "operand_type": "field",
+              "field_id": "rates.curve_2s10s",
+              "unit": "percent",
+              "semantic_type": "spread"
+            },
+            "comparator": "gt",
+            "threshold": {
+              "operand_type": "literal",
+              "value": -0.5,
+              "unit": "percent"
+            }
+          },
+          "primary_field": "rates.curve_2s10s",
+          "field_dependencies": [],
+          "field_unit": "percent",
+          "field_semantic_type": "spread",
+          "weight": 0.1,
+          "exclusion_policy": "score_if_evaluable",
+          "compilation_status": "clean",
+          "ambiguities": [],
+          "compiler_warnings": [],
+          "requires_time_series": false
+        },
+        {
+          "indicator_id": "exp_initial_claims_low",
+          "display_name": "Initial claims low",
+          "source_text": "Initial claims below 250K",
+          "source": {
+            "file": "",
+            "section": "",
+            "line_range": ""
+          },
+          "normalized_paraphrase": "Weekly initial claims below 250,000 (threshold in thousands, field in raw count)",
+          "rule": {
+            "rule_type": "scalar_comparison",
+            "field": {
+              "operand_type": "field",
+              "field_id": "growth.initial_claims",
+              "unit": "count",
+              "semantic_type": "count"
+            },
+            "comparator": "lt",
+            "threshold": {
+              "operand_type": "literal",
+              "value": 250.0,
+              "unit": "thousands"
+            }
+          },
+          "primary_field": "growth.initial_claims",
+          "field_dependencies": [],
+          "field_unit": "count",
+          "field_semantic_type": "count",
+          "weight": 0.1,
+          "exclusion_policy": "score_if_evaluable",
+          "compilation_status": "clean",
+          "ambiguities": [],
+          "compiler_warnings": [],
+          "requires_time_series": false
+        },
+        {
+          "indicator_id": "exp_fed_funds_below_gdp",
+          "display_name": "Fed funds below nominal GDP growth",
+          "source_text": "Fed funds rate below nominal GDP growth rate",
+          "source": {
+            "file": "",
+            "section": "",
+            "line_range": ""
+          },
+          "normalized_paraphrase": "Fed funds rate below nominal GDP growth rate",
+          "rule": {
+            "rule_type": "field_comparison",
+            "left": {
+              "operand_type": "field",
+              "field_id": "rates.fed_funds",
+              "unit": "percent",
+              "semantic_type": "rate"
+            },
+            "comparator": "lt",
+            "right": {
+              "operand_type": "derived",
+              "function_name": "nominal_gdp_growth",
+              "arguments": [],
+              "unit": "percent",
+              "semantic_type": "growth_rate"
+            },
+            "offset": null
+          },
+          "primary_field": "rates.fed_funds",
+          "field_dependencies": [
+            "growth.real_gdp",
+            "inflation.cpi_yoy"
+          ],
+          "field_unit": "percent",
+          "field_semantic_type": "rate",
+          "weight": 0.1,
+          "exclusion_policy": "score_if_evaluable",
+          "compilation_status": "warning",
+          "ambiguities": [
+            {
+              "level": "low",
+              "description": "Uses derived nominal_gdp_growth = real_gdp + cpi_yoy",
+              "suggestion": ""
+            }
+          ],
+          "compiler_warnings": [],
+          "requires_time_series": false
+        },
+        {
+          "indicator_id": "exp_net_credit_growth",
+          "display_name": "Net credit growth positive",
+          "source_text": "Bank loan growth YoY positive",
+          "source": {
+            "file": "",
+            "section": "",
+            "line_range": ""
+          },
+          "normalized_paraphrase": "Bank loan growth YoY positive",
+          "rule": {
+            "rule_type": "scalar_comparison",
+            "field": {
+              "operand_type": "field",
+              "field_id": "UNRESOLVED:loan_growth_yoy",
+              "unit": "unknown",
+              "semantic_type": "level"
+            },
+            "comparator": "gt",
+            "threshold": {
+              "operand_type": "literal",
+              "value": 0.0,
+              "unit": "dimensionless"
+            }
+          },
+          "primary_field": "UNRESOLVED:loan_growth_yoy",
+          "field_dependencies": [],
+          "field_unit": "unknown",
+          "field_semantic_type": "level",
+          "weight": 0.15,
+          "exclusion_policy": "score_if_evaluable",
+          "compilation_status": "blocked",
+          "ambiguities": [],
+          "compiler_warnings": [
+            "loan_growth_yoy field not available in briefing packet"
+          ],
+          "requires_time_series": false
+        },
+        {
+          "indicator_id": "exp_consumer_confidence",
+          "display_name": "Consumer confidence stable/rising",
+          "source_text": "Consumer confidence above 90 AND stable or rising",
+          "source": {
+            "file": "",
+            "section": "",
+            "line_range": ""
+          },
+          "normalized_paraphrase": "Consumer confidence above 90 AND stable or rising",
+          "rule": {
+            "rule_type": "compound",
+            "operator": "all",
+            "clauses": [
+              {
+                "rule_type": "scalar_comparison",
+                "field": {
+                  "operand_type": "field",
+                  "field_id": "consumer_confidence",
+                  "unit": "index_points",
+                  "semantic_type": "index"
+                },
+                "comparator": "gt",
+                "threshold": {
+                  "operand_type": "literal",
+                  "value": 90.0,
+                  "unit": "index_points"
+                }
+              },
+              {
+                "rule_type": "trend_state",
+                "field": {
+                  "operand_type": "field",
+                  "field_id": "consumer_confidence",
+                  "unit": "index_points",
+                  "semantic_type": "level"
+                },
+                "direction": "stable",
+                "window": {
+                  "value": 3,
+                  "unit": "months"
+                }
+              }
+            ]
+          },
+          "primary_field": "consumer_confidence",
+          "field_dependencies": [],
+          "field_unit": "index_points",
+          "field_semantic_type": "index",
+          "weight": 0.15,
+          "exclusion_policy": "score_if_evaluable",
+          "compilation_status": "warning",
+          "ambiguities": [
+            {
+              "level": "medium",
+              "description": "CEO confidence survey component unresolved",
+              "suggestion": ""
+            }
+          ],
+          "compiler_warnings": [],
+          "requires_time_series": false
+        }
+      ],
+      "activation_threshold": 0.6,
+      "adjacent_threshold": 0.3
+    },
+    {
+      "phase_id": "contraction",
+      "phase_label": "Contraction",
+      "indicators": [
+        {
+          "indicator_id": "con_ism_below_contraction",
+          "display_name": "ISM below contraction AND falling",
+          "source_text": "ISM proxy below 48 AND declining for 3+ months",
+          "source": {
+            "file": "",
+            "section": "",
+            "line_range": ""
+          },
+          "normalized_paraphrase": "ISM proxy below 48 AND declining for 3+ months",
+          "rule": {
+            "rule_type": "compound",
+            "operator": "all",
+            "clauses": [
+              {
+                "rule_type": "scalar_comparison",
+                "field": {
+                  "operand_type": "field",
+                  "field_id": "growth.ism_proxy",
+                  "unit": "index_points",
+                  "semantic_type": "index"
+                },
+                "comparator": "lt",
+                "threshold": {
+                  "operand_type": "literal",
+                  "value": 48.0,
+                  "unit": "index_points"
+                }
+              },
+              {
+                "rule_type": "trend_state",
+                "field": {
+                  "operand_type": "field",
+                  "field_id": "growth.ism_proxy",
+                  "unit": "index_points",
+                  "semantic_type": "level"
+                },
+                "direction": "falling",
+                "window": {
+                  "value": 3,
+                  "unit": "months"
+                }
+              }
+            ]
+          },
+          "primary_field": "growth.ism_proxy",
+          "field_dependencies": [],
+          "field_unit": "index_points",
+          "field_semantic_type": "index",
+          "weight": 0.2,
+          "exclusion_policy": "score_if_evaluable",
+          "compilation_status": "warning",
+          "ambiguities": [],
+          "compiler_warnings": [],
+          "requires_time_series": false
+        },
+        {
+          "indicator_id": "con_sahm_rule",
+          "display_name": "Unemployment rising (Sahm Rule)",
+          "source_text": "Sahm Rule triggered: 3-month MA of unemployment rising 0.50%+ above 12-month low",
+          "source": {
+            "file": "",
+            "section": "",
+            "line_range": ""
+          },
+          "normalized_paraphrase": "Sahm Rule triggered: 3-month MA of unemployment rising 0.50%+ above 12-month low",
+          "rule": {
+            "rule_type": "named_pattern",
+            "name": "sahm_rule",
+            "params": {
+              "field": "growth.unemployment",
+              "threshold": 0.5
+            },
+            "field_dependencies": [
+              "growth.unemployment"
+            ]
+          },
+          "primary_field": "growth.unemployment",
+          "field_dependencies": [],
+          "field_unit": "percent",
+          "field_semantic_type": "rate",
+          "weight": 0.15,
+          "exclusion_policy": "score_if_evaluable",
+          "compilation_status": "warning",
+          "ambiguities": [
+            {
+              "level": "medium",
+              "description": "Custom 3mo-MA-vs-12mo-low computation required",
+              "suggestion": ""
+            }
+          ],
+          "compiler_warnings": [],
+          "requires_time_series": true
+        },
+        {
+          "indicator_id": "con_credit_spreads_widening",
+          "display_name": "Credit spreads widening rapidly",
+          "source_text": "(HY > 500bp AND rising for 2 months) OR HY > 600bp",
+          "source": {
+            "file": "",
+            "section": "",
+            "line_range": ""
+          },
+          "normalized_paraphrase": "(HY > 500bp AND rising for 2 months) OR HY > 600bp",
+          "rule": {
+            "rule_type": "compound",
+            "operator": "any",
+            "clauses": [
+              {
+                "rule_type": "compound",
+                "operator": "all",
+                "clauses": [
+                  {
+                    "rule_type": "scalar_comparison",
+                    "field": {
+                      "operand_type": "field",
+                      "field_id": "credit.hy_spread",
+                      "unit": "basis_points",
+                      "semantic_type": "spread"
+                    },
+                    "comparator": "gt",
+                    "threshold": {
+                      "operand_type": "literal",
+                      "value": 500.0,
+                      "unit": "basis_points"
+                    }
+                  },
+                  {
+                    "rule_type": "trend_state",
+                    "field": {
+                      "operand_type": "field",
+                      "field_id": "credit.hy_spread",
+                      "unit": "basis_points",
+                      "semantic_type": "level"
+                    },
+                    "direction": "rising",
+                    "window": {
+                      "value": 2,
+                      "unit": "months"
+                    }
+                  }
+                ]
+              },
+              {
+                "rule_type": "scalar_comparison",
+                "field": {
+                  "operand_type": "field",
+                  "field_id": "credit.hy_spread",
+                  "unit": "basis_points",
+                  "semantic_type": "spread"
+                },
+                "comparator": "gt",
+                "threshold": {
+                  "operand_type": "literal",
+                  "value": 600.0,
+                  "unit": "basis_points"
+                }
+              }
+            ]
+          },
+          "primary_field": "credit.hy_spread",
+          "field_dependencies": [],
+          "field_unit": "basis_points",
+          "field_semantic_type": "spread",
+          "weight": 0.15,
+          "exclusion_policy": "score_if_evaluable",
+          "compilation_status": "warning",
+          "ambiguities": [
+            {
+              "level": "low",
+              "description": "Three-level nesting: OR(AND(scalar, trend), scalar)",
+              "suggestion": ""
+            }
+          ],
+          "compiler_warnings": [],
+          "requires_time_series": false
+        },
+        {
+          "indicator_id": "con_curve_resteepening",
+          "display_name": "Yield curve re-steepening after inversion",
+          "source_text": "Curve re-steepened from deep inversion",
+          "source": {
+            "file": "",
+            "section": "",
+            "line_range": ""
+          },
+          "normalized_paraphrase": "Curve re-steepened from deep inversion",
+          "rule": {
+            "rule_type": "named_pattern",
+            "name": "resteepened_after_inversion",
+            "params": {
+              "curve_field": "rates.curve_2s10s",
+              "inversion_threshold": -0.75,
+              "delta_rise": 0.75
+            },
+            "field_dependencies": [
+              "rates.curve_2s10s"
+            ]
+          },
+          "primary_field": "rates.curve_2s10s",
+          "field_dependencies": [],
+          "field_unit": "percent",
+          "field_semantic_type": "spread",
+          "weight": 0.1,
+          "exclusion_policy": "score_if_evaluable",
+          "compilation_status": "warning",
+          "ambiguities": [
+            {
+              "level": "medium",
+              "description": "75bp delta rise from trough needs lookback",
+              "suggestion": ""
+            }
+          ],
+          "compiler_warnings": [],
+          "requires_time_series": true
+        },
+        {
+          "indicator_id": "con_initial_claims_rising",
+          "display_name": "Initial claims rising",
+          "source_text": "Initial claims above 280K AND rising for 8+ weeks",
+          "source": {
+            "file": "",
+            "section": "",
+            "line_range": ""
+          },
+          "normalized_paraphrase": "Initial claims above 280K AND rising for 8+ weeks",
+          "rule": {
+            "rule_type": "compound",
+            "operator": "all",
+            "clauses": [
+              {
+                "rule_type": "scalar_comparison",
+                "field": {
+                  "operand_type": "field",
+                  "field_id": "growth.initial_claims",
+                  "unit": "count",
+                  "semantic_type": "count"
+                },
+                "comparator": "gt",
+                "threshold": {
+                  "operand_type": "literal",
+                  "value": 280.0,
+                  "unit": "thousands"
+                }
+              },
+              {
+                "rule_type": "trend_state",
+                "field": {
+                  "operand_type": "field",
+                  "field_id": "growth.initial_claims",
+                  "unit": "count",
+                  "semantic_type": "level"
+                },
+                "direction": "rising",
+                "window": {
+                  "value": 8,
+                  "unit": "weeks"
+                }
+              }
+            ]
+          },
+          "primary_field": "growth.initial_claims",
+          "field_dependencies": [],
+          "field_unit": "count",
+          "field_semantic_type": "count",
+          "weight": 0.1,
+          "exclusion_policy": "score_if_evaluable",
+          "compilation_status": "warning",
+          "ambiguities": [
+            {
+              "level": "low",
+              "description": "8-week window for weekly data",
+              "suggestion": ""
+            }
+          ],
+          "compiler_warnings": [],
+          "requires_time_series": false
+        },
+        {
+          "indicator_id": "con_fed_funds_above_gdp",
+          "display_name": "Fed funds above nominal GDP growth",
+          "source_text": "Fed funds > nominal GDP growth + 1% AND sustained for 6+ months",
+          "source": {
+            "file": "",
+            "section": "",
+            "line_range": ""
+          },
+          "normalized_paraphrase": "Fed funds > nominal GDP growth + 1% AND sustained for 6+ months",
+          "rule": {
+            "rule_type": "compound",
+            "operator": "all",
+            "clauses": [
+              {
+                "rule_type": "field_comparison",
+                "left": {
+                  "operand_type": "field",
+                  "field_id": "rates.fed_funds",
+                  "unit": "percent",
+                  "semantic_type": "rate"
+                },
+                "comparator": "gt",
+                "right": {
+                  "operand_type": "derived",
+                  "function_name": "nominal_gdp_growth",
+                  "arguments": [],
+                  "unit": "percent",
+                  "semantic_type": "growth_rate"
+                },
+                "offset": null
+              },
+              {
+                "rule_type": "persistence",
+                "condition": {
+                  "rule_type": "scalar_comparison",
+                  "field": {
+                    "operand_type": "field",
+                    "field_id": "rates.fed_funds",
+                    "unit": "percent",
+                    "semantic_type": "rate"
+                  },
+                  "comparator": "gt",
+                  "threshold": {
+                    "operand_type": "literal",
+                    "value": 4.0,
+                    "unit": "percent"
+                  }
+                },
+                "mode": "consecutive",
+                "n": 6,
+                "k": 6,
+                "window": {
+                  "value": 6,
+                  "unit": "months"
+                }
+              }
+            ]
+          },
+          "primary_field": "rates.fed_funds",
+          "field_dependencies": [
+            "growth.real_gdp",
+            "inflation.cpi_yoy"
+          ],
+          "field_unit": "percent",
+          "field_semantic_type": "rate",
+          "weight": 0.15,
+          "exclusion_policy": "score_if_evaluable",
+          "compilation_status": "warning",
+          "ambiguities": [
+            {
+              "level": "medium",
+              "description": "Compound: field comparison + persistence; offset +1% implicit",
+              "suggestion": ""
+            }
+          ],
+          "compiler_warnings": [],
+          "requires_time_series": true
+        },
+        {
+          "indicator_id": "con_sloos_tightening",
+          "display_name": "SLOOS broad tightening",
+          "source_text": "Senior Loan Officer Survey showing net tightening",
+          "source": {
+            "file": "",
+            "section": "",
+            "line_range": ""
+          },
+          "normalized_paraphrase": "Senior Loan Officer Survey showing net tightening",
+          "rule": {
+            "rule_type": "scalar_comparison",
+            "field": {
+              "operand_type": "field",
+              "field_id": "sloos_net_tightening",
+              "unit": "percent",
+              "semantic_type": "index"
+            },
+            "comparator": "gt",
+            "threshold": {
+              "operand_type": "literal",
+              "value": 0.0,
+              "unit": "percent"
+            }
+          },
+          "primary_field": "sloos_net_tightening",
+          "field_dependencies": [],
+          "field_unit": "percent",
+          "field_semantic_type": "index",
+          "weight": 0.15,
+          "exclusion_policy": "score_if_evaluable",
+          "compilation_status": "warning",
+          "ambiguities": [
+            {
+              "level": "high",
+              "description": "Multi-categorical survey collapsed to single metric > 0",
+              "suggestion": ""
+            }
+          ],
+          "compiler_warnings": [],
+          "requires_time_series": false
+        }
+      ],
+      "activation_threshold": 0.6,
+      "adjacent_threshold": 0.3
+    }
+  ],
+  "validation": {
+    "status": "fail",
+    "error_count": 0,
+    "warning_count": 0,
+    "info_count": 0,
+    "errors": [],
+    "warnings": []
+  },
+  "total_indicators": 15,
+  "clean_count": 3,
+  "warning_count": 11,
+  "blocked_count": 1,
+  "artifact_notes": []
+}

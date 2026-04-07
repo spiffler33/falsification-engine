@@ -1,0 +1,355 @@
+{
+  "schema_version": 1,
+  "artifact_type": "compiled_activation",
+  "artifact_status": "draft",
+  "source": {
+    "theory_id": "valuation_mean_reversion",
+    "package_version": 2,
+    "source_hash": "",
+    "activation_file": "theories/THEORY_MODULE_VALUATION_MEAN_REVERSION_v2/ACTIVATION.md"
+  },
+  "compiler": {
+    "compiler_engine": "haiku_phase2",
+    "model_id": "claude-haiku-4-5-20251001",
+    "schema_version": 1,
+    "prompt_version": "phase2_v1",
+    "compiled_at": "2026-04-07T03:14:30.488148+00:00",
+    "compilation_duration_seconds": 0.0
+  },
+  "phase_model": "single_phase",
+  "phases": [
+    {
+      "phase_id": "single",
+      "phase_label": "Active",
+      "indicators": [
+        {
+          "indicator_id": "erp_compressed",
+          "display_name": "Equity risk premium compressed",
+          "source_text": "Equity risk premium below 1.0%",
+          "source": {
+            "file": "",
+            "section": "",
+            "line_range": ""
+          },
+          "normalized_paraphrase": "Equity risk premium below 1.0%",
+          "rule": {
+            "rule_type": "scalar_comparison",
+            "field": {
+              "operand_type": "field",
+              "field_id": "equity_risk_premium",
+              "unit": "percent",
+              "semantic_type": "spread"
+            },
+            "comparator": "lt",
+            "threshold": {
+              "operand_type": "literal",
+              "value": 1.0,
+              "unit": "percent"
+            }
+          },
+          "primary_field": "equity_risk_premium",
+          "field_dependencies": [],
+          "field_unit": "percent",
+          "field_semantic_type": "spread",
+          "weight": 0.2,
+          "exclusion_policy": "score_if_evaluable",
+          "compilation_status": "clean",
+          "ambiguities": [],
+          "compiler_warnings": [],
+          "requires_time_series": false
+        },
+        {
+          "indicator_id": "cape_elevated",
+          "display_name": "Shiller CAPE elevated",
+          "source_text": "CAPE above 30",
+          "source": {
+            "file": "",
+            "section": "",
+            "line_range": ""
+          },
+          "normalized_paraphrase": "CAPE above 30",
+          "rule": {
+            "rule_type": "scalar_comparison",
+            "field": {
+              "operand_type": "field",
+              "field_id": "shiller_cape",
+              "unit": "ratio",
+              "semantic_type": "ratio"
+            },
+            "comparator": "gt",
+            "threshold": {
+              "operand_type": "literal",
+              "value": 30.0,
+              "unit": "ratio"
+            }
+          },
+          "primary_field": "shiller_cape",
+          "field_dependencies": [],
+          "field_unit": "ratio",
+          "field_semantic_type": "ratio",
+          "weight": 0.2,
+          "exclusion_policy": "score_if_evaluable",
+          "compilation_status": "clean",
+          "ambiguities": [],
+          "compiler_warnings": [],
+          "requires_time_series": false
+        },
+        {
+          "indicator_id": "buffett_extreme",
+          "display_name": "Buffett Indicator extreme",
+          "source_text": "Total market cap / GDP above 1.5x",
+          "source": {
+            "file": "",
+            "section": "",
+            "line_range": ""
+          },
+          "normalized_paraphrase": "Total market cap / GDP above 1.5x",
+          "rule": {
+            "rule_type": "scalar_comparison",
+            "field": {
+              "operand_type": "field",
+              "field_id": "buffett_indicator",
+              "unit": "ratio",
+              "semantic_type": "ratio"
+            },
+            "comparator": "gt",
+            "threshold": {
+              "operand_type": "literal",
+              "value": 1.5,
+              "unit": "ratio"
+            }
+          },
+          "primary_field": "buffett_indicator",
+          "field_dependencies": [],
+          "field_unit": "ratio",
+          "field_semantic_type": "ratio",
+          "weight": 0.15,
+          "exclusion_policy": "score_if_evaluable",
+          "compilation_status": "warning",
+          "ambiguities": [
+            {
+              "level": "low",
+              "description": "Web-sourced field, may not be in briefing",
+              "suggestion": ""
+            }
+          ],
+          "compiler_warnings": [],
+          "requires_time_series": false
+        },
+        {
+          "indicator_id": "cash_yield_exceeds_equity",
+          "display_name": "Cash yield exceeds equity yield",
+          "source_text": "Cash yield exceeds equity yield (spread > 0)",
+          "source": {
+            "file": "",
+            "section": "",
+            "line_range": ""
+          },
+          "normalized_paraphrase": "Cash yield exceeds equity yield (spread > 0)",
+          "rule": {
+            "rule_type": "scalar_comparison",
+            "field": {
+              "operand_type": "field",
+              "field_id": "cash_exceeds_equity_yield",
+              "unit": "percent",
+              "semantic_type": "spread"
+            },
+            "comparator": "gt",
+            "threshold": {
+              "operand_type": "literal",
+              "value": 0.0,
+              "unit": "percent"
+            }
+          },
+          "primary_field": "cash_exceeds_equity_yield",
+          "field_dependencies": [],
+          "field_unit": "percent",
+          "field_semantic_type": "spread",
+          "weight": 0.1,
+          "exclusion_policy": "score_if_evaluable",
+          "compilation_status": "clean",
+          "ambiguities": [],
+          "compiler_warnings": [],
+          "requires_time_series": false
+        },
+        {
+          "indicator_id": "profit_margins_elevated",
+          "display_name": "Corporate profit margins elevated",
+          "source_text": "Net margins above 12% OR corporate profits/GDP above 10%",
+          "source": {
+            "file": "",
+            "section": "",
+            "line_range": ""
+          },
+          "normalized_paraphrase": "Net margins > 12% OR profits/GDP > 10%",
+          "rule": {
+            "rule_type": "compound",
+            "operator": "any",
+            "clauses": [
+              {
+                "rule_type": "scalar_comparison",
+                "field": {
+                  "operand_type": "field",
+                  "field_id": "sp500_net_margin",
+                  "unit": "percent",
+                  "semantic_type": "rate"
+                },
+                "comparator": "gt",
+                "threshold": {
+                  "operand_type": "literal",
+                  "value": 12.0,
+                  "unit": "percent"
+                }
+              },
+              {
+                "rule_type": "scalar_comparison",
+                "field": {
+                  "operand_type": "field",
+                  "field_id": "corporate_profits_gdp_ratio",
+                  "unit": "percent",
+                  "semantic_type": "ratio"
+                },
+                "comparator": "gt",
+                "threshold": {
+                  "operand_type": "literal",
+                  "value": 10.0,
+                  "unit": "percent"
+                }
+              }
+            ]
+          },
+          "primary_field": "sp500_net_margin",
+          "field_dependencies": [
+            "corporate_profits_gdp_ratio"
+          ],
+          "field_unit": "percent",
+          "field_semantic_type": "rate",
+          "weight": 0.1,
+          "exclusion_policy": "score_if_evaluable",
+          "compilation_status": "warning",
+          "ambiguities": [
+            {
+              "level": "low",
+              "description": "OR condition: legacy only checks first sub-condition",
+              "suggestion": ""
+            }
+          ],
+          "compiler_warnings": [],
+          "requires_time_series": false
+        },
+        {
+          "indicator_id": "breadth_narrow",
+          "display_name": "Market breadth narrow",
+          "source_text": "QQQ/IWM ratio at 2-year high, broad market divergence",
+          "source": {
+            "file": "",
+            "section": "",
+            "line_range": ""
+          },
+          "normalized_paraphrase": "QQQ/IWM ratio at 2-year high, broad market divergence",
+          "rule": {
+            "rule_type": "historical_extreme",
+            "field": {
+              "operand_type": "field",
+              "field_id": "qqq_iwm_ratio",
+              "unit": "unknown",
+              "semantic_type": "level"
+            },
+            "extreme": "high",
+            "lookback": {
+              "value": 24,
+              "unit": "months"
+            },
+            "comparator": "gt",
+            "margin": null
+          },
+          "primary_field": "qqq_iwm_ratio",
+          "field_dependencies": [],
+          "field_unit": "ratio",
+          "field_semantic_type": "ratio",
+          "weight": 0.1,
+          "exclusion_policy": "score_if_evaluable",
+          "compilation_status": "warning",
+          "ambiguities": [
+            {
+              "level": "medium",
+              "description": "RSP/SPY relative component has no data source",
+              "suggestion": ""
+            }
+          ],
+          "compiler_warnings": [
+            "RSP/SPY relative performance field not available"
+          ],
+          "requires_time_series": true
+        },
+        {
+          "indicator_id": "insider_selling",
+          "display_name": "Insider selling elevated",
+          "source_text": "Insider sell/buy ratio elevated for 3+ months",
+          "source": {
+            "file": "",
+            "section": "",
+            "line_range": ""
+          },
+          "normalized_paraphrase": "Insider sell/buy ratio elevated for 3+ months",
+          "rule": {
+            "rule_type": "persistence",
+            "condition": {
+              "rule_type": "scalar_comparison",
+              "field": {
+                "operand_type": "field",
+                "field_id": "insider_sell_buy_ratio",
+                "unit": "ratio",
+                "semantic_type": "ratio"
+              },
+              "comparator": "gt",
+              "threshold": {
+                "operand_type": "literal",
+                "value": 5.0,
+                "unit": "ratio"
+              }
+            },
+            "mode": "n_of_last_k",
+            "n": 3,
+            "k": 3,
+            "window": {
+              "value": 3,
+              "unit": "months"
+            }
+          },
+          "primary_field": "insider_sell_buy_ratio",
+          "field_dependencies": [],
+          "field_unit": "ratio",
+          "field_semantic_type": "ratio",
+          "weight": 0.15,
+          "exclusion_policy": "score_if_evaluable",
+          "compilation_status": "warning",
+          "ambiguities": [
+            {
+              "level": "medium",
+              "description": "Monthly granularity assumption for persistence window",
+              "suggestion": ""
+            }
+          ],
+          "compiler_warnings": [],
+          "requires_time_series": true
+        }
+      ],
+      "activation_threshold": 0.6,
+      "adjacent_threshold": 0.3
+    }
+  ],
+  "validation": {
+    "status": "fail",
+    "error_count": 0,
+    "warning_count": 0,
+    "info_count": 0,
+    "errors": [],
+    "warnings": []
+  },
+  "total_indicators": 7,
+  "clean_count": 3,
+  "warning_count": 4,
+  "blocked_count": 0,
+  "artifact_notes": []
+}

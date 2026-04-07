@@ -1,0 +1,555 @@
+{
+  "schema_version": 1,
+  "artifact_type": "compiled_activation",
+  "artifact_status": "draft",
+  "source": {
+    "theory_id": "capital_flows",
+    "package_version": 2,
+    "source_hash": "",
+    "activation_file": "theories/THEORY_MODULE_CAPITAL_FLOWS_v2/ACTIVATION.md"
+  },
+  "compiler": {
+    "compiler_engine": "haiku_phase2",
+    "model_id": "claude-haiku-4-5-20251001",
+    "schema_version": 1,
+    "prompt_version": "phase2_v1",
+    "compiled_at": "2026-04-07T03:14:30.490134+00:00",
+    "compilation_duration_seconds": 0.0
+  },
+  "phase_model": "two_phase",
+  "phases": [
+    {
+      "phase_id": "accumulation",
+      "phase_label": "Accumulation",
+      "indicators": [
+        {
+          "indicator_id": "acc_em_dm_pe_gap",
+          "display_name": "EM vs DM PE gap elevated",
+          "source_text": "EM/DM PE gap above 40%",
+          "source": {
+            "file": "",
+            "section": "",
+            "line_range": ""
+          },
+          "normalized_paraphrase": "EM/DM PE gap above 40%",
+          "rule": {
+            "rule_type": "scalar_comparison",
+            "field": {
+              "operand_type": "field",
+              "field_id": "em_dm_pe_gap",
+              "unit": "percent",
+              "semantic_type": "ratio"
+            },
+            "comparator": "gt",
+            "threshold": {
+              "operand_type": "literal",
+              "value": 40.0,
+              "unit": "percent"
+            }
+          },
+          "primary_field": "em_dm_pe_gap",
+          "field_dependencies": [],
+          "field_unit": "percent",
+          "field_semantic_type": "ratio",
+          "weight": 0.25,
+          "exclusion_policy": "score_if_evaluable",
+          "compilation_status": "warning",
+          "ambiguities": [
+            {
+              "level": "medium",
+              "description": "PE gap semantics: measures DM premium over EM in %",
+              "suggestion": ""
+            }
+          ],
+          "compiler_warnings": [],
+          "requires_time_series": false
+        },
+        {
+          "indicator_id": "acc_em_3yr_underperformance",
+          "display_name": "EM 3-year underperformance",
+          "source_text": "EM has underperformed SPY by 30%+ over measurement period",
+          "source": {
+            "file": "",
+            "section": "",
+            "line_range": ""
+          },
+          "normalized_paraphrase": "eem_spy_3y_relative < -30: EM must have underperformed by 30%+",
+          "rule": {
+            "rule_type": "scalar_comparison",
+            "field": {
+              "operand_type": "field",
+              "field_id": "eem_spy_3y_relative",
+              "unit": "percent",
+              "semantic_type": "growth_rate"
+            },
+            "comparator": "lt",
+            "threshold": {
+              "operand_type": "literal",
+              "value": -30.0,
+              "unit": "percent"
+            }
+          },
+          "primary_field": "eem_spy_3y_relative",
+          "field_dependencies": [],
+          "field_unit": "percent",
+          "field_semantic_type": "growth_rate",
+          "weight": 0.25,
+          "exclusion_policy": "score_if_evaluable",
+          "compilation_status": "warning",
+          "ambiguities": [
+            {
+              "level": "low",
+              "description": "Uses 12-month return proxy for 3-year cumulative; sign convention: negative = EM underperformance",
+              "suggestion": ""
+            }
+          ],
+          "compiler_warnings": [],
+          "requires_time_series": false
+        },
+        {
+          "indicator_id": "acc_dollar_strong",
+          "display_name": "Dollar strong or sideways",
+          "source_text": "DXY above 100 OR trending higher/flat",
+          "source": {
+            "file": "",
+            "section": "",
+            "line_range": ""
+          },
+          "normalized_paraphrase": "DXY above 100 OR trending higher/flat",
+          "rule": {
+            "rule_type": "compound",
+            "operator": "any",
+            "clauses": [
+              {
+                "rule_type": "scalar_comparison",
+                "field": {
+                  "operand_type": "field",
+                  "field_id": "dxy_index",
+                  "unit": "index_points",
+                  "semantic_type": "index"
+                },
+                "comparator": "gt",
+                "threshold": {
+                  "operand_type": "literal",
+                  "value": 100.0,
+                  "unit": "index_points"
+                }
+              },
+              {
+                "rule_type": "trend_state",
+                "field": {
+                  "operand_type": "field",
+                  "field_id": "dxy_index",
+                  "unit": "index_points",
+                  "semantic_type": "level"
+                },
+                "direction": "rising",
+                "window": {
+                  "value": 3,
+                  "unit": "months"
+                }
+              },
+              {
+                "rule_type": "trend_state",
+                "field": {
+                  "operand_type": "field",
+                  "field_id": "dxy_index",
+                  "unit": "index_points",
+                  "semantic_type": "level"
+                },
+                "direction": "stable",
+                "window": {
+                  "value": 3,
+                  "unit": "months"
+                }
+              }
+            ]
+          },
+          "primary_field": "dxy_index",
+          "field_dependencies": [],
+          "field_unit": "index_points",
+          "field_semantic_type": "index",
+          "weight": 0.25,
+          "exclusion_policy": "score_if_evaluable",
+          "compilation_status": "warning",
+          "ambiguities": [
+            {
+              "level": "medium",
+              "description": "OR of scalar + two trend states",
+              "suggestion": ""
+            }
+          ],
+          "compiler_warnings": [],
+          "requires_time_series": false
+        },
+        {
+          "indicator_id": "acc_china_credit_flat",
+          "display_name": "China credit impulse flat or negative",
+          "source_text": "China credit impulse at or below zero",
+          "source": {
+            "file": "",
+            "section": "",
+            "line_range": ""
+          },
+          "normalized_paraphrase": "China credit impulse at or below zero",
+          "rule": {
+            "rule_type": "scalar_comparison",
+            "field": {
+              "operand_type": "field",
+              "field_id": "china_credit_impulse",
+              "unit": "percent",
+              "semantic_type": "growth_rate"
+            },
+            "comparator": "lte",
+            "threshold": {
+              "operand_type": "literal",
+              "value": 0.0,
+              "unit": "percent"
+            }
+          },
+          "primary_field": "china_credit_impulse",
+          "field_dependencies": [],
+          "field_unit": "percent",
+          "field_semantic_type": "growth_rate",
+          "weight": 0.25,
+          "exclusion_policy": "score_if_evaluable",
+          "compilation_status": "warning",
+          "ambiguities": [
+            {
+              "level": "low",
+              "description": "Credit impulse sign convention: positive = expanding credit",
+              "suggestion": ""
+            }
+          ],
+          "compiler_warnings": [],
+          "requires_time_series": false
+        }
+      ],
+      "activation_threshold": 0.6,
+      "adjacent_threshold": 0.3
+    },
+    {
+      "phase_id": "rotation",
+      "phase_label": "Rotation",
+      "indicators": [
+        {
+          "indicator_id": "rot_dollar_weakening",
+          "display_name": "Dollar weakening",
+          "source_text": "DXY trending lower for 3+ months AND below 12-month average",
+          "source": {
+            "file": "",
+            "section": "",
+            "line_range": ""
+          },
+          "normalized_paraphrase": "DXY trending lower for 3+ months AND below 12-month average",
+          "rule": {
+            "rule_type": "compound",
+            "operator": "all",
+            "clauses": [
+              {
+                "rule_type": "trend_state",
+                "field": {
+                  "operand_type": "field",
+                  "field_id": "dxy_index",
+                  "unit": "index_points",
+                  "semantic_type": "level"
+                },
+                "direction": "falling",
+                "window": {
+                  "value": 3,
+                  "unit": "months"
+                }
+              },
+              {
+                "rule_type": "historical_extreme",
+                "field": {
+                  "operand_type": "field",
+                  "field_id": "dxy_index",
+                  "unit": "unknown",
+                  "semantic_type": "level"
+                },
+                "extreme": "low",
+                "lookback": {
+                  "value": 12,
+                  "unit": "months"
+                },
+                "comparator": "lt",
+                "margin": null
+              }
+            ]
+          },
+          "primary_field": "dxy_index",
+          "field_dependencies": [],
+          "field_unit": "index_points",
+          "field_semantic_type": "index",
+          "weight": 0.2,
+          "exclusion_policy": "score_if_evaluable",
+          "compilation_status": "warning",
+          "ambiguities": [
+            {
+              "level": "medium",
+              "description": "Nearly all temporal; below 12mo avg approximated as lookback",
+              "suggestion": ""
+            }
+          ],
+          "compiler_warnings": [],
+          "requires_time_series": true
+        },
+        {
+          "indicator_id": "rot_china_credit_positive",
+          "display_name": "China credit impulse positive and rising",
+          "source_text": "Credit impulse > 0 for 2/3 months AND trending higher",
+          "source": {
+            "file": "",
+            "section": "",
+            "line_range": ""
+          },
+          "normalized_paraphrase": "Credit impulse > 0 for 2/3 months AND trending higher",
+          "rule": {
+            "rule_type": "compound",
+            "operator": "all",
+            "clauses": [
+              {
+                "rule_type": "persistence",
+                "condition": {
+                  "rule_type": "scalar_comparison",
+                  "field": {
+                    "operand_type": "field",
+                    "field_id": "china_credit_impulse",
+                    "unit": "percent",
+                    "semantic_type": "growth_rate"
+                  },
+                  "comparator": "gt",
+                  "threshold": {
+                    "operand_type": "literal",
+                    "value": 0.0,
+                    "unit": "percent"
+                  }
+                },
+                "mode": "n_of_last_k",
+                "n": 2,
+                "k": 3,
+                "window": {
+                  "value": 3,
+                  "unit": "months"
+                }
+              },
+              {
+                "rule_type": "trend_state",
+                "field": {
+                  "operand_type": "field",
+                  "field_id": "china_credit_impulse",
+                  "unit": "percent",
+                  "semantic_type": "level"
+                },
+                "direction": "rising",
+                "window": {
+                  "value": 3,
+                  "unit": "months"
+                }
+              }
+            ]
+          },
+          "primary_field": "china_credit_impulse",
+          "field_dependencies": [],
+          "field_unit": "percent",
+          "field_semantic_type": "growth_rate",
+          "weight": 0.15,
+          "exclusion_policy": "score_if_evaluable",
+          "compilation_status": "warning",
+          "ambiguities": [
+            {
+              "level": "medium",
+              "description": "Persistence + trend compound; fully temporal",
+              "suggestion": ""
+            }
+          ],
+          "compiler_warnings": [],
+          "requires_time_series": true
+        },
+        {
+          "indicator_id": "rot_rmb_strengthening",
+          "display_name": "RMB strengthening",
+          "source_text": "USD/CNY declining for 3+ months (CNY appreciating)",
+          "source": {
+            "file": "",
+            "section": "",
+            "line_range": ""
+          },
+          "normalized_paraphrase": "USD/CNY declining for 3+ months (CNY appreciating)",
+          "rule": {
+            "rule_type": "trend_state",
+            "field": {
+              "operand_type": "field",
+              "field_id": "usdcny",
+              "unit": "ratio",
+              "semantic_type": "level"
+            },
+            "direction": "falling",
+            "window": {
+              "value": 3,
+              "unit": "months"
+            }
+          },
+          "primary_field": "usdcny",
+          "field_dependencies": [],
+          "field_unit": "ratio",
+          "field_semantic_type": "level",
+          "weight": 0.15,
+          "exclusion_policy": "score_if_evaluable",
+          "compilation_status": "warning",
+          "ambiguities": [
+            {
+              "level": "low",
+              "description": "USD/CNY falling = CNY strengthening",
+              "suggestion": ""
+            }
+          ],
+          "compiler_warnings": [],
+          "requires_time_series": true
+        },
+        {
+          "indicator_id": "rot_em_outperforming",
+          "display_name": "EM outperforming DM",
+          "source_text": "EEM/SPY 3-month relative trending higher for 3+ months",
+          "source": {
+            "file": "",
+            "section": "",
+            "line_range": ""
+          },
+          "normalized_paraphrase": "EEM/SPY 3-month relative trending higher for 3+ months",
+          "rule": {
+            "rule_type": "trend_state",
+            "field": {
+              "operand_type": "field",
+              "field_id": "eem_spy_3m_relative",
+              "unit": "percent",
+              "semantic_type": "level"
+            },
+            "direction": "rising",
+            "window": {
+              "value": 3,
+              "unit": "months"
+            }
+          },
+          "primary_field": "eem_spy_3m_relative",
+          "field_dependencies": [],
+          "field_unit": "percent",
+          "field_semantic_type": "growth_rate",
+          "weight": 0.15,
+          "exclusion_policy": "score_if_evaluable",
+          "compilation_status": "warning",
+          "ambiguities": [
+            {
+              "level": "low",
+              "description": "3-month relative return trending",
+              "suggestion": ""
+            }
+          ],
+          "compiler_warnings": [],
+          "requires_time_series": true
+        },
+        {
+          "indicator_id": "rot_commodity_prices_rising",
+          "display_name": "Commodity prices rising",
+          "source_text": "Commodity index 3-month change trending higher",
+          "source": {
+            "file": "",
+            "section": "",
+            "line_range": ""
+          },
+          "normalized_paraphrase": "Commodity index 3-month change trending higher",
+          "rule": {
+            "rule_type": "trend_state",
+            "field": {
+              "operand_type": "field",
+              "field_id": "commodity_index_3m_change",
+              "unit": "percent",
+              "semantic_type": "level"
+            },
+            "direction": "rising",
+            "window": {
+              "value": 3,
+              "unit": "months"
+            }
+          },
+          "primary_field": "commodity_index_3m_change",
+          "field_dependencies": [],
+          "field_unit": "percent",
+          "field_semantic_type": "growth_rate",
+          "weight": 0.15,
+          "exclusion_policy": "score_if_evaluable",
+          "compilation_status": "warning",
+          "ambiguities": [
+            {
+              "level": "medium",
+              "description": "Double-counted temporal window",
+              "suggestion": ""
+            }
+          ],
+          "compiler_warnings": [],
+          "requires_time_series": true
+        },
+        {
+          "indicator_id": "rot_chinese_equities_leading",
+          "display_name": "Chinese equities leading rotation",
+          "source_text": "FXI 3-month return positive and outperforming",
+          "source": {
+            "file": "",
+            "section": "",
+            "line_range": ""
+          },
+          "normalized_paraphrase": "FXI 3-month return positive and outperforming",
+          "rule": {
+            "rule_type": "scalar_comparison",
+            "field": {
+              "operand_type": "field",
+              "field_id": "fxi_3m_return",
+              "unit": "percent",
+              "semantic_type": "growth_rate"
+            },
+            "comparator": "gt",
+            "threshold": {
+              "operand_type": "literal",
+              "value": 0.0,
+              "unit": "percent"
+            }
+          },
+          "primary_field": "fxi_3m_return",
+          "field_dependencies": [],
+          "field_unit": "percent",
+          "field_semantic_type": "growth_rate",
+          "weight": 0.2,
+          "exclusion_policy": "score_if_evaluable",
+          "compilation_status": "warning",
+          "ambiguities": [
+            {
+              "level": "medium",
+              "description": "Simplified from lookback to scalar; spike had field unresolved (now in registry)",
+              "suggestion": ""
+            }
+          ],
+          "compiler_warnings": [
+            "Field was UNRESOLVED in spike; now available in Phase 1 registry"
+          ],
+          "requires_time_series": false
+        }
+      ],
+      "activation_threshold": 0.6,
+      "adjacent_threshold": 0.3
+    }
+  ],
+  "validation": {
+    "status": "fail",
+    "error_count": 0,
+    "warning_count": 0,
+    "info_count": 0,
+    "errors": [],
+    "warnings": []
+  },
+  "total_indicators": 10,
+  "clean_count": 0,
+  "warning_count": 10,
+  "blocked_count": 0,
+  "artifact_notes": []
+}

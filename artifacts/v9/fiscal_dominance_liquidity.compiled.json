@@ -1,0 +1,431 @@
+{
+  "schema_version": 1,
+  "artifact_type": "compiled_activation",
+  "artifact_status": "draft",
+  "source": {
+    "theory_id": "fiscal_dominance_liquidity",
+    "package_version": 2,
+    "source_hash": "",
+    "activation_file": "theories/THEORY_MODULE_FISCAL_DOMINANCE_LIQUIDITY_v2/ACTIVATION.md"
+  },
+  "compiler": {
+    "compiler_engine": "haiku_phase2",
+    "model_id": "claude-haiku-4-5-20251001",
+    "schema_version": 1,
+    "prompt_version": "phase2_v1",
+    "compiled_at": "2026-04-07T03:14:30.489830+00:00",
+    "compilation_duration_seconds": 0.0
+  },
+  "phase_model": "single_phase",
+  "phases": [
+    {
+      "phase_id": "single",
+      "phase_label": "Active",
+      "indicators": [
+        {
+          "indicator_id": "net_liquidity_expanding",
+          "display_name": "Net liquidity expanding",
+          "source_text": "Net liquidity positive for 2+ of last 3 months",
+          "source": {
+            "file": "",
+            "section": "",
+            "line_range": ""
+          },
+          "normalized_paraphrase": "Net liquidity positive for 2+ of last 3 months",
+          "rule": {
+            "rule_type": "persistence",
+            "condition": {
+              "rule_type": "scalar_comparison",
+              "field": {
+                "operand_type": "field",
+                "field_id": "net_liquidity",
+                "unit": "usd_billions",
+                "semantic_type": "level"
+              },
+              "comparator": "gt",
+              "threshold": {
+                "operand_type": "literal",
+                "value": 0.0,
+                "unit": "dimensionless"
+              }
+            },
+            "mode": "n_of_last_k",
+            "n": 2,
+            "k": 3,
+            "window": {
+              "value": 3,
+              "unit": "months"
+            }
+          },
+          "primary_field": "net_liquidity",
+          "field_dependencies": [],
+          "field_unit": "usd_billions",
+          "field_semantic_type": "level",
+          "weight": 0.15,
+          "exclusion_policy": "score_if_evaluable",
+          "compilation_status": "warning",
+          "ambiguities": [
+            {
+              "level": "low",
+              "description": "Persistence on monthly level changes",
+              "suggestion": ""
+            }
+          ],
+          "compiler_warnings": [],
+          "requires_time_series": true
+        },
+        {
+          "indicator_id": "deficit_pace_elevated",
+          "display_name": "Deficit pace elevated",
+          "source_text": "Annualized deficit pace above $1500B",
+          "source": {
+            "file": "",
+            "section": "",
+            "line_range": ""
+          },
+          "normalized_paraphrase": "Annualized deficit pace above $1500B",
+          "rule": {
+            "rule_type": "scalar_comparison",
+            "field": {
+              "operand_type": "field",
+              "field_id": "deficit_pace_annualized",
+              "unit": "usd_billions",
+              "semantic_type": "level"
+            },
+            "comparator": "gt",
+            "threshold": {
+              "operand_type": "literal",
+              "value": 1500.0,
+              "unit": "usd_billions"
+            }
+          },
+          "primary_field": "deficit_pace_annualized",
+          "field_dependencies": [],
+          "field_unit": "usd_billions",
+          "field_semantic_type": "level",
+          "weight": 0.15,
+          "exclusion_policy": "score_if_evaluable",
+          "compilation_status": "clean",
+          "ambiguities": [],
+          "compiler_warnings": [],
+          "requires_time_series": false
+        },
+        {
+          "indicator_id": "rate_hikes_no_recession",
+          "display_name": "Rate hikes not producing recession",
+          "source_text": "Unemployment < 5% AND ISM > 45 AND fed funds > 4% for 12+ months",
+          "source": {
+            "file": "",
+            "section": "",
+            "line_range": ""
+          },
+          "normalized_paraphrase": "Unemployment < 5% AND ISM > 45 AND fed funds > 4% for 12+ months",
+          "rule": {
+            "rule_type": "compound",
+            "operator": "all",
+            "clauses": [
+              {
+                "rule_type": "scalar_comparison",
+                "field": {
+                  "operand_type": "field",
+                  "field_id": "growth.unemployment",
+                  "unit": "percent",
+                  "semantic_type": "rate"
+                },
+                "comparator": "lt",
+                "threshold": {
+                  "operand_type": "literal",
+                  "value": 5.0,
+                  "unit": "percent"
+                }
+              },
+              {
+                "rule_type": "scalar_comparison",
+                "field": {
+                  "operand_type": "field",
+                  "field_id": "growth.ism_proxy",
+                  "unit": "index_points",
+                  "semantic_type": "index"
+                },
+                "comparator": "gt",
+                "threshold": {
+                  "operand_type": "literal",
+                  "value": 45.0,
+                  "unit": "index_points"
+                }
+              },
+              {
+                "rule_type": "persistence",
+                "condition": {
+                  "rule_type": "scalar_comparison",
+                  "field": {
+                    "operand_type": "field",
+                    "field_id": "rates.fed_funds",
+                    "unit": "percent",
+                    "semantic_type": "rate"
+                  },
+                  "comparator": "gt",
+                  "threshold": {
+                    "operand_type": "literal",
+                    "value": 4.0,
+                    "unit": "percent"
+                  }
+                },
+                "mode": "consecutive",
+                "n": 12,
+                "k": 12,
+                "window": {
+                  "value": 12,
+                  "unit": "months"
+                }
+              }
+            ]
+          },
+          "primary_field": "growth.unemployment",
+          "field_dependencies": [
+            "growth.ism_proxy",
+            "rates.fed_funds"
+          ],
+          "field_unit": "percent",
+          "field_semantic_type": "rate",
+          "weight": 0.15,
+          "exclusion_policy": "score_if_evaluable",
+          "compilation_status": "warning",
+          "ambiguities": [
+            {
+              "level": "medium",
+              "description": "Complex compound with 12-month persistence",
+              "suggestion": ""
+            }
+          ],
+          "compiler_warnings": [],
+          "requires_time_series": true
+        },
+        {
+          "indicator_id": "hard_assets_outperforming",
+          "display_name": "Hard assets outperforming",
+          "source_text": "Hard assets vs nominal assets 12-month relative > 10%",
+          "source": {
+            "file": "",
+            "section": "",
+            "line_range": ""
+          },
+          "normalized_paraphrase": "Hard assets vs nominal assets 12-month relative > 10%",
+          "rule": {
+            "rule_type": "scalar_comparison",
+            "field": {
+              "operand_type": "field",
+              "field_id": "hard_vs_nominal_12m",
+              "unit": "percent",
+              "semantic_type": "growth_rate"
+            },
+            "comparator": "gt",
+            "threshold": {
+              "operand_type": "literal",
+              "value": 10.0,
+              "unit": "percent"
+            }
+          },
+          "primary_field": "hard_vs_nominal_12m",
+          "field_dependencies": [],
+          "field_unit": "percent",
+          "field_semantic_type": "growth_rate",
+          "weight": 0.15,
+          "exclusion_policy": "score_if_evaluable",
+          "compilation_status": "clean",
+          "ambiguities": [],
+          "compiler_warnings": [],
+          "requires_time_series": false
+        },
+        {
+          "indicator_id": "rrp_draining",
+          "display_name": "RRP draining toward zero",
+          "source_text": "Reverse repo below $250B AND declining",
+          "source": {
+            "file": "",
+            "section": "",
+            "line_range": ""
+          },
+          "normalized_paraphrase": "Reverse repo below $250B AND declining",
+          "rule": {
+            "rule_type": "compound",
+            "operator": "all",
+            "clauses": [
+              {
+                "rule_type": "scalar_comparison",
+                "field": {
+                  "operand_type": "field",
+                  "field_id": "liquidity.reverse_repo",
+                  "unit": "usd_billions",
+                  "semantic_type": "level"
+                },
+                "comparator": "lt",
+                "threshold": {
+                  "operand_type": "literal",
+                  "value": 250.0,
+                  "unit": "usd_billions"
+                }
+              },
+              {
+                "rule_type": "trend_state",
+                "field": {
+                  "operand_type": "field",
+                  "field_id": "liquidity.reverse_repo",
+                  "unit": "usd_billions",
+                  "semantic_type": "level"
+                },
+                "direction": "falling",
+                "window": {
+                  "value": 3,
+                  "unit": "months"
+                }
+              }
+            ]
+          },
+          "primary_field": "liquidity.reverse_repo",
+          "field_dependencies": [],
+          "field_unit": "usd_billions",
+          "field_semantic_type": "level",
+          "weight": 0.1,
+          "exclusion_policy": "score_if_evaluable",
+          "compilation_status": "warning",
+          "ambiguities": [
+            {
+              "level": "low",
+              "description": "'Declining' decomposed as trend(falling)",
+              "suggestion": ""
+            }
+          ],
+          "compiler_warnings": [],
+          "requires_time_series": false
+        },
+        {
+          "indicator_id": "fed_bs_inconsistent",
+          "display_name": "Fed BS inconsistent with announced QT pace",
+          "source_text": "Fed balance sheet declining slower than announced QT pace",
+          "source": {
+            "file": "",
+            "section": "",
+            "line_range": ""
+          },
+          "normalized_paraphrase": "Fed balance sheet declining slower than announced QT pace",
+          "rule": {
+            "rule_type": "trend_state",
+            "field": {
+              "operand_type": "field",
+              "field_id": "liquidity.fed_balance_sheet",
+              "unit": "usd_billions",
+              "semantic_type": "level"
+            },
+            "direction": "falling",
+            "window": {
+              "value": 3,
+              "unit": "months"
+            }
+          },
+          "primary_field": "liquidity.fed_balance_sheet",
+          "field_dependencies": [],
+          "field_unit": "usd_billions",
+          "field_semantic_type": "level",
+          "weight": 0.15,
+          "exclusion_policy": "score_if_evaluable",
+          "compilation_status": "warning",
+          "ambiguities": [
+            {
+              "level": "high",
+              "description": "Policy-dependent threshold; requires external QT pace metadata; fundamentally non-compilable without policy context",
+              "suggestion": ""
+            }
+          ],
+          "compiler_warnings": [
+            "Requires policy_context extension to briefing packet"
+          ],
+          "requires_time_series": true
+        },
+        {
+          "indicator_id": "tga_spending",
+          "display_name": "TGA spending behavior",
+          "source_text": "TGA below $500B OR declining by $100B+ over 60 days",
+          "source": {
+            "file": "",
+            "section": "",
+            "line_range": ""
+          },
+          "normalized_paraphrase": "TGA below $500B OR declining by $100B+ over 60 days",
+          "rule": {
+            "rule_type": "compound",
+            "operator": "any",
+            "clauses": [
+              {
+                "rule_type": "scalar_comparison",
+                "field": {
+                  "operand_type": "field",
+                  "field_id": "liquidity.tga",
+                  "unit": "usd_billions",
+                  "semantic_type": "level"
+                },
+                "comparator": "lt",
+                "threshold": {
+                  "operand_type": "literal",
+                  "value": 500.0,
+                  "unit": "usd_billions"
+                }
+              },
+              {
+                "rule_type": "delta_change",
+                "field": {
+                  "operand_type": "field",
+                  "field_id": "liquidity.tga",
+                  "unit": "usd_billions",
+                  "semantic_type": "level"
+                },
+                "direction": "falling",
+                "magnitude": {
+                  "operand_type": "literal",
+                  "value": 100.0,
+                  "unit": "usd_billions"
+                },
+                "mode": "absolute",
+                "window": {
+                  "value": 60,
+                  "unit": "days"
+                }
+              }
+            ]
+          },
+          "primary_field": "liquidity.tga",
+          "field_dependencies": [],
+          "field_unit": "usd_billions",
+          "field_semantic_type": "level",
+          "weight": 0.15,
+          "exclusion_policy": "score_if_evaluable",
+          "compilation_status": "warning",
+          "ambiguities": [
+            {
+              "level": "medium",
+              "description": "Delta magnitude pattern: $100B over 60 days",
+              "suggestion": ""
+            }
+          ],
+          "compiler_warnings": [],
+          "requires_time_series": false
+        }
+      ],
+      "activation_threshold": 0.6,
+      "adjacent_threshold": 0.3
+    }
+  ],
+  "validation": {
+    "status": "fail",
+    "error_count": 0,
+    "warning_count": 0,
+    "info_count": 0,
+    "errors": [],
+    "warnings": []
+  },
+  "total_indicators": 7,
+  "clean_count": 2,
+  "warning_count": 5,
+  "blocked_count": 0,
+  "artifact_notes": []
+}
