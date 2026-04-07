@@ -677,15 +677,21 @@ Deliverables:
 Results: 91 tests, regression gate PASS. See docs/V9_PHASE0_CONTRACT_RESULTS.md.
 Files: backend/schemas/v9/, backend/engine/v9/, backend/tests/test_v9_phase0_contracts.py
 
-### Phase 1 — deterministic runtime substrate
+### Phase 1 — deterministic runtime substrate [COMPLETE 2026-04-07]
 Deliverables:
-- field registry
-- series primitive engine
-- rule evaluator
-- compiled activation evaluator scaffold
+- field registry (80+ fields from FRED, Yahoo, computed, web sources)
+- series primitive engine (19 primitives + Sahm Rule, resteepening)
+- rule evaluator (8 rule types with unit normalization)
+- compiled activation evaluator scaffold (exclusion policy, two-phase logic)
+- artifact validator (25 error codes from Phase 0 taxonomy)
+- derived function registry (nominal_gdp_growth)
 
 Success condition:
 - runtime can evaluate hand-authored compiled artifacts without any model use
+
+Results: 65 Phase 1 tests + 91 Phase 0 tests, regression gate PASS. See docs/V9_PHASE1_RUNTIME_RESULTS.md.
+Files: backend/engine/v9/{registry_builder,series_engine,rule_evaluator,compiled_evaluator,validator,derived_functions}.py
+Investigation: eem_spy_3y_relative mismatch = legacy threshold extraction bug (regex strips sign). Compiled rule correct.
 
 ### Phase 2 — Haiku compiler scaffold
 Deliverables:
