@@ -226,28 +226,32 @@ def compiled_to_activation_result(
 # Score a single theory via compiled path
 # ---------------------------------------------------------------------------
 
-_evaluator_cache: dict[int, CompiledActivationEvaluator] = {}
+_evaluator_cache: dict[tuple, CompiledActivationEvaluator] = {}
 
 
 def score_compiled(
     theory_id: str,
     briefing: BriefingPacket,
+    series_store=None,
 ) -> ActivationResult:
     """Score a theory via the compiled activation path.
 
     Requires an APPROVED artifact. Raises KeyError if not found.
+    When series_store is provided, temporal indicators (trend, persistence,
+    delta, historical extreme) can be evaluated against historical data.
+    Without it, they return NOT_EVALUABLE.
     """
     approved = _load_approved_artifacts()
     artifact = approved[theory_id]
 
-    # Cache evaluator per briefing object identity
-    bp_id = id(briefing)
-    if bp_id not in _evaluator_cache:
+    # Cache evaluator per (briefing identity, series_store identity) pair
+    cache_key = (id(briefing), id(series_store))
+    if cache_key not in _evaluator_cache:
         registry = build_full_registry()
-        _evaluator_cache[bp_id] = CompiledActivationEvaluator(
-            briefing, registry=registry,
+        _evaluator_cache[cache_key] = CompiledActivationEvaluator(
+            briefing, registry=registry, series_store=series_store,
         )
-    evaluator = _evaluator_cache[bp_id]
+    evaluator = _evaluator_cache[cache_key]
 
     compiled_result = evaluator.evaluate(artifact)
     return compiled_to_activation_result(compiled_result, artifact)

@@ -93,7 +93,14 @@ def build_generation_prompt_v8(
             phase = ar.effective_phase if ar and ar.is_two_phase else None
             phase_score = None
             if ar and ar.is_two_phase and ar.phase_scores and phase:
+                # Case-insensitive lookup: compiled path returns lowercase phase IDs
+                # but legacy path returns capitalized phase labels
                 phase_score = ar.phase_scores.get(phase)
+                if phase_score is None:
+                    for k, v in ar.phase_scores.items():
+                        if k.lower() == phase.lower():
+                            phase_score = v
+                            break
             label = THEORY_LABEL_MAP.get(tid, tid)
             score_display = phase_score if phase_score is not None else (score if score is not None else 0)
             phase_display = f" (Phase: {phase})" if phase else ""

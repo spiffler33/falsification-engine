@@ -623,7 +623,8 @@ def score_all_packages(
     """Score activation for all v8 TheoryPackages against a briefing packet.
 
     Dual-path routing (v9 Phase 3):
-      - Theories with APPROVED compiled artifacts use the compiled evaluator.
+      - Theories with APPROVED compiled artifacts use the compiled evaluator
+        with the SeriesStore for temporal indicator evaluation.
       - All other theories use the legacy prose-parsing path.
 
     Validates all packages in a single pass first.  If any package has
@@ -640,11 +641,42 @@ def score_all_packages(
     if not report.passed:
         raise TheoryValidationError(report)
 
+    # Load series store for temporal indicator evaluation on the compiled path
+    series_store = _load_series_store_cached()
+
     compiled_ids = get_approved_theory_ids()
     results = []
     for pkg in packages:
         if pkg.theory_id in compiled_ids:
-            results.append(score_compiled(pkg.theory_id, briefing))
+            results.append(score_compiled(pkg.theory_id, briefing, series_store=series_store))
         else:
             results.append(score_package(pkg, briefing, skip_validation=True))
     return results
+
+
+# ---------------------------------------------------------------------------
+# Series store loader (cached per process)
+# ---------------------------------------------------------------------------
+
+_series_store_cache = None
+
+
+def _load_series_store_cached():
+    """Load the series store once, caching for subsequent calls."""
+    global _series_store_cache
+    if _series_store_cache is not None:
+        return _series_store_cache
+
+    try:
+        from scripts.load_series_data import load_series_store
+        store, report = load_series_store(use_cache=True, cache_max_age_hours=168)
+        _series_store_cache = store
+        import logging
+        logger = logging.getLogger(__name__)
+        logger.info("Series store loaded: %d series (%d failed)",
+                    len(report.get("loaded", [])), len(report.get("failed", [])))
+        return store
+    except Exception as e:
+        import logging
+        logging.getLogger(__name__).warning("Series store unavailable: %s", e)
+        return None
