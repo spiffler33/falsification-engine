@@ -704,7 +704,11 @@ def import_thread_review(payload: dict = Body(...), db: Session = Depends(get_db
     run = _get_or_create_active_run(db)
 
     # Clear existing hypotheses for this run (allows re-import of thread review)
-    db.query(HypothesisModel).filter(HypothesisModel.run_id == run.id).delete()
+    # Must delete dependent rows first to satisfy FK constraints
+    hyp_ids = [h.id for h in db.query(HypothesisModel.id).filter(HypothesisModel.run_id == run.id).all()]
+    if hyp_ids:
+        db.query(SectorFalsifierAudit).filter(SectorFalsifierAudit.hypothesis_id.in_(hyp_ids)).delete(synchronize_session=False)
+        db.query(HypothesisModel).filter(HypothesisModel.run_id == run.id).delete(synchronize_session=False)
     run.generation_output = None
     db.flush()
 
