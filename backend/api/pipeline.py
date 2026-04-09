@@ -913,13 +913,16 @@ def import_generation(payload: dict = Body(...), db: Session = Depends(get_db)):
     # Get or create active run
     run = _get_or_create_active_run(db)
 
-    # If thread review was already imported, DON'T clear those hypotheses.
-    # Only clear if this is a full re-import (no thread review step done).
-    existing_count = db.query(HypothesisModel).filter(HypothesisModel.run_id == run.id).count()
-    if existing_count == 0:
-        # No thread review imported — this is either legacy flow or first import
-        run.generation_output = None
-        db.flush()
+    # Clear any existing hypotheses for this run (allows re-import).
+    # This is safe for both legacy single-prompt flow and split flow:
+    # - Legacy: clears previous import, re-imports everything
+    # - Split: thread review uses /import/thread-review, generation uses this endpoint
+    #   If user does thread-review first then generation, generation clears thread-review
+    #   hypotheses — but that's fine because both outputs will be re-imported together
+    #   in the legacy format if using the old single-prompt workflow.
+    db.query(HypothesisModel).filter(HypothesisModel.run_id == run.id).delete()
+    run.generation_output = None
+    db.flush()
 
     try:
         hypotheses = parse_generation_output(raw_json, run.id)
