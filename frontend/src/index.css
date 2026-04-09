@@ -2645,8 +2645,16 @@ p, .body-text {
   background: var(--bg-hover);
 }
 
+.run-summary__row--clickable {
+  cursor: pointer;
+}
+
 .run-summary__row--retire {
   opacity: 0.55;
+}
+
+.run-summary__cell-status {
+  white-space: nowrap;
 }
 
 .run-summary__cell-thread {

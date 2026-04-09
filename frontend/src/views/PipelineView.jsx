@@ -45,13 +45,13 @@ export default function PipelineView({ onSelectHypothesis }) {
         </div>
       </div>
 
-      {mode === 'run' ? <RunMode /> : <AuditMode onSelectHypothesis={onSelectHypothesis} />}
+      {mode === 'run' ? <RunMode onSelectHypothesis={onSelectHypothesis} /> : <AuditMode onSelectHypothesis={onSelectHypothesis} />}
     </div>
   )
 }
 
 
-function RunMode() {
+function RunMode({ onSelectHypothesis }) {
   const { data: status, loading, refetch: refetchStatus } = useApi('/api/pipeline/status')
   const { data: queuedItems } = useApi('/api/inbox/queued')
 
@@ -254,7 +254,7 @@ function RunMode() {
 
       {/* Run summary — shows after conviction scoring completes */}
       {status?.run_id && getState(4) === 'complete' && (
-        <RunSummary runId={status.run_id} />
+        <RunSummary runId={status.run_id} onSelectHypothesis={onSelectHypothesis} />
       )}
 
       {apiError && (

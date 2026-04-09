@@ -9,13 +9,15 @@
  * Depends on: GET /api/runs/{run_id} (hypotheses include thread_id, lifecycle_action)
  */
 import { useApi } from '../hooks/useApi'
+import { api } from '../lib/api'
 import LifecycleActionBadge from '../shared/LifecycleActionBadge'
+import StatusBadge from '../shared/StatusBadge'
 import { fmtConviction, fmtDate } from '../lib/format'
 
 
 const ACTION_ORDER = ['CONFIRM', 'UPDATE', 'RENEW', 'RETIRE', 'NEW']
 
-export default function RunSummary({ runId }) {
+export default function RunSummary({ runId, onSelectHypothesis }) {
   const { data: run, loading } = useApi(runId ? `/api/runs/${runId}` : null, [runId])
 
   if (!runId || loading || !run) return null
@@ -68,13 +70,14 @@ export default function RunSummary({ runId }) {
           <tr>
             <th>Thread</th>
             <th>Hypothesis</th>
+            <th>Status</th>
             <th>Action</th>
             <th className="run-summary__col-conviction">Conviction</th>
           </tr>
         </thead>
         <tbody>
           {sorted.map(h => (
-            <RunSummaryRow key={h.id} hypothesis={h} />
+            <RunSummaryRow key={h.id} hypothesis={h} onSelectHypothesis={onSelectHypothesis} />
           ))}
         </tbody>
       </table>
@@ -83,7 +86,7 @@ export default function RunSummary({ runId }) {
 }
 
 
-function RunSummaryRow({ hypothesis: h }) {
+function RunSummaryRow({ hypothesis: h, onSelectHypothesis }) {
   const action = h.lifecycle_action || 'NEW'
   const isRetire = action === 'RETIRE'
   const isNew = action === 'NEW'
@@ -91,13 +94,26 @@ function RunSummaryRow({ hypothesis: h }) {
   const before = isNew ? null : h.conviction_prev
   const after = isRetire ? null : h.conviction
 
+  const handleClick = () => {
+    if (!onSelectHypothesis) return
+    api.get(`/api/hypotheses/${h.id}`).then(full => {
+      onSelectHypothesis(full)
+    }).catch(() => {})
+  }
+
   return (
-    <tr className={`run-summary__row ${isRetire ? 'run-summary__row--retire' : ''}`}>
+    <tr
+      className={`run-summary__row ${isRetire ? 'run-summary__row--retire' : ''} ${onSelectHypothesis ? 'run-summary__row--clickable' : ''}`}
+      onClick={handleClick}
+    >
       <td className="run-summary__cell-thread">
         {h.thread_id || '--'}
       </td>
       <td className="run-summary__cell-name">
         {h.short_name}
+      </td>
+      <td className="run-summary__cell-status">
+        <StatusBadge status={h.status} />
       </td>
       <td className="run-summary__cell-action">
         <LifecycleActionBadge action={action} />

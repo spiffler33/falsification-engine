@@ -808,7 +808,7 @@ Opens as overlay (unchanged interaction pattern). Shows:
 
 ### Pipeline Run View Changes
 
-The run output summary shows actions taken on threads:
+The run output summary shows actions taken on threads. Each row includes a STATUS column (SURVIVED/WOUNDED/KILLED) and is clickable -- clicking opens the ThreadDetail or HypothesisDetail modal with full elimination reasoning, conviction math breakdown, and falsifier health.
 
 ```
 Run R8 — April 4, 2026
@@ -817,15 +817,15 @@ Thread Actions:
   5 CONFIRM  |  1 UPDATE  |  0 RENEW  |  1 RETIRE  |  2 NEW
 
 Threads:
-  T-2026-090-01  "Breadth rotation RSP>QQQ"          CONFIRM    8/10  →  8/10
-  T-2026-090-02  "Gold debasement hedge GLD>SPY"      CONFIRM    7/10  →  7/10
-  T-2026-090-03  "Bear steepener SHY>TLT"             CONFIRM    6/10  →  6/10
-  T-2026-091-01  "Energy-tech rotation XLE>XLK"        CONFIRM    7/10  →  7/10
-  T-2026-091-02  "EM flows stall EEM<SPY"              CONFIRM    6/10  →  6/10
-  T-2026-092-01  "Fiscal dom bear steepening STIP"     UPDATE     6/10  →  7/10
-  T-2026-088-01  "Cash beats equities SHY>SPY"         RETIRE     5/10  →  —
-  T-2026-092-02  "Oil shock energy outperformance"     NEW        —     →  7/10
-  T-2026-092-03  "Debasement sustains gold miners"     NEW        —     →  6/10
+  T-2026-090-01  "Breadth rotation RSP>QQQ"          SURVIVED  CONFIRM    8/10  →  8/10
+  T-2026-090-02  "Gold debasement hedge GLD>SPY"      SURVIVED  CONFIRM    7/10  →  7/10
+  T-2026-090-03  "Bear steepener SHY>TLT"             WOUNDED   CONFIRM    6/10  →  6/10
+  T-2026-091-01  "Energy-tech rotation XLE>XLK"        SURVIVED  CONFIRM    7/10  →  7/10
+  T-2026-091-02  "EM flows stall EEM<SPY"              SURVIVED  CONFIRM    6/10  →  6/10
+  T-2026-092-01  "Fiscal dom bear steepening STIP"     SURVIVED  UPDATE     6/10  →  7/10
+  T-2026-088-01  "Cash beats equities SHY>SPY"         KILLED    RETIRE     5/10  →  —
+  T-2026-092-02  "Oil shock energy outperformance"     SURVIVED  NEW        —     →  7/10
+  T-2026-092-03  "Debasement sustains gold miners"     SURVIVED  NEW        —     →  6/10
 ```
 
 ### Pipeline Audit View Changes
@@ -911,7 +911,7 @@ Thread entry prices are derived from `run_price_snapshots` of the originating ru
 | 11 | Conviction pipeline: TRIGGERED_BY_PASSAGE in D_f | TRIGGERED_BY_PASSAGE treated as TRIGGERED at registered severity in D_f. | Phase 3 |
 | 12 | Frontend: thread-centered Ledger | Rows = threads. Thread age badge. Last action badge. Retired thread display. | Phase 4 |
 | 13 | Frontend: Thread Detail view | Current state + collapsible lineage panel. Falsifier lifecycle badges. Emergent risk display. DONE | Phase 4 |
-| 14 | Frontend: Pipeline Run summary | Action summary ("5 CONFIRMs, 1 UPDATE..."). Thread-based run output display. DONE | Phase 4 |
+| 14 | Frontend: Pipeline Run summary | Action summary ("5 CONFIRMs, 1 UPDATE..."). Thread-based run output display. Status column (KILLED/SURVIVED/WOUNDED). Rows clickable -> opens ThreadDetail/HypothesisDetail modal. DONE | Phase 4 |
 | 15 | Frontend: Pipeline Audit columns | Thread age, lifecycle action, STALE count, ESCALATED count, emergent risk indicator. DONE | Phase 4 |
 
 ### Implementation Notes for Claude Code
