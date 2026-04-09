@@ -375,6 +375,26 @@ Each NEW hypothesis requires all standard fields including:
 Target: 7-9 total hypotheses across carried-forward + new.
 ```
 
+### Component 3a: Generation Budget Rebalancing (Three-Pass Split)
+
+**Problem**: The v7 thread lifecycle crowded out fresh generation. The "7-9 total" cap + "CONFIRM default" + "NEW only for unrepresented" produced runs with 0-1 NEW hypotheses. Gold at conviction 9 disappeared.
+
+**Fix**: Split the single generation prompt into two separate LLM passes:
+- **Pass 2A (Thread Review)**: ~30 KB. Lifecycle management only. No theory packages. Health indicators (inertia warning, conviction trend, falsifier exhaustion) nudge RETIRE.
+- **Pass 2B (Fresh Generation)**: ~200 KB. Theory packages + compact thread summary. 2-4 mandatory NEW. May come from already-represented theories if materially different.
+- **Pass 3 (Elimination)**: Unchanged. Attacks all hypotheses from both passes.
+
+**Pipeline**: 6 steps (was 5). 3 human-in-loop (was 2).
+
+**Key changes**:
+1. Removed "7-9 total" cap. Independent budgets for thread review and fresh generation.
+2. NEW permitted from already-represented theories (different mechanism/expression).
+3. Thread health indicators: INERTIA WARNING (3+ CONFIRMs), CONVICTION FLAT/DECLINING, FALSIFIER EXHAUSTION.
+4. Stronger RETIRE guidance: "A portfolio that never retires anything is not disciplined."
+5. Fresh generation uses legacy output format (flat array, all NEW).
+
+**Files**: prompt_builder.py (build_thread_review_prompt, build_fresh_generation_prompt, health indicators in _thread_context_section, stronger RETIRE in _thread_lifecycle_contract), pipeline.py (3 new endpoints, 6-step state machine, compact thread summary, enriched thread summaries), PipelineView.jsx (6 STEP_DEFS).
+
 ### Output Schema for Generation Pass
 
 ```typescript

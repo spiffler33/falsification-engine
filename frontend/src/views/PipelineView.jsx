@@ -157,7 +157,8 @@ function RunMode({ onSelectHypothesis }) {
   const STEP_DEFS = [
     { label: 'Data Briefing', type: 'Automated' },
     { label: 'Activation Scoring', type: 'Automated' },
-    { label: 'Generation Pass', type: 'Human-in-loop' },
+    { label: 'Thread Review', type: 'Human-in-loop' },
+    { label: 'Fresh Generation', type: 'Human-in-loop' },
     { label: 'Elimination Pass', type: 'Human-in-loop' },
     { label: 'Conviction Scoring', type: 'Automated' },
   ]
@@ -220,8 +221,22 @@ function RunMode({ onSelectHypothesis }) {
                 Runs automatically on latest briefing data when you generate a prompt.
               </div>
             )}
-            {/* Step 3: Generation — show prompt/copy/import buttons */}
+            {/* Step 3: Thread Review — lifecycle management of existing threads */}
             {i === 2 && (
+              <div className="pipeline-step__buttons">
+                <button className="btn" onClick={() => loadPrompt('thread-review')}>
+                  {showPrompt === 'thread-review' ? 'HIDE PROMPT' : 'SHOW PROMPT'}
+                </button>
+                <button className="btn" onClick={() => copyPrompt('thread-review')}>
+                  {copied ? 'COPIED' : 'COPY TO CLIPBOARD'}
+                </button>
+                <button className="btn btn--primary" onClick={() => setShowImport(showImport === 'thread-review' ? null : 'thread-review')}>
+                  IMPORT RESULT
+                </button>
+              </div>
+            )}
+            {/* Step 4: Fresh Generation — new hypotheses only */}
+            {i === 3 && (
               <div className="pipeline-step__buttons">
                 <button className="btn" onClick={() => loadPrompt('generation')}>
                   {showPrompt === 'generation' ? 'HIDE PROMPT' : 'SHOW PROMPT'}
@@ -234,8 +249,8 @@ function RunMode({ onSelectHypothesis }) {
                 </button>
               </div>
             )}
-            {/* Step 4: Elimination — same pattern */}
-            {i === 3 && (
+            {/* Step 5: Elimination — same pattern */}
+            {i === 4 && (
               <div className="pipeline-step__buttons">
                 <button className="btn" onClick={() => loadPrompt('elimination')}>
                   {showPrompt === 'elimination' ? 'HIDE PROMPT' : 'SHOW PROMPT'}
@@ -253,7 +268,7 @@ function RunMode({ onSelectHypothesis }) {
       </div>
 
       {/* Run summary — shows after conviction scoring completes */}
-      {status?.run_id && getState(4) === 'complete' && (
+      {status?.run_id && getState(5) === 'complete' && (
         <RunSummary runId={status.run_id} onSelectHypothesis={onSelectHypothesis} />
       )}
 

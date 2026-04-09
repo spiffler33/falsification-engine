@@ -213,6 +213,289 @@ def build_generation_prompt_v8(
     return "\n".join(parts)
 
 
+def build_thread_review_prompt(
+    active_threads: list[dict[str, Any]],
+    briefing: dict[str, Any],
+    activation_summary: dict[str, dict[str, Any]],
+) -> str:
+    """Build the Thread Review prompt (Pass 2A).
+
+    Focused solely on lifecycle management of existing threads.
+    No theory packages — thread context carries the mechanism summary.
+    Roughly ~30 KB vs the monolithic ~240 KB generation prompt.
+
+    activation_summary: {theory_id: {"tier": str, "score": float}}
+    """
+    parts: list[str] = []
+
+    # System instructions — thread review only
+    parts.append(
+        "SYSTEM: You are the Thread Review Pass of a Falsification Engine for global macro analysis.\n\n"
+        "Your ONLY job is to review each active hypothesis thread and assign a lifecycle action.\n"
+        "You do NOT generate new hypotheses. That is a separate pass.\n\n"
+        "RULES:\n"
+        "1. For each active thread: state exactly one lifecycle action with reasoning.\n"
+        "2. CONFIRM is the default when mechanism and evidence are intact.\n"
+        "3. RETIRE threads whose mechanism has weakened, whose falsifiers are exhausted, "
+        "or whose expression has fully delivered. A well-managed portfolio actively "
+        "retires theses that have run their course.\n"
+        "4. Do NOT generate new hypotheses. This pass is lifecycle review only.\n"
+        "5. Do NOT rank hypotheses by importance or recommend actions.\n"
+    )
+
+    # Activation context — compact summary so the reviewer knows which theories are still active
+    parts.append("\n## THEORY ACTIVATION STATUS\n")
+    for tid, info in sorted(activation_summary.items()):
+        label = THEORY_LABEL_MAP.get(tid, tid)
+        tier = info.get("tier", "?")
+        score = info.get("score")
+        score_str = f" ({score:.0%})" if score is not None else ""
+        parts.append(f"  {label}: {tier.upper()}{score_str}")
+    parts.append("")
+
+    # Thread context with health indicators
+    parts.append("\n## ACTIVE THREADS\n")
+    parts.append(_thread_context_section(active_threads))
+
+    # Lifecycle contract
+    parts.append("\n\n## LIFECYCLE CONTRACT\n")
+    parts.append(_thread_lifecycle_contract())
+
+    # Data briefing
+    parts.append("\n\n## DATA BRIEFING\n")
+    parts.append("```json")
+    parts.append(json.dumps(briefing, indent=2, default=str))
+    parts.append("```")
+
+    # Output format — thread_actions only
+    parts.append('\n\n## OUTPUT FORMAT\n')
+    parts.append(
+        'Output a single JSON object with one top-level key: "thread_actions".\n\n'
+        "```json\n"
+        '{"thread_actions": [\n'
+        '  {"thread_id": "T-...", "lifecycle_action": "CONFIRM", '
+        '"lifecycle_reasoning": "..."},\n'
+        "  ...\n"
+        "]}\n"
+        "```\n\n"
+        "See LIFECYCLE CONTRACT above for the full schema per action type.\n\n"
+        "IMPORTANT: Output ONLY the JSON object. No commentary before or after."
+    )
+
+    return "\n".join(parts)
+
+
+def build_fresh_generation_prompt(
+    packages: list[TheoryPackage],
+    activation_results: list[ActivationResult],
+    briefing: dict[str, Any],
+    inbox_items: list[dict[str, Any]],
+    interaction_matrix: dict | None = None,
+    max_adjacent: int = 1,
+    active_regime_flags: list[dict[str, Any]] | None = None,
+    existing_thread_summary: list[dict[str, Any]] | None = None,
+) -> str:
+    """Build the Fresh Generation prompt (Pass 2B).
+
+    Focused solely on generating NEW hypotheses. No thread lifecycle management.
+    Includes theory packages, briefing, and a compact summary of existing threads
+    so the generator knows what already exists (and can propose different ideas).
+
+    existing_thread_summary: [{thread_id, short_name, source_theory, predicted_assets, asset_direction}]
+    """
+    active_theories: list[str] = []
+    adjacent_theories: list[str] = []
+    activation_map: dict[str, ActivationResult] = {}
+
+    for ar in activation_results:
+        tier = ar.tier if not ar.is_two_phase else ar.effective_tier
+        activation_map[ar.theory_id] = ar
+        if tier == ActivationTier.ACTIVE:
+            active_theories.append(ar.theory_id)
+        elif tier == ActivationTier.ADJACENT:
+            adjacent_theories.append(ar.theory_id)
+
+    pkg_map = {p.theory_id: p for p in packages}
+
+    parts: list[str] = []
+
+    # System instructions — generation only
+    parts.append(
+        "SYSTEM: You are the Fresh Generation Pass of a Falsification Engine for global macro analysis.\n\n"
+        "Your ONLY job is to generate NEW testable hypotheses from the Active theory modules below, "
+        "grounded in the current data briefing. Each hypothesis must trace to a specific causal mechanism "
+        "in a specific theory module.\n\n"
+        "You do NOT review existing threads or assign lifecycle actions. That was a separate pass.\n\n"
+        "RULES:\n"
+        "1. Generate 2-4 NEW hypotheses from Active theories. This is mandatory.\n"
+        "2. NEW hypotheses may come from theories that already have threads (listed below), "
+        "provided the new hypothesis proposes a MATERIALLY DIFFERENT mechanism, expression, "
+        "or predicted asset set. Two hypotheses on the same theory are fine if they represent "
+        "genuinely independent bets.\n"
+        "3. You may generate 0-1 NEW hypotheses from the Adjacent wildcard theory (if provided).\n"
+        "4. You may combine mechanisms from multiple Active theories into composite hypotheses "
+        "-- but ONLY if the combination NARROWS the prediction and makes it MORE falsifiable.\n"
+        "5. Do NOT rank hypotheses by importance or recommend actions.\n"
+        "6. Do NOT produce hypotheses from theories not listed below.\n"
+        "7. Each prediction must be specific: include magnitude range, timeframe, and named ETF instruments.\n"
+        "8. Hard falsifiers must be specific enough to check against data.\n"
+        "9. Soft falsifiers must include severity (minor/medium/major) inherited from the source theory module.\n"
+        "10. Each hypothesis MUST include a PAYOFF_BAND block with magnitude_lower, magnitude_upper, "
+        "and end_date."
+    )
+
+    # Payoff band rules (shared)
+    parts.append("""
+
+PAYOFF BAND RULES:
+- magnitude_lower and magnitude_upper are the expected EXPRESSION-LEVEL return range, stated as positive decimals (e.g. 0.15 for 15%).
+- For pair/spread hypotheses: the magnitude is the spread return, NOT a single-leg prediction. Example: "DBC outperforms QQQ by 15-30%" -> magnitude_lower: 0.15, magnitude_upper: 0.30.
+- For single-leg hypotheses: the magnitude is the asset return, which equals the expression return. Example: "GLD +10-20%" -> magnitude_lower: 0.10, magnitude_upper: 0.20.
+- Direction is already captured in asset_direction. Magnitudes are always POSITIVE -- they represent expected profitable return on the expression regardless of SHORT legs.
+- magnitude_upper must not exceed 1.0 (100%). No liquid ETF hypothesis should predict a double within the holding window.
+- end_date is YYYY-MM-DD format, must be in the future, within 12 months.
+
+CONSOLIDATION CHECK: Before finalizing, review all generated hypotheses grouped by their primary SHORT or LONG asset. If 3+ hypotheses share the same directional bet on the same asset:
+1. Identify whether they represent genuinely independent mechanisms or variations of the same view.
+2. If variations: keep only the hypothesis with the most specific, falsifiable prediction and the clearest causal chain.
+3. If genuinely independent: keep all but note the convergence explicitly.""")
+
+    # Existing threads awareness — compact summary
+    if existing_thread_summary:
+        parts.append("\n\n## EXISTING HYPOTHESIS THREADS (from prior run)\n")
+        parts.append(
+            "The following threads are already being tracked. Your new hypotheses should propose "
+            "DIFFERENT trade expressions or mechanisms. Do not duplicate these.\n"
+        )
+        represented_theories: set[str] = set()
+        for ts in existing_thread_summary:
+            tid = ts.get("thread_id", "?")
+            name = ts.get("short_name", "?")
+            theory = ts.get("source_theory", "?")
+            label = THEORY_LABEL_MAP.get(theory, theory)
+            assets = ts.get("predicted_assets", [])
+            direction = ts.get("asset_direction", {})
+            legs = [f"{direction.get(a, '?')} {a}" for a in assets] if assets and direction else []
+            legs_str = f" ({' / '.join(legs)})" if legs else ""
+            parts.append(f"  - {tid}: \"{name}\" [{label}]{legs_str}")
+            represented_theories.add(theory)
+        parts.append("")
+
+        # Show which theories are represented vs. not
+        unrepresented = [t for t in active_theories if t not in represented_theories]
+        if unrepresented:
+            parts.append("Active theories with NO existing thread (fresh ideas especially welcome):")
+            for tid in unrepresented:
+                label = THEORY_LABEL_MAP.get(tid, tid)
+                ar = activation_map.get(tid)
+                score = _get_display_score(ar)
+                score_str = f" -- Activation: {score:.0%}" if score is not None else ""
+                parts.append(f"  - {label}{score_str}")
+            parts.append("")
+
+    # Active theories (CORE + TACTICAL + PLAYBOOK per theory) — same as v8
+    parts.append("\n\n## ACTIVE THEORIES\n")
+    for tid in active_theories:
+        pkg = pkg_map.get(tid)
+        ar = activation_map.get(tid)
+        if pkg:
+            score = _get_display_score(ar)
+            phase = ar.effective_phase if ar and ar.is_two_phase else None
+            phase_display = f" (Phase: {phase})" if phase else ""
+            label = THEORY_LABEL_MAP.get(tid, tid)
+            parts.append(f"\n### {label}{phase_display} -- Activation: {score:.0%}\n")
+            parts.append(f"\n--- CORE.md ---\n{pkg.core}")
+            parts.append(f"\n--- TACTICAL.md ---\n{pkg.tactical}")
+            parts.append(f"\n--- PLAYBOOK.md ---\n{pkg.playbook}")
+            if pkg.context_flags:
+                parts.append(_format_context_flags(pkg.context_flags))
+
+    # Adjacent wildcard
+    if adjacent_theories:
+        selected = adjacent_theories[:max_adjacent]
+        parts.append("\n\n## ADJACENT THEORY (WILDCARD -- use at most 1)\n")
+        for tid in selected:
+            pkg = pkg_map.get(tid)
+            if pkg:
+                label = THEORY_LABEL_MAP.get(tid, tid)
+                parts.append(f"\n### {label}\n")
+                parts.append(f"\n--- CORE.md ---\n{pkg.core}")
+                parts.append(f"\n--- TACTICAL.md ---\n{pkg.tactical}")
+                parts.append(f"\n--- PLAYBOOK.md ---\n{pkg.playbook}")
+                if pkg.context_flags:
+                    parts.append(_format_context_flags(pkg.context_flags))
+
+    # Interaction matrix
+    if interaction_matrix:
+        matrix_section = _format_interaction_matrix_for_generation(interaction_matrix)
+        if matrix_section:
+            parts.append(matrix_section)
+
+    # Inbox items
+    if inbox_items:
+        parts.append("\n\n## INBOX ITEMS (new since last run)\n")
+        for item in inbox_items:
+            date = item.get("date", "")
+            content = item.get("content", "")
+            source = item.get("source", "")
+            theories_tagged = item.get("theories", [])
+            tags = f" [{', '.join(theories_tagged)}]" if theories_tagged else ""
+            parts.append(f"- [{date}] {content}")
+            if source:
+                parts.append(f"  Source: {source}")
+            if tags:
+                parts.append(f"  Tags: {tags}")
+            parts.append("")
+
+    # Regime flags
+    if active_regime_flags:
+        active_or_adjacent = set(active_theories + adjacent_theories[:max_adjacent])
+        parts.append("\n\n## REGIME FLAGS\n")
+        parts.append(
+            "The following regime flags are active based on current theory activation states.\n"
+            "Use the channel context below when constructing hypotheses for the affected theories.\n"
+        )
+        for flag in active_regime_flags:
+            parts.append(f"REGIME FLAG: {flag['flag_id']}")
+            parts.append(f"Triggered by: {flag['flag_id'].replace('_active', '').replace('_', ' ')} is Active\n")
+            parts.append("Channel context for affected theories:")
+            for module_id, context in flag.get("channel_context", {}).items():
+                if module_id in active_or_adjacent:
+                    label = THEORY_LABEL_MAP.get(module_id, module_id)
+                    parts.append(f"  - {label}: {context}")
+            parts.append("")
+
+    # Resolution channel
+    parts.append("\n\n## RESOLUTION CHANNEL REQUIREMENT\n")
+    parts.append(_resolution_channel_instructions())
+
+    # Data briefing
+    parts.append("\n\n## DATA BRIEFING\n")
+    parts.append("```json")
+    parts.append(json.dumps(briefing, indent=2, default=str))
+    parts.append("```")
+
+    # Output format — legacy flat array (all items are NEW)
+    parts.append("\n\n## OUTPUT FORMAT\n")
+    parts.append(_generation_output_schema_legacy())
+
+    return "\n".join(parts)
+
+
+def _get_display_score(ar: ActivationResult | None) -> float:
+    """Get the display activation score for a theory."""
+    if ar is None:
+        return 0.0
+    if ar.is_two_phase and ar.phase_scores and ar.effective_phase:
+        score = ar.phase_scores.get(ar.effective_phase)
+        if score is None:
+            for k, v in ar.phase_scores.items():
+                if k.lower() == ar.effective_phase.lower():
+                    return v
+        return score if score is not None else 0.0
+    return ar.score if ar.score is not None else 0.0
+
+
 def _format_context_flags(context_flags: list) -> str:
     """Format context flags for injection into a theory's prompt section."""
     lines = ["\n**Context Flags (qualitative -- not scored):**"]
@@ -1060,8 +1343,6 @@ def _thread_context_section(active_threads: list[dict[str, Any]]) -> str:
         f"You are reviewing {n} active hypothesis thread{'s' if n != 1 else ''} "
         f"from the prior run.\n"
         "For each thread, you MUST state exactly one action: CONFIRM, UPDATE, RENEW, or RETIRE.\n"
-        "After processing all threads, you may generate NEW hypotheses for active theories\n"
-        "not adequately represented. Target: 7-9 total hypotheses (carried forward + new).\n"
     )
     lines.append(
         "CONFIRM is the default action. Do not UPDATE unless you can state specifically what changed.\n"
@@ -1155,6 +1436,39 @@ def _thread_context_section(active_threads: list[dict[str, Any]]) -> str:
                 if esc_status == "ESCALATED_UNTESTABLE":
                     lines.append(f"        >> ESCALATED -- untestable for {esc_count} consecutive passes")
 
+        # Thread health indicators
+        health_flags = []
+        confirmation_count = t.get("confirmation_count", 0)
+        conviction_trend = t.get("conviction_trend", [])
+        escalated_or_stale = t.get("escalated_or_stale_count", 0)
+        total_soft = t.get("total_soft_falsifiers", 0)
+
+        if confirmation_count >= 3:
+            health_flags.append(
+                f"INERTIA WARNING: {confirmation_count} consecutive CONFIRMs "
+                f"with no revision -- is this thread still earning its slot?"
+            )
+
+        if len(conviction_trend) >= 3:
+            recent = conviction_trend[-3:]
+            if all(recent[i] >= recent[i + 1] for i in range(len(recent) - 1)):
+                trend_str = " -> ".join(str(int(c)) for c in recent)
+                health_flags.append(
+                    f"CONVICTION FLAT/DECLINING: {trend_str} -- "
+                    f"evidence base is not strengthening"
+                )
+
+        if total_soft > 0 and escalated_or_stale >= total_soft * 0.5:
+            health_flags.append(
+                f"FALSIFIER EXHAUSTION: {escalated_or_stale} of {total_soft} "
+                f"soft falsifiers are STALE or ESCALATED_UNTESTABLE"
+            )
+
+        if health_flags:
+            lines.append("  Thread health:")
+            for flag in health_flags:
+                lines.append(f"    >> {flag}")
+
         lines.append("")
         lines.append(f"  ACTION REQUIRED: State CONFIRM, UPDATE, RENEW, or RETIRE with reasoning.")
         lines.append("")
@@ -1177,11 +1491,18 @@ def _thread_lifecycle_contract() -> str:
 | RENEW   | Economic content has changed: magnitude, expression, or mechanism materially revised. |
 | RETIRE  | Mechanism weakened, falsifier triggered, thesis no longer supported, or expression fully delivered. |
 
-CONFIRM is the expectation in a stable regime. A run that is 5 CONFIRMs + 1 UPDATE + 1 NEW reflects a real macro PM's daily workflow.
+CONFIRM is the default when mechanism and evidence are genuinely intact.
+But a portfolio that never retires anything is not disciplined -- it is stale.
+
+Signals that a thread should RETIRE:
+- Thread health flags say INERTIA WARNING, CONVICTION FLAT/DECLINING, or FALSIFIER EXHAUSTION
+- Hard falsifier has FAILED
+- Expression has delivered (realization near or past upper bound with most time elapsed)
+- The mechanism is no longer supported by the theory's activation conditions
 
 Do NOT UPDATE unless you can state specifically what changed and why.
 Do NOT RENEW unless you can state specifically what economic content changed.
-A run that is 0 CONFIRMs + 7 NEWs should only happen when the regime genuinely shifts.
+A typical stable-regime run: mostly CONFIRMs + 1-2 UPDATEs or RETIREs.
 
 ## OUTPUT FORMAT FOR THREAD ACTIONS
 
@@ -1226,9 +1547,6 @@ For each active thread above, include one object in the "thread_actions" array:
       "lifecycle_action": "RETIRE",
       "lifecycle_reasoning": "Hard falsifier triggered — [which one and why]."
     }
-  ],
-  "new_hypotheses": [
-    ...see NEW HYPOTHESIS FORMAT below...
   ]
 }
 ```

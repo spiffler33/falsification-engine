@@ -18,7 +18,12 @@ from backend.db.models import Hypothesis as HypothesisModel
 from backend.db.models import HypothesisThread, InboxItem, Run, RunPriceSnapshot, SectorFalsifierAudit
 from backend.engine import activation, conviction, regime
 from backend.engine.output_parser import ParseError, parse_elimination_output, parse_generation_output, parse_sector_falsifier_audits
-from backend.engine.prompt_builder import build_elimination_prompt_v8, build_generation_prompt_v8
+from backend.engine.prompt_builder import (
+    build_elimination_prompt_v8,
+    build_fresh_generation_prompt,
+    build_generation_prompt_v8,
+    build_thread_review_prompt,
+)
 from backend.engine.sector_appendices import select_sector_appendices
 from backend.lifecycle import apply_untestable_escalation, compute_thread_staleness
 from backend.realization import compute_freshness_label
@@ -175,7 +180,16 @@ def _assess_data_quality(briefing: dict) -> dict:
 
 
 def _get_current_pipeline_state(db: Session) -> dict:
-    """Determine the current state of each pipeline step."""
+    """Determine the current state of each pipeline step.
+
+    6-step pipeline:
+      1. Data Briefing (automated)
+      2. Activation Scoring (automated)
+      3. Thread Review (human-in-loop) — skipped if no active threads
+      4. Fresh Generation (human-in-loop)
+      5. Elimination Pass (human-in-loop)
+      6. Conviction Scoring (automated)
+    """
     latest_run = db.query(Run).order_by(desc(Run.timestamp)).first()
 
     briefing_data = _load_briefing()
@@ -183,55 +197,88 @@ def _get_current_pipeline_state(db: Session) -> dict:
     briefing_timestamp = briefing_data.get("timestamp", "") if briefing_data else ""
     data_quality = _assess_data_quality(briefing_data)
 
+    all_waiting = [
+        {"step": 1, "label": "Data Briefing", "type": "automated", "state": "complete" if briefing_fresh else "ready"},
+        {"step": 2, "label": "Activation Scoring", "type": "automated", "state": "waiting"},
+        {"step": 3, "label": "Thread Review", "type": "human-in-loop", "state": "waiting"},
+        {"step": 4, "label": "Fresh Generation", "type": "human-in-loop", "state": "waiting"},
+        {"step": 5, "label": "Elimination Pass", "type": "human-in-loop", "state": "waiting"},
+        {"step": 6, "label": "Conviction Scoring", "type": "automated", "state": "waiting"},
+    ]
+
     if not latest_run:
-        # No runs at all
         return {
             "current_step": 1 if briefing_fresh else 0,
             "run_id": "",
             "briefing_timestamp": briefing_timestamp,
             "data_quality": data_quality,
-            "steps": [
-                {"step": 1, "label": "Data Briefing", "type": "automated", "state": "complete" if briefing_fresh else "ready"},
-                {"step": 2, "label": "Activation Scoring", "type": "automated", "state": "waiting"},
-                {"step": 3, "label": "Generation Pass", "type": "human-in-loop", "state": "waiting"},
-                {"step": 4, "label": "Elimination Pass", "type": "human-in-loop", "state": "waiting"},
-                {"step": 5, "label": "Conviction Scoring", "type": "automated", "state": "waiting"},
-            ],
+            "steps": all_waiting,
         }
 
     if latest_run.status == "complete":
-        # Last run is complete — show all steps as complete, ready for new run
         return {
-            "current_step": 5,
+            "current_step": 6,
             "run_id": latest_run.id,
             "briefing_timestamp": briefing_timestamp,
             "data_quality": data_quality,
             "steps": [
                 {"step": 1, "label": "Data Briefing", "type": "automated", "state": "complete"},
                 {"step": 2, "label": "Activation Scoring", "type": "automated", "state": "complete"},
-                {"step": 3, "label": "Generation Pass", "type": "human-in-loop", "state": "complete"},
-                {"step": 4, "label": "Elimination Pass", "type": "human-in-loop", "state": "complete"},
-                {"step": 5, "label": "Conviction Scoring", "type": "automated", "state": "complete"},
+                {"step": 3, "label": "Thread Review", "type": "human-in-loop", "state": "complete"},
+                {"step": 4, "label": "Fresh Generation", "type": "human-in-loop", "state": "complete"},
+                {"step": 5, "label": "Elimination Pass", "type": "human-in-loop", "state": "complete"},
+                {"step": 6, "label": "Conviction Scoring", "type": "automated", "state": "complete"},
             ],
         }
 
-    # Active run exists
+    # Active run exists — determine sub-step states
     has_activation = bool(latest_run.activation_scores)
     has_generation = bool(latest_run.generation_output)
     has_elimination = bool(latest_run.elimination_output)
 
+    # Check if thread review has been done: hypotheses with lifecycle_action != 'NEW' exist
+    has_thread_review = False
+    has_fresh_gen = False
+    if has_generation:
+        hyps = db.query(HypothesisModel).filter(HypothesisModel.run_id == latest_run.id).all()
+        lifecycle_actions = {h.lifecycle_action or "NEW" for h in hyps}
+        has_thread_review = bool(lifecycle_actions - {"NEW"})  # Any non-NEW action means thread review done
+        has_fresh_gen = "NEW" in lifecycle_actions  # Any NEW action means fresh gen done
+
+    # If no active threads exist, thread review auto-completes
+    has_active_threads = db.query(HypothesisThread).filter(
+        HypothesisThread.status == "ACTIVE"
+    ).count() > 0 if has_activation and not has_thread_review else True
+
+    thread_review_state = "complete"
+    if not has_activation:
+        thread_review_state = "waiting"
+    elif not has_active_threads:
+        thread_review_state = "complete"  # Auto-skip: no threads to review
+    elif has_thread_review:
+        thread_review_state = "complete"
+    else:
+        thread_review_state = "ready"
+
+    fresh_gen_state = "waiting"
+    if thread_review_state == "complete":
+        fresh_gen_state = "complete" if has_fresh_gen or (has_generation and not has_active_threads) else "ready"
+
     steps = [
         {"step": 1, "label": "Data Briefing", "type": "automated", "state": "complete"},
-        {"step": 2, "label": "Activation Scoring", "type": "automated", "state": "complete" if has_activation else "ready"},
-        {"step": 3, "label": "Generation Pass", "type": "human-in-loop",
-         "state": "complete" if has_generation else ("ready" if has_activation else "waiting")},
-        {"step": 4, "label": "Elimination Pass", "type": "human-in-loop",
-         "state": "complete" if has_elimination else ("ready" if has_generation else "waiting")},
-        {"step": 5, "label": "Conviction Scoring", "type": "automated",
+        {"step": 2, "label": "Activation Scoring", "type": "automated",
+         "state": "complete" if has_activation else "ready"},
+        {"step": 3, "label": "Thread Review", "type": "human-in-loop",
+         "state": thread_review_state},
+        {"step": 4, "label": "Fresh Generation", "type": "human-in-loop",
+         "state": fresh_gen_state},
+        {"step": 5, "label": "Elimination Pass", "type": "human-in-loop",
+         "state": "complete" if has_elimination else ("ready" if fresh_gen_state == "complete" else "waiting")},
+        {"step": 6, "label": "Conviction Scoring", "type": "automated",
          "state": "complete" if latest_run.status == "complete" else ("ready" if has_elimination else "waiting")},
     ]
 
-    current = 5
+    current = 6
     for s in steps:
         if s["state"] in ("ready", "waiting"):
             current = s["step"]
@@ -506,21 +553,73 @@ def get_pipeline_status(db: Session = Depends(get_db)):
 
 # --- Prompt generation ---
 
-@router.get("/pipeline/prompt/generation")
-def get_generation_prompt(db: Session = Depends(get_db)):
-    """Build and return the generation prompt text for copy-paste."""
-    # Load theory packages and briefing
+@router.get("/pipeline/prompt/thread-review")
+def get_thread_review_prompt(db: Session = Depends(get_db)):
+    """Build the thread review prompt (Pass 2A) — lifecycle management only, no theory packages."""
     packages = load_all_theory_packages()
     briefing_data = _load_briefing()
     if not briefing_data:
         raise HTTPException(status_code=400, detail="No briefing packet available. Run the data agent first.")
 
     briefing = BriefingPacket(**briefing_data)
-
-    # Run activation scoring (package-native, no adapter)
     activation_results = activation.score_all_packages(packages, briefing)
 
-    # Get queued inbox items
+    run = _get_or_create_active_run(db, activation_results)
+
+    # Store activation scores and regime flags
+    flag_ids = []
+    active_flags = regime.compute_regime_flags(_activation_status_dict(activation_results))
+    if active_flags:
+        flag_ids = [f["flag_id"] for f in active_flags]
+        run.regime_flags_active = json.dumps(flag_ids)
+        db.commit()
+
+    active_threads = _build_thread_summaries_for_prompt(db, briefing)
+
+    if not active_threads:
+        return {"prompt": None, "run_id": run.id, "skip": True,
+                "message": "No active threads. Skip thread review and proceed to fresh generation."}
+
+    # Build activation summary for the review prompt
+    activation_summary = {}
+    for ar in activation_results:
+        tier = ar.tier if not ar.is_two_phase else ar.effective_tier
+        tier_str = tier.value if hasattr(tier, "value") else str(tier)
+        score = ar.score
+        if ar.is_two_phase and ar.phase_scores and ar.effective_phase:
+            score = ar.phase_scores.get(ar.effective_phase)
+            if score is None:
+                for k, v in ar.phase_scores.items():
+                    if k.lower() == ar.effective_phase.lower():
+                        score = v
+                        break
+        activation_summary[ar.theory_id] = {"tier": tier_str, "score": score}
+
+    prompt = build_thread_review_prompt(
+        active_threads=active_threads,
+        briefing=briefing_data,
+        activation_summary=activation_summary,
+    )
+
+    return {"prompt": prompt, "run_id": run.id}
+
+
+@router.get("/pipeline/prompt/generation")
+def get_generation_prompt(db: Session = Depends(get_db)):
+    """Build fresh generation prompt (Pass 2B) — new hypotheses only.
+
+    When threads exist: builds a focused prompt for NEW hypothesis generation
+    with a compact thread summary (not full thread context).
+    When no threads: falls back to legacy prompt (first run).
+    """
+    packages = load_all_theory_packages()
+    briefing_data = _load_briefing()
+    if not briefing_data:
+        raise HTTPException(status_code=400, detail="No briefing packet available. Run the data agent first.")
+
+    briefing = BriefingPacket(**briefing_data)
+    activation_results = activation.score_all_packages(packages, briefing)
+
     inbox_rows = db.query(InboxItem).filter(InboxItem.status == "queued").all()
     inbox_items = [
         {"date": item.date, "content": item.content, "source": item.source or "",
@@ -528,76 +627,199 @@ def get_generation_prompt(db: Session = Depends(get_db)):
         for item in inbox_rows
     ]
 
-    # Pass 1.5: Compute regime flags from activation results
     active_flags = regime.compute_regime_flags(_activation_status_dict(activation_results))
-
-    # Ensure a run exists for this pipeline execution
     run = _get_or_create_active_run(db, activation_results)
 
-    # Store active regime flag IDs on the run
     flag_ids = [f["flag_id"] for f in active_flags]
     run.regime_flags_active = json.dumps(flag_ids)
     db.commit()
 
-    # v7: Query active threads with staleness gate for thread-based generation
-    active_threads = _build_thread_summaries_for_prompt(db, briefing)
-
-    # Legacy fallback: prior hypotheses for runs without threads (pre-v7 compat)
-    prior_hypotheses = None
-    if not active_threads:
-        prior_hyps = (
-            db.query(HypothesisModel)
-            .filter(
-                HypothesisModel.run_id != run.id,
-                HypothesisModel.status.in_(["SURVIVED", "WOUNDED"]),
-            )
-            .all()
-        )
-        prior_hypotheses_list = []
-        for h in prior_hyps:
-            has_realization = (
-                h.expression_return is not None
-                or h.predicted_magnitude_lower is not None
-            )
-            if has_realization:
-                prior_hypotheses_list.append({
-                    "id": h.id,
-                    "short_name": h.short_name,
-                    "predicted_assets": json.loads(h.predicted_assets) if h.predicted_assets else [],
-                    "asset_direction": json.loads(h.asset_direction) if h.asset_direction else {},
-                    "predicted_magnitude_lower": h.predicted_magnitude_lower,
-                    "predicted_magnitude_upper": h.predicted_magnitude_upper,
-                    "timeframe_end_date": h.timeframe_end_date,
-                    "expression_return": h.expression_return,
-                    "realization_vs_lower": h.realization_vs_lower,
-                    "realization_vs_upper": h.realization_vs_upper,
-                    "time_elapsed_pct": h.time_elapsed_pct,
-                    "status": h.status,
-                    "continuation_generation": h.continuation_generation or 1,
-                    "continuation_of": h.continuation_of,
-                })
-        if prior_hypotheses_list:
-            prior_hypotheses = prior_hypotheses_list
-
-    # Load and filter interaction matrix for active theories
     active_ids = {ar.theory_id for ar in activation_results
                   if (ar.tier if not ar.is_two_phase else ar.effective_tier)
                   == activation.ActivationTier.ACTIVE}
     matrix_raw = _load_interaction_matrix()
     matrix = filter_interaction_matrix(matrix_raw, active_ids) if matrix_raw else None
 
-    prompt = build_generation_prompt_v8(
-        packages=packages,
-        activation_results=activation_results,
-        briefing=briefing_data,
-        inbox_items=inbox_items,
-        interaction_matrix=matrix,
-        active_regime_flags=active_flags,
-        prior_hypotheses=prior_hypotheses,
-        active_threads=active_threads if active_threads else None,
-    )
+    # Check for active threads
+    active_threads = _build_thread_summaries_for_prompt(db, briefing)
+
+    if active_threads:
+        # Split mode: fresh generation prompt with compact thread summary
+        compact_summary = _build_compact_thread_summary(active_threads)
+        prompt = build_fresh_generation_prompt(
+            packages=packages,
+            activation_results=activation_results,
+            briefing=briefing_data,
+            inbox_items=inbox_items,
+            interaction_matrix=matrix,
+            active_regime_flags=active_flags,
+            existing_thread_summary=compact_summary,
+        )
+    else:
+        # Legacy first-run: full prompt with no threads
+        prompt = build_generation_prompt_v8(
+            packages=packages,
+            activation_results=activation_results,
+            briefing=briefing_data,
+            inbox_items=inbox_items,
+            interaction_matrix=matrix,
+            active_regime_flags=active_flags,
+        )
 
     return {"prompt": prompt, "run_id": run.id, "regime_flags_active": flag_ids}
+
+
+def _build_compact_thread_summary(
+    full_summaries: list[dict[str, Any]],
+) -> list[dict[str, Any]]:
+    """Build a compact thread summary for the fresh generation prompt.
+
+    Only includes identity and expression — no realization, no falsifiers.
+    The generator just needs to know what exists so it doesn't duplicate.
+    """
+    compact = []
+    for s in full_summaries:
+        assets = list(s.get("asset_direction", {}).keys())
+        compact.append({
+            "thread_id": s.get("thread_id", "?"),
+            "short_name": s.get("short_name", "?"),
+            "source_theory": s.get("source_theory", "?"),
+            "predicted_assets": assets,
+            "asset_direction": s.get("asset_direction", {}),
+        })
+    return compact
+
+
+@router.post("/pipeline/import/thread-review")
+def import_thread_review(payload: dict = Body(...), db: Session = Depends(get_db)):
+    """Import thread review output (Pass 2A) — CONFIRM/UPDATE/RENEW/RETIRE only.
+
+    Reuses the same import_generation logic since it already handles all lifecycle actions.
+    The thread review output format is: {"thread_actions": [...]}
+    """
+    raw_json = payload.get("json_text", "")
+    if not raw_json:
+        raise HTTPException(status_code=400, detail="Missing 'json_text' field in request body")
+
+    run = _get_or_create_active_run(db)
+
+    # Clear existing hypotheses for this run (allows re-import of thread review)
+    db.query(HypothesisModel).filter(HypothesisModel.run_id == run.id).delete()
+    run.generation_output = None
+    db.flush()
+
+    try:
+        hypotheses = parse_generation_output(raw_json, run.id)
+    except ParseError as e:
+        raise HTTPException(
+            status_code=422,
+            detail={"message": e.message, "field_errors": e.field_errors, "raw_preview": e.raw_input},
+        )
+
+    price_snapshot = _get_current_prices_for_threads(db, run)
+
+    created = []
+    retired_threads = []
+    thread_actions_log = []
+
+    for h_data in hypotheses:
+        conv_inputs = h_data.pop("_conviction_inputs", {})
+        thread_id_ref = h_data.pop("_thread_id_ref", None)
+        retire_only = h_data.pop("_retire_only", False)
+        revised_timeframe = h_data.pop("_revised_timeframe_end_date", None)
+        revised_short_name = h_data.pop("_revised_short_name", None)
+        revised_full_statement = h_data.pop("_revised_full_statement", None)
+
+        action = h_data.get("lifecycle_action", "NEW")
+
+        if retire_only or action == "RETIRE":
+            if thread_id_ref:
+                thread = db.query(HypothesisThread).filter(
+                    HypothesisThread.thread_id == thread_id_ref
+                ).first()
+                if thread:
+                    thread.status = "RETIRED"
+                    retired_threads.append(thread_id_ref)
+                    thread_actions_log.append({"action": "RETIRE", "thread_id": thread_id_ref})
+            continue
+
+        if action == "CONFIRM" and thread_id_ref:
+            thread = db.query(HypothesisThread).filter(
+                HypothesisThread.thread_id == thread_id_ref
+            ).first()
+            if thread:
+                h_data = _apply_thread_to_instance(h_data, thread, db)
+                thread.confirmation_count += 1
+                thread.total_instances += 1
+                h_data["thread_id"] = thread.thread_id
+                h = HypothesisModel(**h_data)
+                db.add(h)
+                created.append({**h_data, "_conviction_inputs": conv_inputs})
+                thread_actions_log.append({"action": "CONFIRM", "thread_id": thread.thread_id, "instance_id": h_data["id"]})
+                continue
+
+        if action == "UPDATE" and thread_id_ref:
+            thread = db.query(HypothesisThread).filter(
+                HypothesisThread.thread_id == thread_id_ref
+            ).first()
+            if thread:
+                h_data = _apply_thread_to_instance(h_data, thread, db)
+                thread.confirmation_count = 0
+                thread.total_instances += 1
+                if revised_timeframe:
+                    thread.timeframe_end_date = revised_timeframe
+                if revised_short_name:
+                    h_data["short_name"] = revised_short_name
+                if revised_full_statement:
+                    h_data["full_statement"] = revised_full_statement
+                h_data["thread_id"] = thread.thread_id
+                h = HypothesisModel(**h_data)
+                db.add(h)
+                created.append({**h_data, "_conviction_inputs": conv_inputs})
+                thread_actions_log.append({"action": "UPDATE", "thread_id": thread.thread_id, "instance_id": h_data["id"]})
+                continue
+
+        if action == "RENEW" and thread_id_ref:
+            old_thread = db.query(HypothesisThread).filter(
+                HypothesisThread.thread_id == thread_id_ref
+            ).first()
+            if old_thread:
+                old_thread.status = "RETIRED"
+                retired_threads.append(thread_id_ref)
+            h = HypothesisModel(**h_data)
+            db.add(h)
+            db.flush()
+            new_thread = _create_thread_for_instance(h_data, run, price_snapshot, renewed_from=thread_id_ref)
+            db.add(new_thread)
+            db.flush()
+            h.thread_id = new_thread.thread_id
+            h_data["thread_id"] = new_thread.thread_id
+            created.append({**h_data, "_conviction_inputs": conv_inputs})
+            thread_actions_log.append({"action": "RENEW", "old_thread_id": thread_id_ref, "new_thread_id": new_thread.thread_id, "instance_id": h_data["id"]})
+            continue
+
+        # Any NEW items that leak through from thread review are treated as NEW
+        h = HypothesisModel(**h_data)
+        db.add(h)
+        db.flush()
+        new_thread = _create_thread_for_instance(h_data, run, price_snapshot)
+        db.add(new_thread)
+        db.flush()
+        h.thread_id = new_thread.thread_id
+        h_data["thread_id"] = new_thread.thread_id
+        created.append({**h_data, "_conviction_inputs": conv_inputs})
+        thread_actions_log.append({"action": "NEW", "thread_id": new_thread.thread_id, "instance_id": h_data["id"]})
+
+    # Store raw output as generation_output (partial — thread review portion)
+    run.generation_output = raw_json
+    db.commit()
+
+    return {
+        "run_id": run.id,
+        "hypotheses_created": len(created),
+        "thread_actions": thread_actions_log,
+        "retired_threads": retired_threads,
+    }
 
 
 @router.get("/pipeline/prompt/elimination")
@@ -679,12 +901,10 @@ def get_elimination_prompt(db: Session = Depends(get_db)):
 def import_generation(payload: dict = Body(...), db: Session = Depends(get_db)):
     """Import generation output JSON. Creates hypotheses and manages thread lifecycle.
 
-    Handles five lifecycle actions:
-    - NEW: Create thread + instance, capture entry prices and payoff band
-    - CONFIRM: Link instance to existing thread, increment counters, inherit falsifier counters
-    - UPDATE: Link instance to existing thread, reset confirmation_count, update timeframe if revised
-    - RENEW: RETIRE old thread, create new thread with renewed_from link, new instance
-    - RETIRE: Set thread status=RETIRED (no new instance)
+    In the split pipeline: this handles fresh generation output (NEW hypotheses).
+    Thread review output should be imported via /pipeline/import/thread-review first.
+
+    Also supports the legacy single-prompt flow (all lifecycle actions in one import).
     """
     raw_json = payload.get("json_text", "")
     if not raw_json:
@@ -693,10 +913,13 @@ def import_generation(payload: dict = Body(...), db: Session = Depends(get_db)):
     # Get or create active run
     run = _get_or_create_active_run(db)
 
-    # Clear any existing hypotheses for this run (allows re-import)
-    db.query(HypothesisModel).filter(HypothesisModel.run_id == run.id).delete()
-    run.generation_output = None
-    db.flush()
+    # If thread review was already imported, DON'T clear those hypotheses.
+    # Only clear if this is a full re-import (no thread review step done).
+    existing_count = db.query(HypothesisModel).filter(HypothesisModel.run_id == run.id).count()
+    if existing_count == 0:
+        # No thread review imported — this is either legacy flow or first import
+        run.generation_output = None
+        db.flush()
 
     try:
         hypotheses = parse_generation_output(raw_json, run.id)
@@ -1652,6 +1875,29 @@ def _build_thread_summaries_for_prompt(
             latest.time_elapsed_pct or 0.0,
         )
 
+        # Thread health indicators for generation prompt
+        confirmation_count = thread.confirmation_count or 0
+
+        # Conviction trend: last 3 instances' conviction scores
+        recent_instances = (
+            db.query(HypothesisModel)
+            .filter(HypothesisModel.thread_id == thread.thread_id)
+            .order_by(HypothesisModel.generated_date.desc())
+            .limit(3)
+            .all()
+        )
+        conviction_trend = [
+            inst.conviction for inst in reversed(recent_instances)
+            if inst.conviction is not None
+        ]
+
+        # Count STALE or ESCALATED_UNTESTABLE soft falsifiers
+        escalated_or_stale = sum(
+            1 for sf in staleness_enriched
+            if sf.get("escalated_status") == "ESCALATED_UNTESTABLE"
+            or sf.get("staleness_flag") == "STALE"
+        )
+
         summary = {
             "thread_id": thread.thread_id,
             "short_name": latest.short_name,
@@ -1669,6 +1915,10 @@ def _build_thread_summaries_for_prompt(
             "freshness_label": freshness,
             "hard_falsifiers": hard_falsifiers,
             "soft_falsifiers": staleness_enriched,
+            "confirmation_count": confirmation_count,
+            "conviction_trend": conviction_trend,
+            "escalated_or_stale_count": escalated_or_stale,
+            "total_soft_falsifiers": len(staleness_enriched),
         }
         summaries.append(summary)
 

@@ -216,7 +216,7 @@ class TestThreadLifecycleContract:
     def test_confirm_default_emphasis(self):
         """Emphasizes CONFIRM as default action."""
         result = _thread_lifecycle_contract()
-        assert "CONFIRM is the expectation" in result
+        assert "CONFIRM is the default" in result
 
 
 # ===================================================================
