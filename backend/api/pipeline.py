@@ -703,13 +703,22 @@ def import_thread_review(payload: dict = Body(...), db: Session = Depends(get_db
 
     run = _get_or_create_active_run(db)
 
-    # Clear existing hypotheses for this run (allows re-import of thread review)
-    # Must delete dependent rows first to satisfy FK constraints
-    hyp_ids = [h.id for h in db.query(HypothesisModel.id).filter(HypothesisModel.run_id == run.id).all()]
-    if hyp_ids:
-        db.query(SectorFalsifierAudit).filter(SectorFalsifierAudit.hypothesis_id.in_(hyp_ids)).delete(synchronize_session=False)
-        db.query(HypothesisModel).filter(HypothesisModel.run_id == run.id).delete(synchronize_session=False)
-    run.generation_output = None
+    # Clear only thread-review hypotheses for this run (allows re-import).
+    # Preserves NEW hypotheses from generation import.
+    thread_review_actions = ('CONFIRM', 'UPDATE', 'RENEW')
+    tr_hyp_ids = [
+        h.id for h in db.query(HypothesisModel.id).filter(
+            HypothesisModel.run_id == run.id,
+            HypothesisModel.lifecycle_action.in_(thread_review_actions)
+        ).all()
+    ]
+    if tr_hyp_ids:
+        db.query(SectorFalsifierAudit).filter(
+            SectorFalsifierAudit.hypothesis_id.in_(tr_hyp_ids)
+        ).delete(synchronize_session=False)
+        db.query(HypothesisModel).filter(
+            HypothesisModel.id.in_(tr_hyp_ids)
+        ).delete(synchronize_session=False)
     db.flush()
 
     try:
@@ -917,17 +926,6 @@ def import_generation(payload: dict = Body(...), db: Session = Depends(get_db)):
     # Get or create active run
     run = _get_or_create_active_run(db)
 
-    # Clear any existing hypotheses for this run (allows re-import).
-    # This is safe for both legacy single-prompt flow and split flow:
-    # - Legacy: clears previous import, re-imports everything
-    # - Split: thread review uses /import/thread-review, generation uses this endpoint
-    #   If user does thread-review first then generation, generation clears thread-review
-    #   hypotheses — but that's fine because both outputs will be re-imported together
-    #   in the legacy format if using the old single-prompt workflow.
-    db.query(HypothesisModel).filter(HypothesisModel.run_id == run.id).delete()
-    run.generation_output = None
-    db.flush()
-
     try:
         hypotheses = parse_generation_output(raw_json, run.id)
     except ParseError as e:
@@ -935,6 +933,36 @@ def import_generation(payload: dict = Body(...), db: Session = Depends(get_db)):
             status_code=422,
             detail={"message": e.message, "field_errors": e.field_errors, "raw_preview": e.raw_input},
         )
+
+    # Determine flow type: legacy (all actions in one import) vs split (NEW only)
+    incoming_actions = {h.get("lifecycle_action", "NEW") for h in hypotheses}
+    is_legacy_flow = bool(incoming_actions - {"NEW"})
+
+    if is_legacy_flow:
+        # Legacy single-prompt flow: clear all hypotheses for re-import
+        all_hyp_ids = [h.id for h in db.query(HypothesisModel.id).filter(
+            HypothesisModel.run_id == run.id).all()]
+        if all_hyp_ids:
+            db.query(SectorFalsifierAudit).filter(
+                SectorFalsifierAudit.hypothesis_id.in_(all_hyp_ids)
+            ).delete(synchronize_session=False)
+            db.query(HypothesisModel).filter(
+                HypothesisModel.run_id == run.id
+            ).delete(synchronize_session=False)
+    else:
+        # Split flow: clear only NEW hypotheses, preserve thread-review results
+        new_hyp_ids = [h.id for h in db.query(HypothesisModel.id).filter(
+            HypothesisModel.run_id == run.id,
+            HypothesisModel.lifecycle_action == "NEW"
+        ).all()]
+        if new_hyp_ids:
+            db.query(SectorFalsifierAudit).filter(
+                SectorFalsifierAudit.hypothesis_id.in_(new_hyp_ids)
+            ).delete(synchronize_session=False)
+            db.query(HypothesisModel).filter(
+                HypothesisModel.id.in_(new_hyp_ids)
+            ).delete(synchronize_session=False)
+    db.flush()
 
     # Load current price snapshot for entry prices on NEW/RENEW threads
     price_snapshot = _get_current_prices_for_threads(db, run)

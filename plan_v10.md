@@ -97,3 +97,18 @@ Focused solely on generating NEW hypotheses. The generator's only job.
 **COMPLETE (2026-04-09).** All changes implemented, tested (1197 pass, 0 regressions), committed, pushed, published to GH Pages. DB cleared for fresh start.
 
 Commits: dcb1820, c222295, 2570a72, c9e9b3a, 441f365, d5e715f
+
+## Bugfix: Scoped Import Deletion (2026-04-11)
+
+**Problem:** `import_generation` (line 927) unconditionally deleted ALL hypotheses for the run, including CONFIRM/UPDATE/RENEW instances created by `import_thread_review`. Thread-review was effectively a no-op -- its results were always destroyed by the generation import that followed.
+
+Root cause: commit `c9e9b3a` reverted split-flow protection to fix legacy-flow UNIQUE constraint violations, using a sledgehammer `DELETE WHERE run_id = X` that nuked both import types.
+
+**Impact on first live run (R-20260410-230800):** Gold threads (conviction 7/10 and 6/10) were correctly CONFIRMed by thread-review, then silently destroyed by generation import. Thread counters were inflated but instances gone. Newsletter NL-2026-002 saw no gold, proposed closing all gold trades.
+
+**Fix:** Scoped deletion -- each import only clears its own lifecycle actions:
+- `import_thread_review`: deletes only CONFIRM/UPDATE/RENEW hypotheses
+- `import_generation`: auto-detects legacy vs split flow. Split: deletes only NEW. Legacy: deletes all (backwards compat).
+- Parse moved before delete (validates before modifying DB).
+
+**Cleanup:** Run 2, NL-2026-002, and all Run 2 artifacts deleted. Run 1 thread counters rolled back. Ready for clean re-run.
