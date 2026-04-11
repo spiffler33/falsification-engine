@@ -106,9 +106,13 @@ Root cause: commit `c9e9b3a` reverted split-flow protection to fix legacy-flow U
 
 **Impact on first live run (R-20260410-230800):** Gold threads (conviction 7/10 and 6/10) were correctly CONFIRMed by thread-review, then silently destroyed by generation import. Thread counters were inflated but instances gone. Newsletter NL-2026-002 saw no gold, proposed closing all gold trades.
 
-**Fix:** Scoped deletion -- each import only clears its own lifecycle actions:
-- `import_thread_review`: deletes only CONFIRM/UPDATE/RENEW hypotheses
-- `import_generation`: auto-detects legacy vs split flow. Split: deletes only NEW. Legacy: deletes all (backwards compat).
-- Parse moved before delete (validates before modifying DB).
+**Fix (commits d9ae246 + 6f4bfe3):** Three issues fixed:
+1. Scoped deletion -- each import only clears its own lifecycle actions. `import_thread_review`: CONFIRM/UPDATE/RENEW only. `import_generation`: auto-detects legacy vs split flow (split: NEW only, legacy: all).
+2. ID renumbering -- both imports call the same parser which numbers from -01. Second import offsets past highest existing ID for the run. Prevents UNIQUE constraint violations.
+3. FK-safe deletion -- circular FK between `hypothesis.thread_id` and `thread.originating_instance_id`. Nulls `thread_id` before deleting threads on re-import.
 
-**Cleanup:** Run 2, NL-2026-002, and all Run 2 artifacts deleted. Run 1 thread counters rolled back. Ready for clean re-run.
+Parse moved before delete in generation import (validates before modifying DB).
+
+**Tests:** 13 integration tests in `backend/tests/test_split_pipeline_integration.py`. 1348 total tests pass.
+
+**Cleanup:** All failed runs (R-20260410, R-20260411) and NL-2026-002 deleted. Run 1 thread counters rolled back. Ready for clean re-run.
