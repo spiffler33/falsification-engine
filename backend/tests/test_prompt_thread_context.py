@@ -62,8 +62,10 @@ def _make_thread(
     freshness_label: str = "WORKING",
     hard_falsifiers: list | None = None,
     soft_falsifiers: list | None = None,
+    prior_status: str | None = None,
+    prior_conviction: float | None = None,
 ) -> dict:
-    return {
+    d = {
         "thread_id": thread_id,
         "short_name": short_name,
         "source_theory": source_theory,
@@ -81,6 +83,11 @@ def _make_thread(
         "hard_falsifiers": hard_falsifiers or [],
         "soft_falsifiers": soft_falsifiers or [],
     }
+    if prior_status is not None:
+        d["prior_status"] = prior_status
+    if prior_conviction is not None:
+        d["prior_conviction"] = prior_conviction
+    return d
 
 
 # ===================================================================
@@ -188,6 +195,32 @@ class TestThreadContextSection:
         assert "Do not UPDATE" in result
         assert "Do not RENEW" in result
 
+    def test_prior_status_survived_displayed(self):
+        """SURVIVED prior status renders with conviction score."""
+        t = _make_thread(prior_status="SURVIVED", prior_conviction=7.0)
+        result = _thread_context_section([t])
+        assert "Prior run: SURVIVED (conviction 7.0)" in result
+
+    def test_prior_status_killed_displayed(self):
+        """KILLED prior status renders with conviction score."""
+        t = _make_thread(prior_status="KILLED", prior_conviction=4.0)
+        result = _thread_context_section([t])
+        assert "Prior run: KILLED (conviction 4.0)" in result
+
+    def test_killed_health_warning(self):
+        """KILLED prior status triggers PRIOR RUN KILLED health warning."""
+        t = _make_thread(prior_status="KILLED", prior_conviction=3.0)
+        result = _thread_context_section([t])
+        assert "PRIOR RUN KILLED" in result
+        assert "Default to RETIRE" in result
+
+    def test_prior_status_absent_no_crash(self):
+        """Thread without prior_status key renders without error."""
+        t = _make_thread()  # No prior_status set
+        result = _thread_context_section([t])
+        assert "Prior run:" not in result
+        assert "T-20260402-120000-01" in result
+
 
 # ===================================================================
 # _thread_lifecycle_contract
@@ -214,9 +247,15 @@ class TestThreadLifecycleContract:
         assert "renewed_hypothesis" in result
 
     def test_confirm_default_emphasis(self):
-        """Emphasizes CONFIRM as default action."""
+        """Emphasizes CONFIRM as default action with prior status qualifier."""
         result = _thread_lifecycle_contract()
         assert "CONFIRM is the default" in result
+        assert "SURVIVED or WOUNDED" in result
+
+    def test_retire_mentions_killed_prior(self):
+        """RETIRE signals include prior-KILLED guidance."""
+        result = _thread_lifecycle_contract()
+        assert "Prior run status was KILLED" in result
 
 
 # ===================================================================

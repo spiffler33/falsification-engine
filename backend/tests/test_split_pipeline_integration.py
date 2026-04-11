@@ -21,6 +21,7 @@ from backend.db.models import (
     SectorFalsifierAudit,
 )
 from backend.engine.output_parser import parse_generation_output
+from backend.schemas.briefing import BriefingPacket
 
 
 # ---------------------------------------------------------------------------
@@ -835,3 +836,53 @@ class TestUpdateAndRenewActions:
 
         total = db.query(HypothesisModel).filter(HypothesisModel.run_id == run2.id).count()
         assert total == 2
+
+
+# ===================================================================
+# Prior status in thread summaries
+# ===================================================================
+
+
+class TestThreadSummaryPriorStatus:
+    """_build_thread_summaries_for_prompt includes prior_status and prior_conviction."""
+
+    def test_thread_summary_includes_prior_status(self, db):
+        """Thread summary dict includes the latest instance's status and conviction."""
+        from backend.api.pipeline import _build_thread_summaries_for_prompt
+
+        run = _create_run(db, "R-20260409-120000", status="complete")
+        thread, hyp = _create_thread_and_instance(
+            db, run, "T-20260409-120000-01", "H-20260409-120000-01",
+        )
+        # Set status and conviction on the hypothesis
+        hyp.status = "KILLED"
+        hyp.conviction = 4.0
+        db.commit()
+
+        briefing = BriefingPacket()
+        summaries = _build_thread_summaries_for_prompt(db, briefing)
+
+        assert len(summaries) == 1
+        s = summaries[0]
+        assert s["prior_status"] == "KILLED"
+        assert s["prior_conviction"] == 4.0
+
+    def test_thread_summary_survived_status(self, db):
+        """SURVIVED status and conviction are included in the summary."""
+        from backend.api.pipeline import _build_thread_summaries_for_prompt
+
+        run = _create_run(db, "R-20260409-120000", status="complete")
+        thread, hyp = _create_thread_and_instance(
+            db, run, "T-20260409-120000-01", "H-20260409-120000-01",
+        )
+        hyp.status = "SURVIVED"
+        hyp.conviction = 7.0
+        db.commit()
+
+        briefing = BriefingPacket()
+        summaries = _build_thread_summaries_for_prompt(db, briefing)
+
+        assert len(summaries) == 1
+        s = summaries[0]
+        assert s["prior_status"] == "SURVIVED"
+        assert s["prior_conviction"] == 7.0

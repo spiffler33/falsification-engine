@@ -66,6 +66,33 @@ def _build_registry_discount_lookup() -> dict[str, list[FalsifierEntry]]:
     return lookup
 
 
+def compute_effective_conviction(
+    raw_score: float,
+    lifecycle_action: str | None,
+    prior_conviction: float | None,
+    prior_was_killed: bool,
+) -> tuple[float, float, bool]:
+    """Apply conviction dampening and hysteresis floor.
+
+    For CONFIRM/UPDATE hypotheses, blends the new score with the prior to
+    reduce run-to-run volatility.  For previously-KILLED hypotheses, raises
+    the resurrection floor from 5 to 6.
+
+    Returns (effective_score, floor, floor_killed).
+    """
+    ALPHA = 0.7
+    effective = raw_score
+
+    if lifecycle_action in ("CONFIRM", "UPDATE") and prior_conviction is not None:
+        effective = round(ALPHA * raw_score + (1 - ALPHA) * prior_conviction)
+        effective = float(max(0, min(10, effective)))
+
+    floor = 6.0 if prior_was_killed else 5.0
+    floor_killed = 0 < effective < floor
+
+    return effective, floor, floor_killed
+
+
 def _resolve_registry_entry(
     sf: dict, registry_entries: list[FalsifierEntry],
 ) -> FalsifierEntry | None:
@@ -1252,6 +1279,23 @@ def import_elimination(payload: dict = Body(...), db: Session = Depends(get_db))
         if not h:
             continue
 
+        # Look up prior instance for conviction dampening/hysteresis
+        prior_conviction = None
+        prior_was_killed = False
+        if h.thread_id:
+            prior_inst = (
+                db.query(HypothesisModel)
+                .filter(
+                    HypothesisModel.thread_id == h.thread_id,
+                    HypothesisModel.id != h.id,
+                )
+                .order_by(HypothesisModel.generated_date.desc())
+                .first()
+            )
+            if prior_inst:
+                prior_conviction = prior_inst.conviction
+                prior_was_killed = prior_inst.status == "KILLED"
+
         h.status = h_data["status"]
         h.elimination_notes = h_data.get("elimination_notes", "")
         h.soft_falsifiers = h_data.get("soft_falsifiers", h.soft_falsifiers)
@@ -1379,7 +1423,13 @@ def import_elimination(payload: dict = Body(...), db: Session = Depends(get_db))
             )
 
             result = conviction.score_conviction(ci)
-            h.conviction = result.stage3.final
+            raw_new_score = result.stage3.final
+
+            # Conviction dampening + hysteresis
+            effective_score, floor, gov_floor_killed = compute_effective_conviction(
+                raw_new_score, h.lifecycle_action, prior_conviction, prior_was_killed,
+            )
+            h.conviction = effective_score
 
             # Store full math with mechanical + LLM inputs for audit comparison
             math_dump = result.model_dump()
@@ -1389,13 +1439,23 @@ def import_elimination(payload: dict = Body(...), db: Session = Depends(get_db))
             math_dump["mechanical_conviction_inputs"] = mech.model_dump()
             math_dump["mechanical_horizon_alignment"] = mech_horizon
             math_dump["mechanical_expression_efficiency"] = mech_expression
+            math_dump["conviction_dampening"] = {
+                "applied": h.lifecycle_action in ("CONFIRM", "UPDATE") and prior_conviction is not None,
+                "raw_new_score": raw_new_score,
+                "prior_conviction": prior_conviction,
+                "alpha": 0.7,
+                "effective_score": effective_score,
+                "hysteresis_floor": floor,
+                "prior_was_killed": prior_was_killed,
+            }
             h.conviction_math = json.dumps(math_dump)
 
-            # Conviction floor: mechanical kill for scores below 5
-            if result.stage3.floor_killed:
+            # Conviction floor with dampening and hysteresis
+            if gov_floor_killed:
                 h.status = "KILLED"
+                reason = f"Below conviction floor (scored {effective_score:.0f}/10, floor={floor:.0f})"
                 h.elimination_notes = (
-                    (h.elimination_notes or "") + f"\n[MECHANICAL] {result.stage3.kill_reason}"
+                    (h.elimination_notes or "") + f"\n[MECHANICAL] {reason}"
                 ).strip()
 
             # Record which sector appendices were applied to this hypothesis (v4)
@@ -1997,6 +2057,8 @@ def _build_thread_summaries_for_prompt(
             "conviction_trend": conviction_trend,
             "escalated_or_stale_count": escalated_or_stale,
             "total_soft_falsifiers": len(staleness_enriched),
+            "prior_status": latest.status,
+            "prior_conviction": latest.conviction,
         }
         summaries.append(summary)
 

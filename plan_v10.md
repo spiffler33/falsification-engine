@@ -122,3 +122,21 @@ Parser defaults `source_theories` to `'["unknown"]'` for CONFIRM actions missing
 **Successful run: R-20260411-150952.** 18 hypotheses (11 CONFIRM + 7 NEW). After re-scoring: 12 SURVIVED, 6 KILLED. Gold CONFIRM at conviction 7. Deep audit passed: field inheritance, soft falsifier discounts, elimination notes, overlap, thread state all verified correct.
 
 **Cleanup:** All failed runs (R-20260410, earlier R-20260411 attempts) and NL-2026-002 deleted. Run 1 thread counters rolled back.
+
+## Lifecycle Governance Fixes (2026-04-11)
+
+**Problem 1:** Thread review rubber-stamped CONFIRM on all 11 hypotheses (0 RETIRE) — even 4 that were killed in the prior run AND killed again. Root cause: `_build_thread_summaries_for_prompt()` never included the prior hypothesis status or conviction. The LLM had no way to know a hypothesis was KILLED.
+
+**Problem 2:** Conviction scores oscillated near the 5.0 floor for CONFIRM'd hypotheses (European equities 6→4, Staples 3→5, Commodities 4→5). Root cause: `convergence` input (25% weight) uses 1-month returns which are noisy. The 5.0 floor creates a hard binary gate — hypotheses near the threshold flip between SURVIVED and KILLED across runs despite nothing changing.
+
+**Fix (3 parts):**
+
+1. **Thread review prompt** — `_build_thread_summaries_for_prompt()` now includes `prior_status` and `prior_conviction`. `_thread_context_section()` displays "Prior run: KILLED (conviction 4.0)" and a `>> PRIOR RUN KILLED` health warning. `_thread_lifecycle_contract()` updated: CONFIRM only when prior was SURVIVED/WOUNDED; prior-KILLED is now the first RETIRE signal.
+
+2. **Conviction dampening** — For CONFIRM/UPDATE hypotheses, blends 70% new score + 30% prior score (`compute_effective_conviction()` in pipeline.py). Reduces run-to-run volatility without masking real signal changes.
+
+3. **Hysteresis floor** — Previously-KILLED hypotheses need score >= 6 to resurrect (standard floor is 5). Prevents flip-flopping at the boundary.
+
+Full audit trail in `conviction_math.conviction_dampening` JSON. conviction.py NOT modified — stays pure math.
+
+**Tests:** 24 new tests (16 dampening/hysteresis, 6 prompt, 2 integration). 1371 passing.

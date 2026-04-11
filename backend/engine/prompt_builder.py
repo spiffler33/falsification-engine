@@ -1366,6 +1366,13 @@ def _thread_context_section(active_threads: list[dict[str, Any]]) -> str:
         created_date = t.get("created_date", "?")
         lines.append(f"  Age: {total_instances} run{'s' if total_instances != 1 else ''} (first generated {created_date})")
 
+        # Prior run outcome
+        prior_status = t.get("prior_status")
+        prior_conviction = t.get("prior_conviction")
+        if prior_status:
+            conv_str = f" (conviction {prior_conviction:.1f})" if prior_conviction is not None else ""
+            lines.append(f"  Prior run: {prior_status}{conv_str}")
+
         # Expression: direction + assets
         asset_dir = t.get("asset_direction", {})
         if asset_dir:
@@ -1444,6 +1451,13 @@ def _thread_context_section(active_threads: list[dict[str, Any]]) -> str:
         escalated_or_stale = t.get("escalated_or_stale_count", 0)
         total_soft = t.get("total_soft_falsifiers", 0)
 
+        prior_status = t.get("prior_status")
+        if prior_status == "KILLED":
+            health_flags.append(
+                "PRIOR RUN KILLED -- hypothesis failed mechanical conviction scoring. "
+                "Default to RETIRE unless data has materially changed since last run."
+            )
+
         if confirmation_count >= 3:
             health_flags.append(
                 f"INERTIA WARNING: {confirmation_count} consecutive CONFIRMs "
@@ -1492,10 +1506,11 @@ def _thread_lifecycle_contract() -> str:
 | RENEW   | Economic content has changed: magnitude, expression, or mechanism materially revised. |
 | RETIRE  | Mechanism weakened, falsifier triggered, thesis no longer supported, or expression fully delivered. |
 
-CONFIRM is the default when mechanism and evidence are genuinely intact.
+CONFIRM is the default when mechanism and evidence are genuinely intact AND the prior run status was SURVIVED or WOUNDED.
 But a portfolio that never retires anything is not disciplined -- it is stale.
 
 Signals that a thread should RETIRE:
+- Prior run status was KILLED -- the hypothesis failed mechanical conviction scoring. Unless specific data has changed that would improve the score, RETIRE.
 - Thread health flags say INERTIA WARNING, CONVICTION FLAT/DECLINING, or FALSIFIER EXHAUSTION
 - Hard falsifier has FAILED
 - Expression has delivered (realization near or past upper bound with most time elapsed)
