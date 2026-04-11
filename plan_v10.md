@@ -115,4 +115,10 @@ Parse moved before delete in generation import (validates before modifying DB).
 
 **Tests:** 13 integration tests in `backend/tests/test_split_pipeline_integration.py`. 1348 total tests pass.
 
-**Cleanup:** All failed runs (R-20260410, R-20260411) and NL-2026-002 deleted. Run 1 thread counters rolled back. Ready for clean re-run.
+**Bugfix 2: source_theories inheritance (2026-04-11, commit bfc0a82)**
+
+Parser defaults `source_theories` to `'["unknown"]'` for CONFIRM actions missing `theory_id`. `_inherit_field` sentinel check only matched `"unknown"` (plain string), not `'["unknown"]'` (JSON array). All CONFIRMs hit conviction floor scores (support=0.3, evidence=0.2) because the mechanical scorer looked up theory "unknown" in the activation map. Gold went from conviction 7 to 4 (killed). Fixed by adding `'["unknown"]'` to sentinel list.
+
+**Successful run: R-20260411-150952.** 18 hypotheses (11 CONFIRM + 7 NEW). After re-scoring: 12 SURVIVED, 6 KILLED. Gold CONFIRM at conviction 7. Deep audit passed: field inheritance, soft falsifier discounts, elimination notes, overlap, thread state all verified correct.
+
+**Cleanup:** All failed runs (R-20260410, earlier R-20260411 attempts) and NL-2026-002 deleted. Run 1 thread counters rolled back.
