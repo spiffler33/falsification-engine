@@ -1803,8 +1803,8 @@ def _apply_thread_to_instance(
 def _inherit_field(h_data: dict, prior: HypothesisModel, field: str) -> None:
     """Copy a field from the prior instance if the new instance has no value."""
     current = h_data.get(field)
-    # Treat empty string, None, "unknown", and "[]" as missing
-    if not current or current in ("unknown", "[]", "{}"):
+    # Treat empty string, None, "unknown", "[]", and '["unknown"]' as missing
+    if not current or current in ("unknown", "[]", "{}", '["unknown"]'):
         prior_val = getattr(prior, field, None)
         if prior_val is not None:
             h_data[field] = prior_val
