@@ -367,9 +367,34 @@ def import_newsletter(payload: dict = Body(...), db: Session = Depends(get_db)):
             db.add(pta)
             pending_actions.append(pta)
 
-    # Open trades not in recommendations -> CLOSE
+    # Open trades not in recommendations: CLOSE only if hypothesis is dead.
+    # Positions backed by surviving hypotheses are held even if the newsletter
+    # didn't feature them (editorial selection != position management).
     for t in open_trades:
         if t.id not in accounted_trade_ids:
+            # Check if the backing hypothesis is still alive in the current run
+            backing_hyp = None
+            if latest_run:
+                # Look for the latest instance of this hypothesis's thread
+                backing_hyp = (
+                    db.query(Hypothesis)
+                    .filter(
+                        Hypothesis.run_id == latest_run.id,
+                        Hypothesis.thread_id == (
+                            db.query(Hypothesis.thread_id)
+                            .filter(Hypothesis.id == t.hypothesis_id)
+                            .scalar_subquery()
+                        ),
+                        Hypothesis.status.in_(["SURVIVED", "WOUNDED"]),
+                        Hypothesis.conviction >= CONVICTION_THRESHOLD,
+                    )
+                    .first()
+                )
+
+            if backing_hyp:
+                # Hypothesis is alive — HOLD (skip, no action needed)
+                continue
+
             price = _fetch_current_price(t.ticker)
             pta = PendingTradeAction(
                 id=_next_pta_id(db),

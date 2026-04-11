@@ -140,3 +140,13 @@ Parser defaults `source_theories` to `'["unknown"]'` for CONFIRM actions missing
 Full audit trail in `conviction_math.conviction_dampening` JSON. conviction.py NOT modified — stays pure math.
 
 **Tests:** 24 new tests (16 dampening/hysteresis, 6 prompt, 2 integration). 1371 passing.
+
+## Newsletter Trade Scope Fix (2026-04-11)
+
+**Problem:** Newsletter features max 4 trades (editorial), but the trade diff used the `<TRADES>` block as the source of truth for position management. Open positions backed by surviving hypotheses (e.g., SLV at conviction 6) got CLOSE actions simply because the newsletter featured other trades. Editorial selection was conflated with position management.
+
+**Fix:** Orphan trade logic in `newsletter.py` `import_newsletter()` now checks if the backing hypothesis is still SURVIVED/WOUNDED with conviction >= 5 in the current run. If yes, the position is held (no action). Only positions backed by KILLED/RETIRED/below-threshold hypotheses get CLOSE actions.
+
+**Also:** Deleted stale NL-2026-002 (was from R-20260411-150952, now superseded by R-20260411-173116).
+
+**Tests:** 2 new tests in `test_newsletter_trade_diff.py`. 1287 passing.
