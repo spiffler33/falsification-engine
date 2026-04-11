@@ -729,6 +729,19 @@ def import_thread_review(payload: dict = Body(...), db: Session = Depends(get_db
             detail={"message": e.message, "field_errors": e.field_errors, "raw_preview": e.raw_input},
         )
 
+    # Re-number IDs to avoid collisions with generation instances.
+    existing_ids = [
+        h.id for h in db.query(HypothesisModel.id).filter(
+            HypothesisModel.run_id == run.id
+        ).all()
+    ]
+    if existing_ids:
+        max_seq = max(int(hid.rsplit("-", 1)[1]) for hid in existing_ids)
+        run_ts = run.id.replace("R-", "") if run.id.startswith("R-") else run.id
+        for i, h_data in enumerate(hypotheses):
+            if not h_data.get("_retire_only"):
+                h_data["id"] = f"H-{run_ts}-{max_seq + i + 1:02d}"
+
     price_snapshot = _get_current_prices_for_threads(db, run)
 
     created = []
@@ -943,6 +956,13 @@ def import_generation(payload: dict = Body(...), db: Session = Depends(get_db)):
         all_hyp_ids = [h.id for h in db.query(HypothesisModel.id).filter(
             HypothesisModel.run_id == run.id).all()]
         if all_hyp_ids:
+            # Break circular FK: hypothesis.thread_id <-> thread.originating_instance_id
+            db.query(HypothesisModel).filter(
+                HypothesisModel.run_id == run.id
+            ).update({"thread_id": None}, synchronize_session=False)
+            db.query(HypothesisThread).filter(
+                HypothesisThread.originating_instance_id.in_(all_hyp_ids)
+            ).delete(synchronize_session=False)
             db.query(SectorFalsifierAudit).filter(
                 SectorFalsifierAudit.hypothesis_id.in_(all_hyp_ids)
             ).delete(synchronize_session=False)
@@ -956,6 +976,14 @@ def import_generation(payload: dict = Body(...), db: Session = Depends(get_db)):
             HypothesisModel.lifecycle_action == "NEW"
         ).all()]
         if new_hyp_ids:
+            # Break circular FK: null thread_id before deleting threads
+            db.query(HypothesisModel).filter(
+                HypothesisModel.id.in_(new_hyp_ids)
+            ).update({"thread_id": None}, synchronize_session=False)
+            db.flush()
+            db.query(HypothesisThread).filter(
+                HypothesisThread.originating_instance_id.in_(new_hyp_ids)
+            ).delete(synchronize_session=False)
             db.query(SectorFalsifierAudit).filter(
                 SectorFalsifierAudit.hypothesis_id.in_(new_hyp_ids)
             ).delete(synchronize_session=False)
@@ -963,6 +991,21 @@ def import_generation(payload: dict = Body(...), db: Session = Depends(get_db)):
                 HypothesisModel.id.in_(new_hyp_ids)
             ).delete(synchronize_session=False)
     db.flush()
+
+    # Re-number hypothesis IDs to avoid collisions with thread-review instances.
+    # Thread-review and generation both use parse_generation_output which numbers
+    # sequentially from 01. In split flow, thread-review creates H-{ts}-01..N,
+    # so generation must start at N+1.
+    existing_ids = [
+        h.id for h in db.query(HypothesisModel.id).filter(
+            HypothesisModel.run_id == run.id
+        ).all()
+    ]
+    if existing_ids:
+        max_seq = max(int(hid.rsplit("-", 1)[1]) for hid in existing_ids)
+        run_ts = run.id.replace("R-", "") if run.id.startswith("R-") else run.id
+        for i, h_data in enumerate(hypotheses):
+            h_data["id"] = f"H-{run_ts}-{max_seq + i + 1:02d}"
 
     # Load current price snapshot for entry prices on NEW/RENEW threads
     price_snapshot = _get_current_prices_for_threads(db, run)
