@@ -163,8 +163,28 @@ function RunMode({ onSelectHypothesis }) {
     { label: 'Conviction Scoring', type: 'Automated' },
   ]
 
+  const completedCount = steps.filter(s => s.state === 'complete').length
+  const showStamp = status?.run_id || completedCount > 0
+
   return (
     <div className="pipeline-run">
+      {showStamp && (
+        <div className="run-stamp">
+          <span className="run-stamp__id">
+            {status?.run_id ? status.run_id.replace('R-', '#') : '--'}
+          </span>
+          <span className="run-stamp__dots">
+            {steps.map((s, i) => (
+              <span
+                key={i}
+                className={`run-stamp__dot run-stamp__dot--${s.state || 'waiting'}`}
+                title={`${STEP_DEFS[i]?.label || `Step ${i+1}`}: ${(s.state || 'waiting').toUpperCase()}`}
+              />
+            ))}
+          </span>
+          <span className="run-stamp__counter">{completedCount} / {steps.length}</span>
+        </div>
+      )}
       <div className="pipeline-steps">
         {STEP_DEFS.map((def, i) => (
           <PipelineStep

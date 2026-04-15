@@ -2219,6 +2219,55 @@ p, .body-text {
   margin: 0;
 }
 
+/* Run Stamp — visible run ID + step tracker */
+.run-stamp {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 8px 18px;
+  margin-bottom: 16px;
+  border-bottom: 1px solid var(--border-light);
+  font-family: var(--font-data);
+  font-size: 11px;
+}
+
+.run-stamp__id {
+  color: var(--text-secondary);
+  font-weight: 600;
+  letter-spacing: 0.02em;
+}
+
+.run-stamp__dots {
+  display: flex;
+  gap: 6px;
+  align-items: center;
+}
+
+.run-stamp__dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  flex-shrink: 0;
+}
+
+.run-stamp__dot--complete {
+  background: var(--accent-positive);
+}
+
+.run-stamp__dot--ready {
+  background: var(--accent-high);
+}
+
+.run-stamp__dot--waiting {
+  background: var(--border-light);
+}
+
+.run-stamp__counter {
+  color: var(--text-tertiary);
+  margin-left: auto;
+  letter-spacing: 0.04em;
+}
+
 /* Pipeline Steps */
 .pipeline-steps {
   margin-bottom: 24px;
